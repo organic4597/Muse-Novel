@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1772986963822,
+      "tag": "0000_warm_harpoon",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1772991593590,
+      "tag": "0001_silky_satana",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1773059474222,
+      "tag": "0002_organic_betty_ross",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1773062352943,
+      "tag": "0003_married_wallow",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1773065901819,
+      "tag": "0004_glorious_captain_america",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1773069614876,
+      "tag": "0005_soft_chat",
+      "breakpoints": true
+    }
+  ]
+}

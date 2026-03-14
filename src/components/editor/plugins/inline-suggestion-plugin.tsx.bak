@@ -1,0 +1,265 @@
+'use client';
+
+import React from 'react';
+import { serializeMd, stripMarkdown } from '@platejs/markdown';
+import {
+  type PluginConfig,
+  bindFirst,
+} from 'platejs';
+import {
+  type OverrideEditor,
+  type RenderNodeWrapperProps,
+  createTPlatePlugin,
+  getEditorPlugin,
+  usePluginOption,
+  useSelected,
+} from 'platejs/react';
+
+import { MarkdownKit } from './markdown-kit';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export type InlineSuggestionConfig = PluginConfig<
+  'inlineSuggestion',
+  {
+    suggestionText: string | null;
+    suggestionNodeId: string | null;
+    renderGhostText: (() => React.ReactNode) | null;
+    abortController: AbortController | null;
+  },
+  {
+    inlineSuggestion: {
+      setSuggestion: (text: string, nodeId?: string) => void;
+      clearSuggestion: () => void;
+    };
+  },
+  {
+    inlineSuggestion: {
+      accept: () => false | undefined;
+    };
+  },
+  {
+    isSuggested: (id: string) => boolean;
+  }
+>;
+
+// ─── Accept Transform ─────────────────────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const acceptSuggestion = (editor: any) => {
+  const { api, getOptions } = getEditorPlugin<InlineSuggestionConfig>(editor, {
+    key: 'inlineSuggestion',
+  });
+  const { suggestionText } = getOptions();
+
+  if (!suggestionText?.length) return false;
+
+  editor.tf.insertText(suggestionText);
+  api.inlineSuggestion.clearSuggestion();
+};
+
+// ─── Render (belowNodes) ──────────────────────────────────────────────────────
+
+const renderBelowNodes = ({
+  editor,
+}: RenderNodeWrapperProps<InlineSuggestionConfig>) => {
+  const { getOptions } = getEditorPlugin<InlineSuggestionConfig>(editor, {
+    key: 'inlineSuggestion',
+  });
+  const { renderGhostText: GhostText } = getOptions();
+
+  if (!GhostText) return;
+
+  return ({ children }: { children: React.ReactNode }) => (
+    <>
+      {children}
+      <GhostText />
+    </>
+  );
+};
+
+// ─── Override Editor ──────────────────────────────────────────────────────────
+
+const withInlineSuggestion: OverrideEditor<InlineSuggestionConfig> = ({
+  api,
+  getOptions,
+  setOptions,
+  tf: { apply, insertText },
+}) => ({
+  transforms: {
+    apply(operation) {
+      const { suggestionText } = getOptions();
+
+      if (
+        suggestionText &&
+        (operation.type === 'insert_text' ||
+          operation.type === 'remove_text' ||
+          operation.type === 'split_node')
+      ) {
+        getOptions().abortController?.abort();
+        api.inlineSuggestion.clearSuggestion();
+      }
+
+      apply(operation);
+    },
+
+    insertText(text, options) {
+      const { suggestionText } = getOptions();
+
+      if (suggestionText?.startsWith(text)) {
+        const remaining = suggestionText.slice(text.length);
+        setOptions({ suggestionText: remaining || null });
+        insertText(text);
+        return;
+      }
+
+      insertText(text, options);
+    },
+  },
+});
+
+// ─── Debounce trigger ─────────────────────────────────────────────────────────
+
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const triggerCompletion = (editor: any) => {
+  if (debounceTimer) clearTimeout(debounceTimer);
+
+  debounceTimer = setTimeout(async () => {
+    if (!editor.api.isCollapsed()) return;
+    if (!editor.api.isAt({ end: true })) return;
+
+    const { getOptions, api } = getEditorPlugin<InlineSuggestionConfig>(
+      editor,
+      { key: 'inlineSuggestion' }
+    );
+
+    if (getOptions().suggestionText) return;
+
+    const contextEntry = editor.api.block({ highest: true });
+    if (!contextEntry) return;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const prompt = serializeMd(editor, { value: [contextEntry[0] as any] });
+    if (!prompt.trim()) return;
+
+    const abortController = new AbortController();
+    editor.setOption(InlineSuggestionPlugin, 'abortController', abortController);
+
+    try {
+      const projectIdMatch =
+        typeof window !== 'undefined'
+          ? window.location.pathname.match(/\/projects\/([^/]+)/)
+          : null;
+      const projectId = projectIdMatch?.[1];
+
+      const res = await fetch('/api/ai/copilot', {
+        body: JSON.stringify({
+          projectId,
+          prompt: `Continue the text up to the next punctuation mark:\n\"\"\"\n${prompt}\n\"\"\"`,
+          system: `You are an advanced AI writing assistant for Korean novel writing. Your task is to predict and generate the next part of the text based on the given context.\n\nRules:\n- Continue the text naturally up to the next punctuation mark (., ,, ;, :, ?, or !).\n- Maintain style and tone. Don't repeat given text.\n- For unclear context, provide the most likely continuation.\n- Don't include \"\"\" in your response.\n- CRITICAL: Always end with a punctuation mark.\n- CRITICAL: Avoid starting a new block. Do not use block formatting like >, #, 1., 2., -, etc. The suggestion should continue in the same block as the context.\n- If no context is provided or you can't generate a continuation, return \"0\" without explanation.`,
+        }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        signal: abortController.signal,
+      });
+
+      if (!res.ok) return;
+
+      const data = (await res.json()) as { text?: string };
+      const completion = data.text;
+
+      if (!completion || completion === '0') return;
+
+      const cleaned = stripMarkdown(completion);
+      if (!cleaned) return;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const blockId = (contextEntry[0] as any).id as string | undefined;
+      api.inlineSuggestion.setSuggestion(cleaned, blockId);
+    } catch {
+      // Aborted or network error — silent
+    }
+  }, 700);
+};
+
+// ─── Plugin ───────────────────────────────────────────────────────────────────
+
+export const InlineSuggestionPlugin = createTPlatePlugin<InlineSuggestionConfig>(
+  {
+    key: 'inlineSuggestion',
+    options: {
+      abortController: null,
+      renderGhostText: null,
+      suggestionNodeId: null,
+      suggestionText: null,
+    },
+    handlers: {
+      onBlur: ({ api }) => {
+        api.inlineSuggestion.clearSuggestion();
+      },
+      onChange: ({ editor }) => {
+        triggerCompletion(editor);
+      },
+      onMouseDown: ({ api }) => {
+        api.inlineSuggestion.clearSuggestion();
+      },
+    },
+  }
+)
+  .extendSelectors(({ getOptions }) => ({
+    isSuggested: (id: string) => getOptions().suggestionNodeId === id,
+  }))
+  .extendApi(({ setOptions }) => ({
+    clearSuggestion: () =>
+      setOptions({ suggestionNodeId: null, suggestionText: null }),
+    setSuggestion: (text: string, nodeId?: string) =>
+      setOptions({ suggestionNodeId: nodeId ?? null, suggestionText: text }),
+  }))
+  .extendTransforms(({ editor }) => ({
+    accept: bindFirst(acceptSuggestion, editor),
+  }))
+  .overrideEditor(withInlineSuggestion)
+  .extend({
+    render: { belowNodes: renderBelowNodes },
+    shortcuts: {
+      accept: { keys: 'tab', preventDefault: true },
+      clearSuggestion: { keys: 'escape' },
+    },
+  });
+
+// ─── InlineSuggestionKit (drop-in replacement for CopilotKit) ─────────────────
+
+export const InlineSuggestionKit = [
+  ...MarkdownKit,
+  InlineSuggestionPlugin.configure({
+    options: {
+      renderGhostText: InlineGhostText,
+    },
+  }),
+];
+
+// ─── GhostText UI Components ──────────────────────────────────────────────────
+
+export function InlineGhostText() {
+  const selected = useSelected();
+  const text = usePluginOption(InlineSuggestionPlugin, 'suggestionText');
+
+  if (!selected || !text) return null;
+
+  return <InlineGhostTextContent />;
+}
+
+function InlineGhostTextContent() {
+  const text = usePluginOption(InlineSuggestionPlugin, 'suggestionText');
+
+  return (
+    <span
+      className="pointer-events-none max-sm:hidden text-muted-foreground/70"
+      contentEditable={false}
+    >
+      {text}
+    </span>
+  );
+}

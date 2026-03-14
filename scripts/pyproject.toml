@@ -1,0 +1,19 @@
+[project]
+name = "muse-novel-scripts"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "accelerate>=1.5.2",
+    "bitsandbytes>=0.45.3",
+    "datasets>=3.4.1",
+    "peft>=0.14.0",
+    "safetensors",
+    "sentencepiece>=0.2.0",
+    "transformers>=4.49.0",
+    "trl>=0.15.2",
+]
+
+[tool.uv]
+# Alternative setup:
+#   cd scripts && uv sync
+# uv will auto-detect scripts/.venv when running `uv run python scripts/...` from the project root.
