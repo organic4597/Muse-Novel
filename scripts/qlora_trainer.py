@@ -2,7 +2,7 @@
 QLoRA fine-tuning script for muse-novel.
 Trains a LoRA adapter on novel text to capture writing style.
 
-Progress JSON lines to stdout (same protocol as doc_to_lora_runner.py):
+Progress JSON lines to stdout (stable SSE progress protocol):
   {"stage": "loading|tokenizing|training|saving|done|error", "progress": 0-100, "message": "..."}
   {"stage": "done", ..., "output": "<path>"}
 

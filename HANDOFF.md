@@ -156,7 +156,7 @@ if (!isKoboldCpp && activeProfile?.description) {
 ```
 /muse-novel/
 ├── scripts/
-│   └── doc_to_lora_runner.py          ← Doc-to-LoRA Python 브리지
+│   └── qlora_trainer.py               ← 현재 QLoRA 학습기
 ├── drizzle/
 │   └── 0004_glorious_captain_america.sql ← 최신 마이그레이션
 ├── src/

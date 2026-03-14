@@ -139,7 +139,7 @@ muse-novel/
 │   └── 0004_glorious_captain_america.sql  ← 최신 (loraPath, contextSize)
 ├── e2e/                        # Playwright E2E 테스트
 ├── scripts/
-│   └── doc_to_lora_runner.py   # Doc-to-LoRA Python 브리지
+│   └── qlora_trainer.py        # 현재 QLoRA 학습 스크립트
 ├── src/
 │   ├── app/
 │   │   ├── (main)/             # 메인 레이아웃 그룹
