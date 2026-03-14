@@ -17,7 +17,7 @@ function createDb() {
   // Default: local SQLite
   const Database = require('better-sqlite3');
   const { drizzle } = require('drizzle-orm/better-sqlite3');
-  const sqlite = new Database(process.env.DATABASE_URL || 'sqlite.db');
+  const sqlite = new Database(process.env.DATABASE_URL || 'data/sqlite.db');
   sqlite.pragma('journal_mode = WAL');
   sqlite.pragma('foreign_keys = ON');
   return drizzle(sqlite, { schema });

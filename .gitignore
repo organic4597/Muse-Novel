@@ -47,19 +47,27 @@ CLAUDE.local.md
 .codex
 
 # database
-sqlite.db
-sqlite.db-wal
-sqlite.db-shm
-db.sqlite
+data/sqlite.db
+data/sqlite.db-wal
+data/sqlite.db-shm
+
+# runtime data
+data/embeddings/
+data/loras/*.safetensors
 
 # training artifacts
 checkpoints/
 loras/
 
+# python
+__pycache__/
+scripts/.venv/
+
 # local reports and caches
 playwright-report/
 .ruff_cache/
 .sisyphus/
+*.pid
 
 # START Skiller Generated Files
 /.claude/skills

@@ -1,12 +1,15 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { Sparkles } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ImageGenerationDialog } from '@/components/character/image-generation-dialog';
 
 type Props = {
   projectId: string;
   characterId: string;
+  characterName: string;
   currentImagePath: string | null;
   onImageChange: () => void;
 };
@@ -14,12 +17,14 @@ type Props = {
 export function CharacterImageUpload({
   projectId: _projectId,
   characterId,
+  characterName,
   currentImagePath,
   onImageChange,
 }: Props) {
   const [isDragging, setIsDragging] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isGenDialogOpen, setIsGenDialogOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const uploadImage = async (file: File) => {
@@ -105,7 +110,7 @@ export function CharacterImageUpload({
               src={currentImagePath}
             />
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               disabled={isLoading}
               onClick={() => inputRef.current?.click()}
@@ -124,6 +129,15 @@ export function CharacterImageUpload({
             >
               {isLoading ? '처리 중...' : '이미지 삭제'}
             </Button>
+            <Button
+              onClick={() => setIsGenDialogOpen(true)}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <Sparkles className="size-4" />
+              AI 생성
+            </Button>
           </div>
         </div>
       ) : (
@@ -140,15 +154,26 @@ export function CharacterImageUpload({
           <p className="mb-3 text-sm text-muted-foreground">
             이미지를 드래그하거나
           </p>
-          <Button
-            disabled={isLoading}
-            onClick={() => inputRef.current?.click()}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            {isLoading ? '업로드 중...' : '이미지 선택'}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              disabled={isLoading}
+              onClick={() => inputRef.current?.click()}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              {isLoading ? '업로드 중...' : '이미지 선택'}
+            </Button>
+            <Button
+              onClick={() => setIsGenDialogOpen(true)}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <Sparkles className="size-4" />
+              AI 생성
+            </Button>
+          </div>
           <p className="mt-2 text-xs text-muted-foreground">
             JPG, PNG, WebP, GIF (최대 5MB)
           </p>
@@ -163,6 +188,15 @@ export function CharacterImageUpload({
         onChange={handleFileChange}
         ref={inputRef}
         type="file"
+      />
+
+      <ImageGenerationDialog
+        open={isGenDialogOpen}
+        onOpenChange={setIsGenDialogOpen}
+        projectId={_projectId}
+        characterId={characterId}
+        characterName={characterName}
+        onGenerated={onImageChange}
       />
     </div>
   );

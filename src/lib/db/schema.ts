@@ -201,6 +201,61 @@ export const writingStyleProfiles = sqliteTable('writing_style_profiles', {
   ),
 });
 
+// ─── Character Images (Gallery) ──────────────────────────────────────────────
+
+export const characterImages = sqliteTable('character_images', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  characterId: text('character_id')
+    .notNull()
+    .references(() => characters.id),
+  projectId: text('project_id')
+    .notNull()
+    .references(() => projects.id),
+  imagePath: text('image_path').notNull(),
+  kind: text('kind').notNull().default('profile'), // profile | full-body | illustration
+  prompt: text('prompt'),
+  negativePrompt: text('negative_prompt'),
+  providerType: text('provider_type'),
+  modelName: text('model_name'),
+  width: integer('width'),
+  height: integer('height'),
+  seed: integer('seed'),
+  isPrimary: integer('is_primary').default(0),
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(
+    () => new Date()
+  ),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(
+    () => new Date()
+  ),
+});
+
+// ─── Image Provider Settings ─────────────────────────────────────────────────
+
+export const imageProviderSettings = sqliteTable('image_provider_settings', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  projectId: text('project_id').references(() => projects.id),
+  providerType: text('provider_type').notNull().default('diffusers'),
+  baseUrl: text('base_url'),
+  modelName: text('model_name'),
+  isDefault: integer('is_default').default(0),
+  defaultWidth: integer('default_width').default(512),
+  defaultHeight: integer('default_height').default(512),
+  defaultSteps: integer('default_steps').default(20),
+  defaultSampler: text('default_sampler').default('Euler a'),
+  defaultCfgScale: integer('default_cfg_scale').default(7),
+  defaultNegativePrompt: text('default_negative_prompt'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(
+    () => new Date()
+  ),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(
+    () => new Date()
+  ),
+});
+
 // ─── LoRA Adapters ─────────────────────────────────────────────────────────
 
 export const loras = sqliteTable('loras', {

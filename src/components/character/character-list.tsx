@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { CharacterAppearances } from '@/components/character/character-appearances';
 import { CharacterEmotionTimeline } from '@/components/character/character-emotion-timeline';
 import { CharacterForm } from '@/components/character/character-form';
+import { CharacterGallery } from '@/components/character/character-gallery';
 import { CharacterImageUpload } from '@/components/character/character-image-upload';
 import { CharacterRelationships } from '@/components/character/character-relationships';
 import { Button } from '@/components/ui/button';
@@ -223,6 +224,7 @@ function CharacterDetailView({
   onImageChange: () => void;
 }) {
   const [isDeleting, setIsDeleting] = useState(false);
+  const [galleryRefreshKey, setGalleryRefreshKey] = useState(0);
   const router = useRouter();
 
   const handleDelete = async () => {
@@ -298,9 +300,20 @@ function CharacterDetailView({
 
       <CharacterImageUpload
         characterId={character.id}
+        characterName={character.name}
         currentImagePath={character.imagePath}
-        onImageChange={onImageChange}
+        onImageChange={() => {
+          onImageChange();
+          setGalleryRefreshKey((k) => k + 1);
+        }}
         projectId={projectId}
+      />
+
+      <CharacterGallery
+        characterId={character.id}
+        projectId={projectId}
+        onPrimaryChanged={onImageChange}
+        refreshKey={galleryRefreshKey}
       />
 
       <CharacterAppearances

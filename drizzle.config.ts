@@ -16,7 +16,7 @@ export default defineConfig({
       }
     : {
         dbCredentials: {
-          url: process.env.DATABASE_URL || 'sqlite.db',
+          url: process.env.DATABASE_URL || 'data/sqlite.db',
         },
       }),
 });

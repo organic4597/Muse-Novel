@@ -3,10 +3,24 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
+import { StructuredFieldSuggestions } from '@/components/ai/structured-field-suggestions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 const PRESET_CATEGORIES = ['장소', '마법', '종족', '문화', '역사', '기술', '사건'] as const;
+
+type WorldEntrySuggestion = {
+  title?: string;
+  category?: string;
+  content?: string;
+  tags?: string[];
+};
+
+type SuggestionField = {
+  key: string;
+  label: string;
+  value: string | string[];
+};
 
 type WorldEntry = {
   id: string;
@@ -42,8 +56,86 @@ export function WorldEntryForm({
   const [tagInput, setTagInput] = useState('');
   const [pendingTags, setPendingTags] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [suggestionPrompt, setSuggestionPrompt] = useState('');
+  const [isSuggesting, setIsSuggesting] = useState(false);
+  const [suggestionError, setSuggestionError] = useState<string | null>(null);
+  const [suggestion, setSuggestion] = useState<WorldEntrySuggestion | null>(null);
 
   const effectiveCategory = customCategory.trim() || category;
+
+  const rawSuggestionFields = [
+    suggestion?.title ? { key: 'title', label: '제목', value: suggestion.title } : null,
+    suggestion?.category ? { key: 'category', label: '카테고리', value: suggestion.category } : null,
+    suggestion?.content ? { key: 'content', label: '내용', value: suggestion.content } : null,
+    !isEditing && suggestion?.tags && suggestion.tags.length > 0
+      ? { key: 'tags', label: '태그', value: suggestion.tags }
+      : null,
+  ];
+
+  const suggestionFields: SuggestionField[] = rawSuggestionFields.filter(
+    (field): field is NonNullable<(typeof rawSuggestionFields)[number]> => field !== null
+  );
+
+  const applyCategorySuggestion = (value: string) => {
+    if (PRESET_CATEGORIES.includes(value as typeof PRESET_CATEGORIES[number])) {
+      setCategory(value);
+      setCustomCategory('');
+      return;
+    }
+
+    setCategory('');
+    setCustomCategory(value);
+  };
+
+  const mergeTags = (tags: string[]) => {
+    setPendingTags((prev) => [...new Set([...prev, ...tags])]);
+  };
+
+  const applySuggestionField = (key: string) => {
+    switch (key) {
+      case 'title':
+        if (suggestion?.title) setTitle(suggestion.title);
+        return;
+      case 'category':
+        if (suggestion?.category) applyCategorySuggestion(suggestion.category);
+        return;
+      case 'content':
+        if (suggestion?.content) setContent(suggestion.content);
+        return;
+      case 'tags':
+        if (suggestion?.tags) mergeTags(suggestion.tags);
+        return;
+      default:
+        return;
+    }
+  };
+
+  const handleSuggest = async () => {
+    if (!suggestionPrompt.trim()) return;
+
+    setIsSuggesting(true);
+    setSuggestionError(null);
+
+    try {
+      const res = await fetch(`/api/projects/${projectId}/world-entries/suggest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: suggestionPrompt.trim() }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setSuggestionError(data.error ?? '세계관 제안을 가져오지 못했습니다.');
+        return;
+      }
+
+      setSuggestion(data as WorldEntrySuggestion);
+    } catch {
+      setSuggestionError('세계관 제안을 가져오지 못했습니다.');
+    } finally {
+      setIsSuggesting(false);
+    }
+  };
 
   const handleAddTag = (value: string) => {
     const trimmed = value.trim();
@@ -110,6 +202,20 @@ export function WorldEntryForm({
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
+      {!isEditing && (
+        <StructuredFieldSuggestions
+          description={suggestionPrompt}
+          error={suggestionError}
+          fields={suggestionFields}
+          isLoading={isSuggesting}
+          onApplyAll={() => suggestionFields.forEach((field) => applySuggestionField(field.key))}
+          onApplyField={applySuggestionField}
+          onDescriptionChange={setSuggestionPrompt}
+          onGenerate={handleSuggest}
+          title="설명으로 세계관 항목 초안 만들기"
+        />
+      )}
+
       <div className="space-y-2">
         <label className="text-sm font-medium" htmlFor="we-title">
           제목 <span className="text-destructive">*</span>

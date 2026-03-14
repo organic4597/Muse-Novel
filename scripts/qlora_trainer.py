@@ -24,6 +24,7 @@ import argparse
 import gc
 import json
 import os
+import re
 import sys
 import time
 from typing import Any
@@ -31,15 +32,34 @@ from typing import Any
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
+_stdout_broken = False
+
+
+def _disable_broken_stdout() -> None:
+    global _stdout_broken
+    if _stdout_broken:
+        return
+    _stdout_broken = True
+    try:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")
+    except Exception:
+        pass
+
 
 def emit(stage: str, progress: int, message: str, **extra) -> None:
-    print(
-        json.dumps(
-            {"stage": stage, "progress": progress, "message": message, **extra},
-            ensure_ascii=False,
-        ),
-        flush=True,
+    payload = json.dumps(
+        {"stage": stage, "progress": progress, "message": message, **extra},
+        ensure_ascii=False,
     )
+    try:
+        print(payload, flush=True)
+    except BrokenPipeError:
+        _disable_broken_stdout()
+    except OSError as exc:
+        if exc.errno == 32:
+            _disable_broken_stdout()
+            return
+        raise
 
 
 class ProgressCallback:
@@ -127,6 +147,29 @@ def build_max_memory(torch_module) -> dict[int | str, str]:
     return max_memory
 
 
+def find_latest_checkpoint(checkpoint_root: str) -> str | None:
+    if not os.path.isdir(checkpoint_root):
+        return None
+
+    latest_step = -1
+    latest_path: str | None = None
+    pattern = re.compile(r"^checkpoint-(\d+)$")
+
+    for entry in os.listdir(checkpoint_root):
+        match = pattern.match(entry)
+        if not match:
+            continue
+        full_path = os.path.join(checkpoint_root, entry)
+        if not os.path.isdir(full_path):
+            continue
+        step = int(match.group(1))
+        if step > latest_step:
+            latest_step = step
+            latest_path = full_path
+
+    return latest_path
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="QLoRA fine-tuning for novel style")
     parser.add_argument("--input", required=True, nargs="+", help="Input text file(s)")
@@ -139,6 +182,8 @@ def main() -> None:
     parser.add_argument("--lora-r", type=int, default=16)
     parser.add_argument("--lora-alpha", type=int, default=32)
     parser.add_argument("--learning-rate", type=float, default=2e-4)
+    parser.add_argument("--save-steps", type=int, default=25)
+    parser.add_argument("--save-total-limit", type=int, default=2)
     args = parser.parse_args()
 
     # Validate inputs
@@ -359,7 +404,9 @@ def main() -> None:
         lr_scheduler_type="cosine",
         warmup_ratio=0.03,
         logging_steps=1,
-        save_strategy="no",
+        save_strategy="steps",
+        save_steps=max(1, args.save_steps),
+        save_total_limit=max(1, args.save_total_limit),
         max_length=seq_len,
         dataset_text_field="text",
         report_to="none",
@@ -380,7 +427,12 @@ def main() -> None:
         callbacks=[progress_cb],
     )
 
-    trainer.train()
+    latest_checkpoint = find_latest_checkpoint(training_args.output_dir)
+    if latest_checkpoint:
+        emit("training", 42, f"이전 체크포인트에서 재개: {os.path.basename(latest_checkpoint)}")
+        trainer.train(resume_from_checkpoint=latest_checkpoint)
+    else:
+        trainer.train()
     train_time = time.time() - t1
     emit("training", 90, f"학습 완료! ({train_time:.1f}s)")
 

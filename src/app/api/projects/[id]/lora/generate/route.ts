@@ -79,6 +79,71 @@ function buildOutputDir(name: string): string {
   );
 }
 
+function hasCheckpointArtifacts(outputDir: string): boolean {
+  const checkpointDir = path.join(outputDir, 'checkpoints');
+  if (!fs.existsSync(checkpointDir) || !fs.statSync(checkpointDir).isDirectory()) {
+    return false;
+  }
+
+  return fs.readdirSync(checkpointDir).some((entry) => entry.startsWith('checkpoint-'));
+}
+
+function hasCompletedAdapter(outputDir: string): boolean {
+  return (
+    fs.existsSync(path.join(outputDir, 'adapter_model.safetensors'))
+    || fs.existsSync(path.join(outputDir, 'adapter_model.bin'))
+  );
+}
+
+function findResumableOutputDir(name: string): string | null {
+  const slug = sanitizeName(name);
+  const libraryDir = path.join(process.cwd(), 'loras', 'library');
+  if (!fs.existsSync(libraryDir) || !fs.statSync(libraryDir).isDirectory()) {
+    return null;
+  }
+
+  const candidates = fs
+    .readdirSync(libraryDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith(`${slug}-`))
+    .map((entry) => {
+      const fullPath = path.join(libraryDir, entry.name);
+      return {
+        fullPath,
+        mtimeMs: fs.statSync(fullPath).mtimeMs,
+      };
+    })
+    .sort((left, right) => right.mtimeMs - left.mtimeMs);
+
+  for (const candidate of candidates) {
+    if (hasCompletedAdapter(candidate.fullPath)) {
+      continue;
+    }
+    if (hasCheckpointArtifacts(candidate.fullPath)) {
+      return candidate.fullPath;
+    }
+  }
+
+  return null;
+}
+
+function resolveOutputDir(name: string): { outputDir: string; resumed: boolean } {
+  const resumable = findResumableOutputDir(name);
+  if (resumable) {
+    return { outputDir: resumable, resumed: true };
+  }
+
+  return { outputDir: buildOutputDir(name), resumed: false };
+}
+
+function removeCheckpointArtifacts(outputDir: string): void {
+  const checkpointDir = path.join(outputDir, 'checkpoints');
+  try {
+    fs.rmSync(checkpointDir, { recursive: true, force: true });
+  } catch {
+    // ignore cleanup failures on cancellation
+  }
+}
+
 function getOverallProgress(progress: number, jobIndex: number, totalJobs: number): number {
   if (totalJobs <= 1) {
     return progress;
@@ -181,7 +246,7 @@ export async function POST(
       fileName,
       loraName: perFileName,
       sourceDescription,
-      outputDir: buildOutputDir(perFileName),
+      outputDir: resolveOutputDir(perFileName).outputDir,
     };
   });
 
@@ -238,6 +303,7 @@ export async function POST(
             const prefix = jobs.length > 1 ? `[${index + 1}/${jobs.length}] ${job.loraName} · ` : '';
             const tmpPath = path.join(os.tmpdir(), `novel_${projectId}_${index}_${Date.now()}.txt`);
             fs.writeFileSync(tmpPath, job.content, 'utf-8');
+            const resumed = hasCheckpointArtifacts(job.outputDir) && !hasCompletedAdapter(job.outputDir);
 
             const spawnArgs = [
               runnerScript,
@@ -260,7 +326,9 @@ export async function POST(
                 running: true,
                 stage: 'loading',
                 progress: getOverallProgress(0, index, jobs.length),
-                message: `${prefix}학습 프로세스를 준비하는 중...`,
+                message: resumed
+                  ? `${prefix}이전 체크포인트에서 학습을 재개하는 중...`
+                  : `${prefix}학습 프로세스를 준비하는 중...`,
                 error: null,
                 finishedAt: null,
                 trainingPid: proc.pid ?? null,
@@ -404,6 +472,11 @@ export async function POST(
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           const cancelled = message === TRAINING_CANCELLED_CODE || isCancelRequested(projectId);
+          if (cancelled) {
+            for (const job of jobs) {
+              removeCheckpointArtifacts(job.outputDir);
+            }
+          }
           updateTrainingStatus(projectId, {
             running: false,
             stage: cancelled ? 'cancelled' : 'error',
