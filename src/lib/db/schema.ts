@@ -262,9 +262,9 @@ export const loras = sqliteTable('loras', {
   id: text('id')
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
-  projectId: text('project_id')
-    .notNull()
-    .references(() => projects.id),
+  projectId: text('project_id').references(() => projects.id, {
+    onDelete: 'set null',
+  }),
   name: text('name').notNull(),
   filePath: text('file_path').notNull(),
   sourceDescription: text('source_description'),

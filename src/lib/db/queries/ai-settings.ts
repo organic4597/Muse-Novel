@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 
 import type { DB } from '@/lib/db';
 import { aiProviderSettings } from '@/lib/db/schema';
@@ -119,4 +119,62 @@ export async function updateProvider(
 /** Deletes a provider setting by id. */
 export async function deleteProvider(db: DB, id: string) {
   db.delete(aiProviderSettings).where(eq(aiProviderSettings.id, id)).run();
+}
+
+// ─── Global (projectId IS NULL) AI settings ─────────────────────────────────
+
+/** Returns the global default provider (projectId IS NULL, isDefault=1), or undefined. */
+export async function getGlobalDefaultProvider(db: DB) {
+  const rows = db
+    .select()
+    .from(aiProviderSettings)
+    .where(
+      and(
+        isNull(aiProviderSettings.projectId),
+        eq(aiProviderSettings.isDefault, 1)
+      )
+    )
+    .all();
+
+  return rows[0] ?? undefined;
+}
+
+/** Returns all global provider settings (projectId IS NULL). */
+export async function listGlobalProviders(db: DB) {
+  return db
+    .select()
+    .from(aiProviderSettings)
+    .where(isNull(aiProviderSettings.projectId))
+    .all();
+}
+
+/** Inserts a new global provider setting. If isDefault=true, unsets other global defaults first. */
+export async function setGlobalProvider(db: DB, data: SetProviderData) {
+  if (data.isDefault) {
+    db.update(aiProviderSettings)
+      .set({ isDefault: 0, updatedAt: new Date() })
+      .where(
+        and(
+          isNull(aiProviderSettings.projectId),
+          eq(aiProviderSettings.isDefault, 1)
+        )
+      )
+      .run();
+  }
+
+  const rows = db
+    .insert(aiProviderSettings)
+    .values({
+      projectId: null,
+      providerType: data.providerType,
+      modelName: data.modelName,
+      apiKeyEncrypted: data.apiKeyEncrypted ?? null,
+      baseUrl: data.baseUrl ?? null,
+      contextSize: data.contextSize ?? null,
+      isDefault: data.isDefault ? 1 : 0,
+    })
+    .returning()
+    .all();
+
+  return rows[0];
 }

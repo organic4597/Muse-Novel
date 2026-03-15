@@ -1,50 +1,77 @@
 import type { CharacterPromptContext, ImageKind } from './types';
 import { SHOT_PRESETS } from './types';
+import { extractLatinParts } from './tag-translator';
+
+/**
+ * Deduplicate tags while preserving order.
+ * Normalizes by trimming and lowercasing for comparison.
+ */
+function deduplicateTags(tags: string[]): string[] {
+  const seen = new Set<string>();
+  return tags.filter(tag => {
+    const key = tag.trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 /**
  * Build a Stable Diffusion prompt from character fields + shot preset + user instructions.
+ * CJK (Korean/Chinese/Japanese) text is filtered out since SDXL models can't process it.
+ * Korean character fields should be pre-translated to English tags via tag-translator
+ * and passed through additionalInstructions or autoTranslatedTags.
+ * All tags are deduplicated to prevent repetition artifacts.
  */
 export function buildCharacterPrompt(
   character: CharacterPromptContext,
   kind: ImageKind,
-  additionalInstructions?: string
+  additionalInstructions?: string,
+  autoTranslatedTags?: string[],
 ): string {
   const preset = SHOT_PRESETS[kind];
-  const parts: string[] = [];
+  const allTags: string[] = [];
 
-  // Shot preset
-  parts.push(preset.promptPrefix);
+  // Shot preset (split into individual tags)
+  allTags.push(...preset.promptPrefix.split(',').map(t => t.trim()));
 
-  // Character descriptors
+  // Character descriptors — only Latin/English parts (CJK filtered out)
   if (character.appearance) {
-    parts.push(character.appearance);
+    const latin = extractLatinParts(character.appearance);
+    if (latin) allTags.push(...latin.split(',').map(t => t.trim()));
   }
 
   if (character.role) {
-    parts.push(character.role);
+    const latin = extractLatinParts(character.role);
+    if (latin) allTags.push(...latin.split(',').map(t => t.trim()));
   }
 
   if (character.personality) {
-    // Extract visual cues from personality (keep it brief)
-    const personalityShort = character.personality.length > 80
-      ? character.personality.slice(0, 80)
-      : character.personality;
-    parts.push(personalityShort);
+    const latin = extractLatinParts(character.personality);
+    if (latin) {
+      const short = latin.length > 80 ? latin.slice(0, 80) : latin;
+      allTags.push(...short.split(',').map(t => t.trim()));
+    }
   }
 
-  // User additional instructions
+  // Auto-translated tags from Korean character fields
+  if (autoTranslatedTags?.length) {
+    allTags.push(...autoTranslatedTags);
+  }
+
+  // User additional instructions (tag recommender + manual tags)
   if (additionalInstructions?.trim()) {
-    parts.push(additionalInstructions.trim());
+    allTags.push(...additionalInstructions.split(',').map(t => t.trim()));
   }
 
   // Quality boosters
-  parts.push('masterpiece, best quality, highly detailed');
+  allTags.push('masterpiece', 'best quality', 'highly detailed');
 
-  return parts.join(', ');
+  return deduplicateTags(allTags).join(', ');
 }
 
 export function buildDefaultNegativePrompt(baseNegative?: string | null): string {
-  const defaults = 'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry, deformed';
+  const defaults = 'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry, deformed, multiple views, character sheet, comic, collage, reference sheet';
   
   if (baseNegative?.trim()) {
     return `${baseNegative.trim()}, ${defaults}`;

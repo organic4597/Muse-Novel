@@ -4,6 +4,7 @@ import path from 'path';
 import { getImageGenGpus } from '../gpu-config';
 import { Automatic1111Client } from './automatic1111-client';
 import { generateWithDiffusers, type ProgressEvent } from './diffusers-client';
+import { buildKoreanCharacterTexts, translateToTags } from './tag-translator';
 import { buildCharacterPrompt, buildDefaultNegativePrompt } from './prompt-builder';
 import type {
   CharacterPromptContext,
@@ -57,7 +58,16 @@ export async function generateCharacterImages(
   const preset = SHOT_PRESETS[kind];
   const batchSize = params.batchSize ?? DEFAULT_BATCH_SIZE[kind];
 
-  const prompt = buildCharacterPrompt(character, kind, additionalPrompt);
+  // Auto-translate Korean character fields to English Danbooru tags
+  let autoTranslatedTags: string[] = [];
+  const koreanTexts = buildKoreanCharacterTexts(character);
+  if (koreanTexts) {
+    onProgress?.({ type: 'status', status: 'translating', message: '캐릭터 설명을 태그로 변환 중...' });
+    const translated = await translateToTags(koreanTexts);
+    autoTranslatedTags = translated.map(t => t.tag);
+  }
+
+  const prompt = buildCharacterPrompt(character, kind, additionalPrompt, autoTranslatedTags);
   const negativePrompt = buildDefaultNegativePrompt(provider.defaultNegativePrompt);
 
   const width = provider.defaultWidth ?? preset.width;
@@ -156,10 +166,11 @@ export function previewPrompt(
   character: CharacterPromptContext,
   kind: ImageKind,
   additionalPrompt?: string,
-  providerNegativePrompt?: string | null
+  providerNegativePrompt?: string | null,
+  autoTranslatedTags?: string[],
 ): { prompt: string; negativePrompt: string } {
   return {
-    prompt: buildCharacterPrompt(character, kind, additionalPrompt),
+    prompt: buildCharacterPrompt(character, kind, additionalPrompt, autoTranslatedTags),
     negativePrompt: buildDefaultNegativePrompt(providerNegativePrompt),
   };
 }

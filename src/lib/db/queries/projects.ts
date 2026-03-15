@@ -5,10 +5,13 @@ import type { DB } from '@/lib/db';
 import {
   aiProviderSettings,
   characterEmotions,
+  characterImages,
   characterRelationships,
   characters,
   chapters,
+  imageProviderSettings,
   projects,
+  writingStyleProfiles,
   worldEntries,
   worldEntryLinks,
   worldEntryTags,
@@ -112,10 +115,13 @@ export async function deleteProject(db: DB, id: string) {
   }
 
   // 3. Delete owned tables
+  db.delete(characterImages).where(eq(characterImages.projectId, id)).run();
   db.delete(chapters).where(eq(chapters.projectId, id)).run();
   db.delete(characters).where(eq(characters.projectId, id)).run();
   db.delete(worldEntries).where(eq(worldEntries.projectId, id)).run();
   db.delete(aiProviderSettings).where(eq(aiProviderSettings.projectId, id)).run();
+  db.delete(imageProviderSettings).where(eq(imageProviderSettings.projectId, id)).run();
+  db.delete(writingStyleProfiles).where(eq(writingStyleProfiles.projectId, id)).run();
 
   // 4. Delete the project
   db.delete(projects).where(eq(projects.id, id)).run();

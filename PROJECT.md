@@ -1,263 +1,189 @@
-# muse-novel — 프로젝트 문서
+# muse-novel 프로젝트 문서
 
-> AI 보조 한국어 소설 창작 웹앱. 로컬 우선(SQLite), 다중 AI 프로바이더, 리치텍스트 에디터 통합.
+## 개요
 
----
+muse-novel은 한국어 소설 창작을 위한 로컬 우선 AI 집필 도구입니다. 프로젝트 관리, 챕터 작성, 등장인물과 세계관 정리, AI 보조 작성, 이미지 프롬프트용 태그 추천, 홈 화면 스토리 구상 기능을 하나의 Next.js 앱으로 제공합니다.
 
-## 목차
+## 현재 제품 범위
 
-1. [프로젝트 개요](#1-프로젝트-개요)
-2. [기술 스택](#2-기술-스택)
-3. [아키텍처 개요](#3-아키텍처-개요)
-4. [디렉토리 구조](#4-디렉토리-구조)
-5. [데이터베이스 스키마](#5-데이터베이스-스키마)
-6. [API 라우트](#6-api-라우트)
-7. [주요 기능](#7-주요-기능)
-8. [AI 통합](#8-ai-통합)
-9. [환경 변수](#9-환경-변수)
-10. [개발 규칙 & 제약](#10-개발-규칙--제약)
-11. [스크립트](#11-스크립트)
-12. [주요 파일 참조](#12-주요-파일-참조)
+### 핵심 도메인
 
----
+- 소설 프로젝트
+- 챕터
+- 등장인물
+- 세계관 항목
+- AI 설정
+- 문체 프로필
+- LoRA
 
-## 1. 프로젝트 개요
+### 홈 화면 기능
 
-**muse-novel**은 한국어 소설 작가를 위한 AI 지원 집필 도구입니다.
+- 소설 목록 탭
+- 일일 창작 슬로건
+- 새 소설 수동 생성
+- 스토리 구상 탭
+- 공용 AI 설정
 
-| 항목 | 내용 |
-|------|------|
-| 목적 | 소설 프로젝트 관리, 챕터 집필, 등장인물·세계관 구성 |
-| 대상 | 한국어 소설 작가 (개인 로컬 사용 위주) |
-| 배포 | Vercel (프로덕션) / localhost (개발) |
-| 데이터 | 로컬 SQLite (개발) · Turso libSQL (Vercel 배포) |
-| 언어 | TypeScript, 한국어 UI |
+### 스토리 구상 기능
 
----
+- 대화형 소설 아이데이션
+- 구조화 draft 유지
+- localStorage 기반 임시 세션
+- draft 기반 프로젝트/등장인물/세계관/1장 개요 생성
 
-## 2. 기술 스택
+## 아키텍처
 
-### 프론트엔드
+### 프런트엔드
 
-| 라이브러리 | 버전 | 역할 |
-|-----------|------|------|
-| Next.js | 16.0.3 | App Router 기반 풀스택 프레임워크 |
-| React | 19.2.0 | UI (React Compiler 적용) |
-| Tailwind CSS | v4.1.17 | 유틸리티-퍼스트 스타일링 |
-| shadcn/ui + Radix UI | — | 접근성 UI 컴포넌트 시스템 |
-| Plate.js | ^52.0.1 | Slate 기반 리치텍스트 에디터 |
-| dnd-kit | ^6.x | 드래그 앤 드롭 (챕터 순서 변경 등) |
-| Lucide React | ^0.554.0 | 아이콘 |
-| Sonner | ^2.0.7 | 토스트 알림 |
+- Next.js App Router
+- React 19
+- Tailwind CSS v4
+- shadcn/ui + Radix UI
+- Plate.js editor
 
-### 백엔드 / 인프라
+### 백엔드
 
-| 라이브러리 | 버전 | 역할 |
-|-----------|------|------|
-| Drizzle ORM | ^0.45.1 | 타입세이프 SQL ORM |
-| better-sqlite3 | ^12.6.2 | 로컬 SQLite 드라이버 |
-| @libsql/client | ^0.17.0 | Turso(libSQL) 드라이버 |
-| ai (Vercel AI SDK) | ^6.0.116 | AI 스트리밍 유틸리티 |
-| epub-gen-memory | ^1.1.2 | EPUB 생성 |
+- Next.js Route Handlers
+- Drizzle ORM
+- SQLite 기본, Turso 선택 지원
+- Vercel AI SDK 기반 다중 provider 추상화
 
-### AI 프로바이더
+### Python 보조 서버
 
-| SDK | 지원 프로바이더 |
-|-----|--------------|
-| @ai-sdk/openai | OpenAI GPT 계열 |
-| @ai-sdk/anthropic | Anthropic Claude 계열 |
-| ollama-ai-provider-v2 | Ollama (로컬) |
-| @ai-sdk/openai-compatible | NVIDIA NIM, KoboldCpp |
+태그 추천 관련 기능은 별도의 Python 서버가 담당합니다.
 
-### 개발 도구
+- 한국어 입력 번역
+- 태그 임베딩 검색
+- 장시간 모델 메모리 상주
+- HTTP 엔드포인트 기반 호출
 
-| 도구 | 용도 |
-|------|------|
-| Biome | 린팅 + 포매팅 |
-| Vitest | 단위 테스트 |
-| Playwright | E2E 테스트 |
-| Lefthook | Git 훅 |
-| TypeScript | 5.9.3, strict |
-| Bun | 패키지 매니저 + 런타임 |
+관련 파일:
 
----
+- `scripts/tag_recommender.py`
+- `scripts/tag_recommender_server.py`
+- `scripts/run-with-tag-server.sh`
+- `src/lib/tag-recommender-client.ts`
 
-## 3. 아키텍처 개요
+## AI provider 전략
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                      Next.js App Router                  │
-│                                                         │
-│  ┌────────────────┐     ┌───────────────────────────┐   │
-│  │  Client Pages   │     │      API Routes            │   │
-│  │  (use client)  │────▶│  /api/projects/[id]/...   │   │
-│  │                │     │  /api/ai/copilot           │   │
-│  │  Plate.js      │     │  /api/ai/command           │   │
-│  │  Editor        │     └──────────┬────────────────┘   │
-│  └────────────────┘                │                    │
-│                                    ▼                    │
-│                         ┌──────────────────┐            │
-│                         │   Drizzle ORM    │            │
-│                         └────────┬─────────┘            │
-└──────────────────────────────────┼──────────────────────┘
-                                   │
-                    ┌──────────────┴──────────────┐
-                    │                             │
-             ┌──────▼──────┐             ┌───────▼──────┐
-             │  SQLite      │             │  Turso       │
-             │  (로컬 개발) │             │  (Vercel)    │
-             └─────────────┘             └──────────────┘
+### 프로젝트별 AI 설정
 
-AI 프로바이더 (외부)
-  OpenAI ──────┐
-  Anthropic ───┤
-  Ollama  ─────┼──▶ provider-factory.ts ──▶ Copilot/Command API
-  NVIDIA  ─────┤
-  KoboldCpp ───┘
-```
+- 기존 집필/편집 기능에서 사용
 
-### 핵심 설계 결정
+### 공용 AI 설정
 
-- **로컬 우선**: 인증 없음. 단일 사용자, 개인 데스크톱 앱에 가까운 구조
-- **React Compiler**: `useMemo` / `useCallback` / `React.memo` 성능 목적 사용 금지
-- **Plate.js JSON**: 챕터 본문은 `contentJson`(Slate JSON 문자열)으로 저장
-- **API 키 암호화**: DB에 저장되는 AI 프로바이더 API 키는 AES 암호화
-- **자동 저장**: 디바운스(5초) + localStorage 백업 이중 보호
-- **SSE 스트리밍**: AI 코파일럿 · LoRA 생성 진행률은 서버-센트 이벤트로 실시간 전달
+- 홈 스토리 구상 탭에서 사용
+- `ai_provider_settings.project_id IS NULL` 레코드로 관리
 
----
+### fallback 순서
 
-## 4. 디렉토리 구조
+1. 공용 AI 설정
+2. 환경 변수 provider
 
-```
-muse-novel/
-├── drizzle/                    # Drizzle 마이그레이션 SQL
-│   ├── 0000_warm_harpoon.sql
-│   ├── 0001_silky_satana.sql
-│   ├── 0002_organic_betty_ross.sql
-│   ├── 0003_married_wallow.sql
-│   └── 0004_glorious_captain_america.sql  ← 최신 (loraPath, contextSize)
-├── e2e/                        # Playwright E2E 테스트
-├── scripts/
-│   └── qlora_trainer.py        # 현재 QLoRA 학습 스크립트
-├── src/
-│   ├── app/
-│   │   ├── (main)/             # 메인 레이아웃 그룹
-│   │   │   ├── page.tsx        # 소설 목록 (홈)
-│   │   │   ├── create-project-form.tsx
-│   │   │   └── projects/[id]/
-│   │   │       ├── page.tsx           # 프로젝트 개요·편집
-│   │   │       ├── layout.tsx         # 프로젝트 네비게이션 레이아웃
-│   │   │       ├── write/page.tsx     # 챕터 집필 (에디터 + 사이드바)
-│   │   │       ├── characters/        # 등장인물 관리
-│   │   │       ├── world/             # 세계관 관리
-│   │   │       └── settings/page.tsx  # AI 설정 + LoRA 설정
-│   │   ├── api/
-│   │   │   ├── ai/
-│   │   │   │   ├── copilot/route.ts   # AI 텍스트 자동완성
-│   │   │   │   └── command/route.ts   # AI 편집 커맨드
-│   │   │   ├── projects/
-│   │   │   │   ├── route.ts           # 프로젝트 목록/생성
-│   │   │   │   └── [id]/
-│   │   │   │       ├── route.ts
-│   │   │   │       ├── chapters/      # 챕터 CRUD
-│   │   │   │       ├── characters/    # 인물 CRUD
-│   │   │   │       ├── world-entries/ # 세계관 항목 CRUD
-│   │   │   │       ├── ai-settings/   # AI 프로바이더 설정
-│   │   │   │       ├── export/        # EPUB · MD · TXT 내보내기
-│   │   │   │       ├── lora/generate/ # LoRA 생성 (SSE)
-│   │   │   │       ├── mentions/      # 인물 @멘션 자동완성
-│   │   │   │       ├── settings/      # 프로젝트 설정
-│   │   │   │       ├── style/         # 활성 문체 프로파일
-│   │   │   │       └── style-profiles/
-│   │   │   └── style-profiles/        # 전역 문체 프로파일
-│   │   └── editor/                    # 독립형 에디터 데모 (/editor)
-│   ├── components/
-│   │   ├── chapter/
-│   │   │   └── chapter-sidebar.tsx    # 챕터 목록 + 추가/삭제
-│   │   ├── character/
-│   │   │   ├── character-list.tsx
-│   │   │   ├── character-form.tsx
-│   │   │   ├── character-relationships.tsx
-│   │   │   ├── character-emotion-timeline.tsx
-│   │   │   ├── character-appearances.tsx
-│   │   │   └── character-image-upload.tsx
-│   │   ├── editor/
-│   │   │   ├── plate-editor.tsx       # 메인 에디터 컴포넌트
-│   │   │   ├── editor-kit.tsx         # 플러그인 조합
-│   │   │   ├── auto-save-indicator.tsx
-│   │   │   ├── settings-dialog.tsx
-│   │   │   └── plugins/               # Plate 커스텀 플러그인
-│   │   ├── export/
-│   │   │   └── export-dialog.tsx
-│   │   ├── settings/
-│   │   │   ├── ai-settings-page.tsx   # AI 프로바이더 탭 UI
-│   │   │   ├── lora-settings-section.tsx
-│   │   │   ├── writing-style-section.tsx
-│   │   │   └── global-style-profiles-section.tsx
-│   │   ├── world/
-│   │   │   ├── world-entry-list.tsx
-│   │   │   ├── world-entry-detail.tsx
-│   │   │   ├── world-entry-form.tsx
-│   │   │   ├── world-entry-links.tsx
-│   │   │   └── world-search.tsx
-│   │   └── ui/                        # shadcn/ui 공통 컴포넌트
-│   ├── hooks/
-│   │   ├── use-auto-save.ts           # 디바운스 자동저장
-│   │   ├── use-debounce.ts
-│   │   ├── use-is-touch-device.ts
-│   │   └── use-mounted.ts
-│   └── lib/
-│       ├── ai/
-│       │   ├── types.ts               # ProviderType, ProviderConfig
-│       │   ├── provider-factory.ts    # createProvider() 팩토리
-│       │   ├── prompts.ts             # 시스템 프롬프트 생성
-│       │   ├── build-story-context.ts # 스토리 컨텍스트 조립
-│       │   ├── health-check.ts        # 프로바이더 연결 확인
-│       │   ├── encryption.ts          # API 키 AES 암호화
-│       │   ├── daily-slogan.ts        # 오늘의 창작 슬로건
-│       │   └── serialize-editor-context.ts
-│       ├── db/
-│       │   ├── index.ts               # DB 연결 (SQLite/Turso 분기)
-│       │   ├── schema.ts              # Drizzle 테이블 정의
-│       │   └── queries/               # 테이블별 쿼리 함수
-│       ├── export/
-│       │   ├── export-epub.ts
-│       │   ├── export-md.ts
-│       │   └── export-text.ts
-│       └── utils.ts
-└── public/                            # 정적 에셋
+## 주요 설계 결정
+
+- 인증 없는 로컬 우선 구조
+- 서버 저장형 스토리 구상 세션은 제외
+- 스토리 구상 세션은 localStorage만 사용
+- 공유 LoRA는 프로젝트 삭제 시 유지
+- AI 응답은 structured draft로 정규화
+- 태그 추천은 Node가 아니라 Python 상주 서버로 분리
+
+## 주요 디렉토리
+
+```text
+src/
+  app/
+    (main)/
+      layout.tsx
+      page.tsx
+      home-tab-shell.tsx
+      story-planning-tab.tsx
+      create-project-form.tsx
+    api/
+      global-ai-settings/
+      story-planning/
+      projects/
+      ai/
+      prompt-tags/
+  components/
+    settings/
+    ui/
+  lib/
+    ai/
+      provider-factory.ts
+      story-planning-prompt.ts
+      story-planning-types.ts
+      daily-slogan.ts
+    db/
+      schema.ts
+      queries/
+    image-gen/
+    tag-recommender-client.ts
+    theme.ts
+scripts/
+drizzle/
 ```
 
----
+## 데이터 저장 구조
 
-## 5. 데이터베이스 스키마
+### 프로젝트 생성 시 저장
 
-**드라이버**: `better-sqlite3` (로컬) / `@libsql/client` (Turso)  
-**ORM**: Drizzle ORM  
-**마이그레이션**: `drizzle-kit generate` → `drizzle-kit push`
+- `projects.title`
+- `projects.genre`
+- `projects.synopsis`
+- `projects.settingsJson.ideationSnapshot`
+- 관련 `characters`
+- 관련 `world_entries`
+- 첫 장 `chapters.outline`
 
-```
-projects
-├── id                  TEXT PK (UUID)
-├── title               TEXT NOT NULL
-├── genre               TEXT
-├── synopsis            TEXT
-├── settings_json       TEXT         ← 프로젝트 추가 설정 JSON
-├── writing_style_sample TEXT
-├── writing_style_description TEXT
-├── active_writing_style_profile_id TEXT
-├── lora_path           TEXT         ← 생성된 LoRA .safetensors 경로
-├── lora_generated_at   INTEGER (timestamp)
-├── created_at          INTEGER (timestamp)
-└── updated_at          INTEGER (timestamp)
+### 스토리 구상 draft 구조
 
-chapters
-├── id                  TEXT PK
-├── project_id          TEXT → projects.id
-├── title               TEXT NOT NULL
-├── order               INTEGER NOT NULL  ← 챕터 순서
-├── content_json        TEXT         ← Plate.js Slate JSON
+- title
+- genre
+- synopsis
+- premise
+- tone
+- themes[]
+- characters[]
+- worldEntries[]
+- firstChapterOutline
+
+## 최근 변경 사항
+
+### UI
+
+- 다크 모드 / 시스템 모드 지원
+- 홈 레이아웃 반응형 확장
+- 스토리 구상 탭 반응형 비율 조정
+- 우측 기획 초안 sticky 패널 추가
+
+### 데이터/DB
+
+- `loras.project_id` nullable 전환
+- 공유 LoRA용 `ON DELETE SET NULL`
+- 프로젝트 삭제 시 관련 설정/이미지/문체 데이터 정리
+
+### AI / 태그 추천
+
+- 한국어 프롬프트 자동 번역 및 태그 추천 고도화
+- 짧은 입력 직접 태그 alias 처리
+- Python 상주 태그 추천 서버 도입
+
+## 운영 및 개발 메모
+
+- `bun dev`는 태그 서버를 함께 실행함
+- `bun run dev:web`는 웹만 실행함
+- 태그 서버는 첫 실행 시 모델 다운로드로 느릴 수 있음
+- GitHub 원격은 외부 저장소 URL 연결 후 push 가능
+
+## 확인 포인트
+
+- 홈 스토리 구상 → 프로젝트 생성 동선
+- 공용 AI 설정 동작
+- prompt tag 추천 품질
+- 프로젝트 삭제 시 공유 LoRA 유지
+- 반응형 레이아웃 동작
 ├── outline             TEXT
 ├── summary             TEXT
 ├── memo                TEXT

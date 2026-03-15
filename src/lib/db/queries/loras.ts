@@ -22,7 +22,7 @@ export async function getLora(db: DB, id: string) {
 export async function createLora(
   db: DB,
   data: {
-    projectId: string;
+    projectId?: string | null;
     name: string;
     filePath: string;
     sourceDescription?: string | null;
@@ -31,7 +31,7 @@ export async function createLora(
   const rows = db
     .insert(loras)
     .values({
-      projectId: data.projectId,
+      projectId: data.projectId ?? null,
       name: data.name,
       filePath: data.filePath,
       sourceDescription: data.sourceDescription ?? null,

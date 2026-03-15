@@ -25,8 +25,21 @@ describe('Project Queries', () => {
   });
 
   beforeEach(() => {
-    // Clean up projects table before each test
-    sqlite.exec('DELETE FROM projects');
+    sqlite.exec(`
+      DELETE FROM character_emotions;
+      DELETE FROM character_relationships;
+      DELETE FROM character_images;
+      DELETE FROM world_entry_tags;
+      DELETE FROM world_entry_links;
+      DELETE FROM image_provider_settings;
+      DELETE FROM ai_provider_settings;
+      DELETE FROM writing_style_profiles;
+      DELETE FROM loras;
+      DELETE FROM chapters;
+      DELETE FROM characters;
+      DELETE FROM world_entries;
+      DELETE FROM projects;
+    `);
   });
 
   afterEach(() => {
@@ -174,6 +187,96 @@ describe('Project Queries', () => {
       await expect(
         deleteProject(db, 'non-existent-id')
       ).resolves.not.toThrow();
+    });
+
+    it('should delete project-owned settings and preserve shared loras', async () => {
+      const created = await createProject(db, { title: '공유 로라 테스트' });
+
+      const chapter = db
+        .insert(schema.chapters)
+        .values({
+          projectId: created.id,
+          title: '1장',
+          order: 1,
+        })
+        .returning()
+        .get();
+
+      const character = db
+        .insert(schema.characters)
+        .values({
+          projectId: created.id,
+          name: '주인공',
+        })
+        .returning()
+        .get();
+
+      db.insert(schema.characterImages)
+        .values({
+          projectId: created.id,
+          characterId: character.id,
+          imagePath: '/tmp/hero.png',
+        })
+        .run();
+
+      db.insert(schema.imageProviderSettings)
+        .values({
+          projectId: created.id,
+          providerType: 'diffusers',
+        })
+        .run();
+
+      db.insert(schema.writingStyleProfiles)
+        .values({
+          projectId: created.id,
+          name: '기본 문체',
+        })
+        .run();
+
+      const lora = db
+        .insert(schema.loras)
+        .values({
+          projectId: created.id,
+          name: '공용 LoRA',
+          filePath: '/models/shared-lora',
+        })
+        .returning()
+        .get();
+
+      expect(chapter).toBeDefined();
+      expect(character).toBeDefined();
+      expect(lora.projectId).toBe(created.id);
+
+      await deleteProject(db, created.id);
+
+      expect(await getProject(db, created.id)).toBeUndefined();
+
+      const remainingCharacterImages = db
+        .select()
+        .from(schema.characterImages)
+        .where(eq(schema.characterImages.projectId, created.id))
+        .all();
+      const remainingImageSettings = db
+        .select()
+        .from(schema.imageProviderSettings)
+        .where(eq(schema.imageProviderSettings.projectId, created.id))
+        .all();
+      const remainingStyleProfiles = db
+        .select()
+        .from(schema.writingStyleProfiles)
+        .where(eq(schema.writingStyleProfiles.projectId, created.id))
+        .all();
+      const remainingLora = db
+        .select()
+        .from(schema.loras)
+        .where(eq(schema.loras.id, lora.id))
+        .get();
+
+      expect(remainingCharacterImages).toHaveLength(0);
+      expect(remainingImageSettings).toHaveLength(0);
+      expect(remainingStyleProfiles).toHaveLength(0);
+      expect(remainingLora).toBeDefined();
+      expect(remainingLora?.projectId).toBeNull();
     });
   });
 });

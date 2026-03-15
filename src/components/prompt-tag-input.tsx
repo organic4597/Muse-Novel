@@ -217,7 +217,7 @@ export function PromptTagInput({
       const res = await fetch('/api/prompt-tags/recommend', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description: descText, characterId }),
+        body: JSON.stringify({ description: descText }),
       });
       const data = await res.json();
       setDescTags(data.tags ?? []);
@@ -226,7 +226,7 @@ export function PromptTagInput({
     } finally {
       setDescLoading(false);
     }
-  }, [descText, characterId]);
+  }, [descText]);
 
   // Get display items for dropdown
   const displayItems = (): TagSuggestion[] | 'categories' => {
@@ -451,6 +451,7 @@ export function PromptTagInput({
                           : 'bg-primary/10 text-primary hover:bg-primary/20'
                       )}
                       onClick={() => addTag(dt.tag)}
+                      title={`${dt.categoryLabel} (${Math.round((dt.score ?? 0) * 100)}%)`}
                     >
                       {colorDot(dt.color)}
                       {dt.tag}

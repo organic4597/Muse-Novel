@@ -1,8 +1,11 @@
 import type { Metadata } from 'next';
 
+import Script from 'next/script';
+
 import { Noto_Sans_KR } from 'next/font/google';
 
 import './globals.css';
+import { themeInitScript } from '@/lib/theme';
 
 const notoSansKR = Noto_Sans_KR({
   subsets: ['latin'],
@@ -21,8 +24,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ko">
+    <html lang="ko" suppressHydrationWarning>
       <body className={`${notoSansKR.variable} font-sans antialiased`} suppressHydrationWarning>
+        <Script id="theme-init" strategy="beforeInteractive">
+          {themeInitScript}
+        </Script>
         {children}
       </body>
     </html>

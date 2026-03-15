@@ -50,6 +50,13 @@
       "when": 1773485124924,
       "tag": "0006_normal_karma",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1773560000000,
+      "tag": "0007_shared_loras",
+      "breakpoints": true
     }
   ]
 }
