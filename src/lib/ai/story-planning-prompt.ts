@@ -1,4 +1,5 @@
 import type { CharacterItem, StoryPlanningDraft, StoryPlanningMessage, StoryPlanningPhase } from './story-planning-types';
+import { PHASE_LABELS, PHASE_ORDER } from './story-planning-types';
 
 const SYSTEM_PROMPT = `당신은 소설 기획 전문가입니다. 사용자와 대화하며 소설의 설정을 단계별로 함께 구상합니다.
 
@@ -24,6 +25,14 @@ const SYSTEM_PROMPT = `당신은 소설 기획 전문가입니다. 사용자와 
 - 사용자가 이전 단계 주제를 언급하면 해당 단계 필드도 자유롭게 수정합니다 (draft.currentPhase는 유지).
 - 사용자가 특정 단계를 건너뛰길 원하면 그에 따릅니다.
 - complete 단계에서는 전체 기획을 검토하고 빈 부분을 보완합니다.
+
+### ⛔ 반복 금지 — 절대 규칙 (위반 시 응답 오류로 간주)
+- **reply를 생성하기 전에, 반드시 아래 주입된 "## ✅ 이미 확정된 정보" 블록을 먼저 읽으세요.**
+- 해당 블록에 나열된 필드는 사용자가 이미 답변 완료한 것입니다. 이 필드들을 다시 묻거나, 재확인하거나, 비슷한 표현으로 바꿔 묻는 것은 **FORBIDDEN**입니다.
+- 직전 user 메시지가 현재 단계의 핵심 정보를 제공했다면: ① 해당 필드를 draft에 즉시 반영, ② reply에서 수용 요약 먼저 작성, ③ 자동으로 다음 단계 진행 또는 넘어갈지 제안. 추가 질문을 먼저 하는 것은 금지입니다.
+- 같은 단계에서 비슷한 후속 질문을 2회 이상 반복하지 마세요. 충분한 정보가 이미 있으면 다음 단계로 진행하세요.
+- "이제 본격적인 스토리 구상부터 시작해볼까요?" 같은 도입 문장을 반복하지 마세요.
+- **"## 🔲 현재 단계에서 아직 필요한 정보" 블록에 나열된 항목만 새로 수집하세요.** 그 외 이미 확정된 항목은 건드리지 마세요.
 
 ## 응답 형식 — 절대 규칙
 
@@ -118,25 +127,239 @@ JSON 스키마:
 - status 값: "보유" (소지), "장착중" (착용/사용 중), "분실" (잃어버림) 중 적절한 것을 선택하세요.
 - items가 없는 캐릭터는 items 필드를 생략하거나 빈 배열로 두세요.`;
 
+const PHASE_REQUIRED_FIELDS: Partial<Record<StoryPlanningPhase, (keyof StoryPlanningDraft)[]>> = {
+  genre_tone:    ['genre', 'tone'],
+  premise:       ['premise', 'synopsis'],
+  themes:        ['themes'],
+  characters:    ['characters'],
+  world:         ['worldEntries'],
+  plot:          ['plotStructure'],
+  writing_style: ['pointOfView', 'writingStyle', 'formatGoal'],
+  first_chapter: ['firstChapterOutline'],
+  complete:      [],
+};
+
+const FIELD_LABELS: Partial<Record<keyof StoryPlanningDraft, string>> = {
+  title:              '제목',
+  genre:              '장르',
+  tone:               '톤/분위기',
+  premise:            '전제/핵심 갈등',
+  synopsis:           '시놉시스',
+  themes:             '주제',
+  characters:         '등장인물',
+  worldEntries:       '세계관 항목',
+  plotStructure:      '플롯 구조',
+  pointOfView:        '서술 시점',
+  writingStyle:       '문체 스타일',
+  formatGoal:         '분량/형식 목표',
+  firstChapterOutline:'첫 챕터 개요',
+};
+
+function getNextPhase(currentPhase: StoryPlanningPhase): StoryPlanningPhase {
+  const currentIndex = PHASE_ORDER.indexOf(currentPhase);
+  if (currentIndex === -1 || currentIndex === PHASE_ORDER.length - 1) {
+    return currentPhase;
+  }
+
+  return PHASE_ORDER[currentIndex + 1];
+}
+
+function hasMeaningfulValue(value: StoryPlanningDraft[keyof StoryPlanningDraft]) {
+  return !(
+    value === undefined ||
+    value === null ||
+    (typeof value === 'string' && value.trim().length === 0) ||
+    (Array.isArray(value) && value.length === 0)
+  );
+}
+
+function isPhaseComplete(phase: StoryPlanningPhase, draft: StoryPlanningDraft) {
+  if (phase === 'genre_tone') {
+    return hasMeaningfulValue(draft.genre) || hasMeaningfulValue(draft.tone);
+  }
+
+  if (phase === 'premise') {
+    return hasMeaningfulValue(draft.premise) || hasMeaningfulValue(draft.synopsis);
+  }
+
+  if (phase === 'themes') {
+    return hasMeaningfulValue(draft.themes);
+  }
+
+  if (phase === 'characters') {
+    return hasMeaningfulValue(draft.characters);
+  }
+
+  if (phase === 'world') {
+    return hasMeaningfulValue(draft.worldEntries);
+  }
+
+  if (phase === 'plot') {
+    return hasMeaningfulValue(draft.plotStructure);
+  }
+
+  if (phase === 'writing_style') {
+    return (
+      hasMeaningfulValue(draft.pointOfView) ||
+      hasMeaningfulValue(draft.writingStyle) ||
+      hasMeaningfulValue(draft.formatGoal)
+    );
+  }
+
+  if (phase === 'first_chapter') {
+    return hasMeaningfulValue(draft.firstChapterOutline);
+  }
+
+  return true;
+}
+
+function buildKnownFieldsBlock(draft: StoryPlanningDraft): string {
+  const lines: string[] = [];
+
+  // Scalar string fields
+  const scalarFields: (keyof StoryPlanningDraft)[] = [
+    'title', 'genre', 'tone', 'premise', 'synopsis',
+    'plotStructure', 'pointOfView', 'writingStyle', 'formatGoal', 'firstChapterOutline',
+  ];
+  for (const field of scalarFields) {
+    const val = draft[field];
+    if (typeof val === 'string' && val.trim().length > 0) {
+      const label = FIELD_LABELS[field] ?? field;
+      lines.push(`- **${label}**: "${val.trim()}" ← 확정 완료. 다시 묻지 마세요.`);
+    }
+  }
+
+  // themes array
+  if (Array.isArray(draft.themes) && draft.themes.length > 0) {
+    lines.push(`- **주제**: [${draft.themes.map((t) => `"${t}"`).join(', ')}] ← 확정 완료. 다시 묻지 마세요.`);
+  }
+
+  // characters array
+  if (draft.characters.length > 0) {
+    const names = draft.characters.map((c) => c.name).join(', ');
+    lines.push(`- **등장인물** (${draft.characters.length}명): ${names} ← 확정 완료. 새 인물 추가는 가능하나 기존 인물에 대한 기본 정보는 다시 묻지 마세요.`);
+  }
+
+  // worldEntries array
+  if (draft.worldEntries.length > 0) {
+    const titles = draft.worldEntries.map((w) => w.title).join(', ');
+    lines.push(`- **세계관 항목** (${draft.worldEntries.length}개): ${titles} ← 확정 완료. 새 항목 추가는 가능하나 기존 항목은 다시 묻지 마세요.`);
+  }
+
+  if (lines.length === 0) return '';
+
+  return [
+    '',
+    '## ✅ 이미 확정된 정보 — 절대 다시 묻지 마세요',
+    '아래 항목들은 사용자가 이미 답변 완료한 것입니다. reply에서 이 항목들을 질문하거나 재확인하는 것은 오류입니다.',
+    '',
+    ...lines,
+  ].join('\n');
+}
+
+function buildMissingFieldsBlock(draft: StoryPlanningDraft): string {
+  const phase = draft.currentPhase ?? 'genre_tone';
+  if (phase === 'complete') return '';
+
+  const requiredFields = PHASE_REQUIRED_FIELDS[phase] ?? [];
+  const missing: string[] = [];
+
+  for (const field of requiredFields) {
+    const val = draft[field];
+    const isEmpty =
+      val === undefined ||
+      val === null ||
+      (typeof val === 'string' && val.trim().length === 0) ||
+      (Array.isArray(val) && val.length === 0);
+
+    if (isEmpty) {
+      const label = FIELD_LABELS[field] ?? String(field);
+      missing.push(`- **${label}** (${String(field)})`);
+    }
+  }
+
+  if (missing.length === 0) return '';
+
+  return [
+    '',
+    `## 🔲 현재 단계(${PHASE_LABELS[phase]})에서 아직 필요한 정보`,
+    '아래 항목만 새로 수집하세요. 이미 확정된 항목은 건드리지 마세요.',
+    '',
+    ...missing,
+  ].join('\n');
+}
+
+function buildPhaseCompleteBlock(draft: StoryPlanningDraft): string {
+  const phase = draft.currentPhase ?? 'genre_tone';
+  if (phase === 'complete') return '';
+
+  const requiredFields = PHASE_REQUIRED_FIELDS[phase] ?? [];
+  if (requiredFields.length === 0) return '';
+
+  if (!isPhaseComplete(phase, draft)) return '';
+
+  const nextPhase = getNextPhase(phase);
+  const nextPhaseLabel = PHASE_LABELS[nextPhase];
+
+  return [
+    '',
+    `## ✅ 단계 완료 신호 — 현재 단계(${PHASE_LABELS[phase]}) 핵심 정보가 충분합니다`,
+    '이 단계에서 수집해야 할 정보가 모두 확보되었습니다.',
+    nextPhase === phase
+      ? '현재는 마지막 단계입니다. 전체 기획을 요약하고 빠진 부분만 보완하세요.'
+      : `**즉시 다음 단계로 이동하세요.** draft.currentPhase를 "${nextPhase}"로 업데이트하고, reply에서 완료 요약 후 **${nextPhaseLabel}** 단계의 첫 질문을 하세요. 현재 단계 내용을 다시 묻지 마세요.`,
+  ].join('\n');
+}
+
+function buildCurrentDraftBlock(draft: StoryPlanningDraft): string {
+  return [
+    '',
+    '## 현재까지의 기획 초안(JSON)',
+    '```json',
+    JSON.stringify(draft, null, 2),
+    '```',
+    '위 초안을 기준으로 reply, draft, options를 생성하세요. 새로운 정보가 나오면 draft를 갱신하세요.',
+  ].join('\n');
+}
+
 export function buildStoryPlanningMessages(
   messages: StoryPlanningMessage[],
   currentDraft: StoryPlanningDraft
 ): Array<{ role: 'system' | 'user' | 'assistant'; content: string }> {
-  const draftContext = JSON.stringify(currentDraft, null, 2);
+  const knownFieldsBlock   = buildKnownFieldsBlock(currentDraft);
+  const missingFieldsBlock = buildMissingFieldsBlock(currentDraft);
+  const phaseCompleteBlock = buildPhaseCompleteBlock(currentDraft);
+  const currentDraftBlock = buildCurrentDraftBlock(currentDraft);
 
-  const systemWithDraft = `${SYSTEM_PROMPT}
-
-현재까지의 기획 초안:
-\`\`\`json
-${draftContext}
-\`\`\`
-이 초안을 기반으로 대화를 이어가세요. 새로운 정보가 나오면 draft를 업데이트하세요.`;
+  const systemContent = [
+    SYSTEM_PROMPT,
+    knownFieldsBlock,
+    missingFieldsBlock,
+    phaseCompleteBlock,
+    currentDraftBlock,
+  ].filter(Boolean).join('\n');
 
   const result: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-    { role: 'system', content: systemWithDraft },
+    { role: 'system', content: systemContent },
   ];
 
   for (const msg of messages) {
+    if (msg.role === 'assistant' && msg.draftSnapshot) {
+      result.push({
+        role: 'assistant',
+        content: JSON.stringify(
+          {
+            reply: msg.content,
+            draft: msg.draftSnapshot,
+            options: msg.options,
+          },
+          null,
+          2
+        ),
+      });
+      continue;
+    }
+
     result.push({ role: msg.role, content: msg.content });
   }
 
@@ -147,6 +370,23 @@ export interface StoryPlanningResponse {
   reply: string;
   draft: StoryPlanningDraft;
   options?: string[];
+  debug?: {
+    mode: 'codeblock' | 'embedded' | 'fallback';
+    candidateCount: number;
+    rawTextPreview: string;
+  };
+}
+
+function buildParseDebug(
+  mode: 'codeblock' | 'embedded' | 'fallback',
+  text: string,
+  candidateCount: number
+) {
+  return {
+    mode,
+    candidateCount,
+    rawTextPreview: text.replace(/\s+/g, ' ').trim().slice(0, 400),
+  };
 }
 
 const DRAFT_KEYS = new Set([
@@ -252,7 +492,21 @@ function parseDraftFields(rawDraft: Record<string, unknown>, fallback: StoryPlan
   const str = (key: string, fb: string | undefined): string | undefined => {
     if (!(key in rawDraft)) return fb;
     const v = rawDraft[key];
-    return typeof v === 'string' ? v : undefined;
+    if (typeof v === 'string') {
+      const trimmed = v.trim();
+      return trimmed.length > 0 ? trimmed : undefined;
+    }
+    if (Array.isArray(v)) {
+      const parts = v
+        .filter((part): part is string => typeof part === 'string')
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0);
+
+      if (parts.length > 0) {
+        return parts.join(', ');
+      }
+    }
+    return fb;
   };
 
   const VALID_PHASES = new Set<string>([
@@ -260,10 +514,14 @@ function parseDraftFields(rawDraft: Record<string, unknown>, fallback: StoryPlan
     'plot', 'writing_style', 'first_chapter', 'complete',
   ]);
 
+  const rawCurrentPhase = typeof rawDraft.currentPhase === 'string'
+    ? rawDraft.currentPhase.trim()
+    : undefined;
+
   const currentPhase: StoryPlanningPhase = (
-    typeof rawDraft.currentPhase === 'string' && VALID_PHASES.has(rawDraft.currentPhase)
+    typeof rawCurrentPhase === 'string' && VALID_PHASES.has(rawCurrentPhase)
   )
-    ? rawDraft.currentPhase as StoryPlanningPhase
+    ? rawCurrentPhase as StoryPlanningPhase
     : fallback.currentPhase ?? 'genre_tone';
 
   return {
@@ -333,14 +591,27 @@ function extractOptions(obj: Record<string, unknown>): string[] | undefined {
   return filtered.length > 0 ? filtered : undefined;
 }
 
+function extractPartialReply(text: string): string | undefined {
+  const replyMatch = text.match(/"reply"\s*:\s*"((?:\\.|[^"\\])*)/);
+  if (!replyMatch?.[1]) return undefined;
+
+  const rawReply = replyMatch[1]
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r')
+    .replace(/\\t/g, '\t')
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, '\\');
+  const cleanedReply = rawReply.trim();
+  return cleanedReply.length > 0 ? cleanedReply : undefined;
+}
+
 export function parseStoryPlanningResponse(
   text: string,
   fallbackDraft: StoryPlanningDraft
 ): StoryPlanningResponse {
   const textWithoutThinkBlocks = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-
-  // ── 1. ```json ... ``` 코드블럭 우선 탐색 ──────────────────────────────
   const codeBlockMatch = textWithoutThinkBlocks.match(/```json\s*([\s\S]*?)```/);
+
   if (codeBlockMatch) {
     try {
       const parsed = JSON.parse(codeBlockMatch[1] ?? '');
@@ -353,18 +624,26 @@ export function parseStoryPlanningResponse(
           const rawDraft = (typeof obj.draft === 'object' && obj.draft !== null)
             ? obj.draft as Record<string, unknown>
             : obj; // draft 키 없으면 obj 자체를 draft로
-          return { reply, draft: parseDraftFields(rawDraft, fallbackDraft), options: extractOptions(obj) };
+          return {
+            reply,
+            draft: parseDraftFields(rawDraft, fallbackDraft),
+            options: extractOptions(obj),
+            debug: buildParseDebug('codeblock', textWithoutThinkBlocks, 1),
+          };
         }
 
-        // 1-b. draft 키들만 있는 형식
         if (isDraftLike(obj)) {
-          return { reply: textWithoutThinkBlocks, draft: parseDraftFields(obj, fallbackDraft), options: extractOptions(obj) };
+          return {
+            reply: textWithoutThinkBlocks,
+            draft: parseDraftFields(obj, fallbackDraft),
+            options: extractOptions(obj),
+            debug: buildParseDebug('codeblock', textWithoutThinkBlocks, 1),
+          };
         }
       }
     } catch { /* fallthrough */ }
   }
 
-  // ── 2. 텍스트 내 모든 JSON 객체 탐색 ──────────────────────────────────
   const candidates = extractJsonObjects(textWithoutThinkBlocks);
 
   for (const candidate of candidates) {
@@ -373,27 +652,43 @@ export function parseStoryPlanningResponse(
       if (typeof parsed !== 'object' || parsed === null) continue;
       const obj = parsed as Record<string, unknown>;
 
-      // 2-a. 표준 {"reply", "draft"} 형식
       if ('reply' in obj) {
         const reply = typeof obj.reply === 'string' ? obj.reply : stripAllJsonBlocks(textWithoutThinkBlocks, candidates);
         const rawDraft = (typeof obj.draft === 'object' && obj.draft !== null)
           ? obj.draft as Record<string, unknown>
           : obj;
-        return { reply, draft: parseDraftFields(rawDraft, fallbackDraft), options: extractOptions(obj) };
+        return {
+          reply,
+          draft: parseDraftFields(rawDraft, fallbackDraft),
+          options: extractOptions(obj),
+          debug: buildParseDebug('embedded', textWithoutThinkBlocks, candidates.length),
+        };
       }
 
-      // 2-b. draft 키들만 있는 형식 (AI가 draft 객체만 그대로 출력한 경우)
       if (isDraftLike(obj)) {
         const replyText = stripAllJsonBlocks(textWithoutThinkBlocks, candidates);
         return {
           reply: replyText || textWithoutThinkBlocks,
           draft: parseDraftFields(obj, fallbackDraft),
           options: extractOptions(obj),
+          debug: buildParseDebug('embedded', textWithoutThinkBlocks, candidates.length),
         };
       }
     } catch { /* next candidate */ }
   }
 
-  // ── 3. 파싱 실패 — 텍스트만 반환, draft는 유지 ───────────────────────
-  return { reply: textWithoutThinkBlocks, draft: fallbackDraft };
+  const partialReply = extractPartialReply(textWithoutThinkBlocks);
+  if (partialReply) {
+    return {
+      reply: partialReply,
+      draft: fallbackDraft,
+      debug: buildParseDebug('fallback', textWithoutThinkBlocks, candidates.length),
+    };
+  }
+
+  return {
+    reply: textWithoutThinkBlocks,
+    draft: fallbackDraft,
+    debug: buildParseDebug('fallback', textWithoutThinkBlocks, candidates.length),
+  };
 }

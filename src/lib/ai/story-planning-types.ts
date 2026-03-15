@@ -80,6 +80,7 @@ export interface StoryPlanningMessage {
   role: 'user' | 'assistant';
   content: string;
   options?: string[];
+  draftSnapshot?: StoryPlanningDraft;
 }
 
 export const EMPTY_DRAFT: StoryPlanningDraft = {
