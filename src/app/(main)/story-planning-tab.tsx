@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 import { Button } from '@/components/ui/button';
 import type {
@@ -37,6 +39,20 @@ function saveSession(session: StoredSession) {
 
 function clearSession() {
   localStorage.removeItem(STORAGE_KEY);
+}
+
+function hasDraftContent(draft: StoryPlanningDraft) {
+  return Boolean(
+    draft.title ||
+      draft.genre ||
+      draft.synopsis ||
+      draft.premise ||
+      draft.tone ||
+      (draft.themes && draft.themes.length > 0) ||
+      draft.characters.length > 0 ||
+      draft.worldEntries.length > 0 ||
+      draft.firstChapterOutline
+  );
 }
 
 // ─── Suggested first messages ────────────────────────────────────────────────
@@ -154,16 +170,7 @@ function GlobalAISettingsInline({
 
 // ─── Draft Summary Panel ────────────────────────────────────────────────────
 function DraftPanel({ draft }: { draft: StoryPlanningDraft }) {
-  const hasContent =
-    draft.title ||
-    draft.genre ||
-    draft.synopsis ||
-    draft.premise ||
-    draft.tone ||
-    (draft.themes && draft.themes.length > 0) ||
-    draft.characters.length > 0 ||
-    draft.worldEntries.length > 0 ||
-    draft.firstChapterOutline;
+  const hasContent = hasDraftContent(draft);
 
   if (!hasContent) return null;
 
@@ -262,6 +269,61 @@ function DraftPanel({ draft }: { draft: StoryPlanningDraft }) {
           <p className="text-sm whitespace-pre-wrap">{draft.firstChapterOutline}</p>
         </div>
       )}
+    </div>
+  );
+}
+
+function ApplyDraftPanel({
+  canApply,
+  hasContent,
+  isApplying,
+  isLoading,
+  onApply,
+}: {
+  canApply: boolean;
+  hasContent: boolean;
+  isApplying: boolean;
+  isLoading: boolean;
+  onApply: () => void;
+}) {
+  if (!hasContent) return null;
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+      <div>
+        <h3 className="text-sm font-semibold text-foreground">소설로 적용</h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          현재 기획 초안을 새 소설 프로젝트로 추가합니다.
+        </p>
+      </div>
+
+      {!canApply && (
+        <p className="text-xs text-amber-600 dark:text-amber-400">
+          제목이 정리되면 바로 소설 목록에 추가할 수 있습니다.
+        </p>
+      )}
+
+      <Button
+        className="w-full"
+        onClick={onApply}
+        disabled={!canApply || isApplying || isLoading}
+      >
+        {isApplying ? '생성 중...' : '🚀 이 기획으로 소설 목록에 추가'}
+      </Button>
+    </div>
+  );
+}
+
+function StoryPlanningMessageContent({ message }: { message: StoryPlanningMessage }) {
+  if (message.role === 'user') {
+    return <div className="whitespace-pre-wrap">{message.content}</div>;
+  }
+
+  return (
+    <div className="prose prose-sm max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:my-2 prose-pre:overflow-x-auto prose-pre:rounded-md prose-pre:border prose-pre:border-border prose-pre:bg-muted prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:text-[0.9em] prose-headings:my-2 prose-strong:text-inherit prose-a:text-primary dark:prose-invert">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        {message.content}
+      </ReactMarkdown>
     </div>
   );
 }
@@ -404,7 +466,8 @@ export function StoryPlanningTab() {
     clearSession();
   };
 
-  const canApply = draft.title?.trim();
+  const canApply = Boolean(draft.title?.trim());
+  const hasAnyDraft = hasDraftContent(draft);
 
   // ─── Empty state ────────────────────────────────────────────────────────
   if (messages.length === 0 && !showSettings) {
@@ -529,7 +592,7 @@ export function StoryPlanningTab() {
                       : 'bg-card text-card-foreground border border-border'
                   }`}
                 >
-                  <div className="whitespace-pre-wrap">{msg.content}</div>
+                  <StoryPlanningMessageContent message={msg} />
                 </div>
               </div>
             ))}
@@ -594,15 +657,13 @@ export function StoryPlanningTab() {
           <div className="sticky top-20 space-y-4 max-h-[calc(100vh-6rem)] overflow-y-auto">
           <DraftPanel draft={draft} />
 
-          {canApply && (
-            <Button
-              className="w-full"
-              onClick={handleApply}
-              disabled={isApplying || isLoading}
-            >
-              {isApplying ? '생성 중...' : '🚀 이 설정으로 소설 만들기'}
-            </Button>
-          )}
+          <ApplyDraftPanel
+            canApply={canApply}
+            hasContent={hasAnyDraft}
+            isApplying={isApplying}
+            isLoading={isLoading}
+            onApply={handleApply}
+          />
           </div>
         </div>
       </div>
@@ -611,15 +672,13 @@ export function StoryPlanningTab() {
       <div className="lg:hidden space-y-4">
         <DraftPanel draft={draft} />
 
-        {canApply && (
-          <Button
-            className="w-full"
-            onClick={handleApply}
-            disabled={isApplying || isLoading}
-          >
-            {isApplying ? '생성 중...' : '🚀 이 설정으로 소설 만들기'}
-          </Button>
-        )}
+        <ApplyDraftPanel
+          canApply={canApply}
+          hasContent={hasAnyDraft}
+          isApplying={isApplying}
+          isLoading={isLoading}
+          onApply={handleApply}
+        />
       </div>
     </div>
   );
