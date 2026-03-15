@@ -12,6 +12,7 @@ import type {
   StoryPlanningDraft,
   StoryPlanningMessage,
   StoryPlanningPhase,
+  StoryPlanningWorldEntry,
 } from '@/lib/ai/story-planning-types';
 import { EMPTY_DRAFT, PHASE_LABELS, PHASE_ORDER } from '@/lib/ai/story-planning-types';
 
@@ -91,6 +92,42 @@ function saveSession(session: StoredSession) {
 
 function clearSession() {
   localStorage.removeItem(STORAGE_KEY);
+}
+
+function updateCharacterField(
+  character: StoryPlanningCharacter,
+  field: keyof StoryPlanningCharacter,
+  value: string
+): StoryPlanningCharacter {
+  const trimmed = value.trim();
+
+  if (!trimmed && field !== 'name') {
+    const { [field]: _removed, ...nextCharacter } = character;
+    return nextCharacter as StoryPlanningCharacter;
+  }
+
+  return {
+    ...character,
+    [field]: trimmed,
+  };
+}
+
+function updateWorldField(
+  entry: StoryPlanningWorldEntry,
+  field: keyof StoryPlanningWorldEntry,
+  value: string
+): StoryPlanningWorldEntry {
+  const trimmed = value.trim();
+
+  if (!trimmed && field === 'content') {
+    const { content: _removed, ...nextEntry } = entry;
+    return nextEntry;
+  }
+
+  return {
+    ...entry,
+    [field]: trimmed,
+  };
 }
 
 function hasDraftContent(draft: StoryPlanningDraft) {
@@ -320,12 +357,16 @@ function DraftPanel({
   onRejectCharacter,
   onAcceptWorld,
   onRejectWorld,
+  onUpdatePendingCharacter,
+  onUpdatePendingWorld,
 }: {
   draft: StoryPlanningDraft;
   onAcceptCharacter: (index: number) => void;
   onRejectCharacter: (index: number) => void;
   onAcceptWorld: (index: number) => void;
   onRejectWorld: (index: number) => void;
+  onUpdatePendingCharacter: (index: number, field: keyof StoryPlanningCharacter, value: string) => void;
+  onUpdatePendingWorld: (index: number, field: keyof StoryPlanningWorldEntry, value: string) => void;
 }) {
   const [expandedCharIndex, setExpandedCharIndex] = useState<number | null>(null);
   const [expandedPendingCharIndex, setExpandedPendingCharIndex] = useState<number | null>(null);
@@ -455,10 +496,20 @@ function DraftPanel({
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-1 min-w-0">
                       <div className="min-w-0">
-                        <span className="text-sm font-medium">{ch.name}</span>
-                        {ch.role && (
-                          <span className="ml-1 text-xs text-muted-foreground">— {ch.role}</span>
-                        )}
+                        <input
+                          className="w-full rounded border border-amber-300/70 bg-background px-2 py-1 text-sm font-medium"
+                          onChange={(e) => onUpdatePendingCharacter(i, 'name', e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          placeholder="이름"
+                          value={ch.name}
+                        />
+                        <input
+                          className="mt-1 w-full rounded border border-amber-300/70 bg-background px-2 py-1 text-xs text-muted-foreground"
+                          onChange={(e) => onUpdatePendingCharacter(i, 'role', e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          placeholder="역할"
+                          value={ch.role ?? ''}
+                        />
                       </div>
                       {isExpanded ? (
                         <ChevronUp className="size-3.5 shrink-0 text-muted-foreground" />
@@ -481,8 +532,14 @@ function DraftPanel({
                       </button>
                     </div>
                   </div>
-                  {!isExpanded && ch.personality && (
-                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{ch.personality}</p>
+                  {!isExpanded && (
+                    <textarea
+                      className="mt-2 min-h-16 w-full rounded border border-amber-300/70 bg-background px-2 py-1 text-xs text-muted-foreground"
+                      onChange={(e) => onUpdatePendingCharacter(i, 'personality', e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      placeholder="성격 / 메모"
+                      value={ch.personality ?? ''}
+                    />
                   )}
                   {!isExpanded && ch.items && ch.items.length > 0 && (
                     <div className="flex flex-wrap items-center gap-1 mt-1">
@@ -498,7 +555,32 @@ function DraftPanel({
                     </div>
                   )}
                   {isExpanded && (
-                    <CharacterExpandedDetails character={ch} />
+                    <div className="mt-2 space-y-2 border-t border-amber-200/70 pt-2" onClick={(e) => e.stopPropagation()}>
+                      <textarea
+                        className="min-h-16 w-full rounded border border-amber-300/70 bg-background px-2 py-1 text-xs"
+                        onChange={(e) => onUpdatePendingCharacter(i, 'appearance', e.target.value)}
+                        placeholder="외모"
+                        value={ch.appearance ?? ''}
+                      />
+                      <textarea
+                        className="min-h-16 w-full rounded border border-amber-300/70 bg-background px-2 py-1 text-xs"
+                        onChange={(e) => onUpdatePendingCharacter(i, 'personality', e.target.value)}
+                        placeholder="성격"
+                        value={ch.personality ?? ''}
+                      />
+                      <textarea
+                        className="min-h-16 w-full rounded border border-amber-300/70 bg-background px-2 py-1 text-xs"
+                        onChange={(e) => onUpdatePendingCharacter(i, 'backstory', e.target.value)}
+                        placeholder="배경"
+                        value={ch.backstory ?? ''}
+                      />
+                      <textarea
+                        className="min-h-16 w-full rounded border border-amber-300/70 bg-background px-2 py-1 text-xs"
+                        onChange={(e) => onUpdatePendingCharacter(i, 'arcDescription', e.target.value)}
+                        placeholder="캐릭터 아크"
+                        value={ch.arcDescription ?? ''}
+                      />
+                    </div>
                   )}
                 </div>
               );
@@ -539,15 +621,26 @@ function DraftPanel({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <span className="text-xs text-muted-foreground">[{we.category}]</span>{' '}
-                    <span className="text-sm font-medium">{we.title}</span>
-                    {we.content && (
-                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                        {we.content}
-                      </p>
-                    )}
+                    <input
+                      className="w-full rounded border border-amber-300/70 bg-background px-2 py-1 text-xs text-muted-foreground"
+                      onChange={(e) => onUpdatePendingWorld(i, 'category', e.target.value)}
+                      placeholder="분류"
+                      value={we.category}
+                    />
+                    <input
+                      className="mt-1 w-full rounded border border-amber-300/70 bg-background px-2 py-1 text-sm font-medium"
+                      onChange={(e) => onUpdatePendingWorld(i, 'title', e.target.value)}
+                      placeholder="항목 이름"
+                      value={we.title}
+                    />
+                    <textarea
+                      className="mt-1 min-h-16 w-full rounded border border-amber-300/70 bg-background px-2 py-1 text-xs text-muted-foreground"
+                      onChange={(e) => onUpdatePendingWorld(i, 'content', e.target.value)}
+                      placeholder="설명"
+                      value={we.content ?? ''}
+                    />
                   </div>
-                  <div className="flex shrink-0 gap-1">
+                  <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
                     <button
                       className="rounded px-1.5 py-0.5 text-xs font-medium bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/70 transition-colors"
                       onClick={() => onAcceptWorld(i)}
@@ -669,36 +762,50 @@ export function StoryPlanningTab() {
   const [error, setError] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const messagesRef = useRef<StoryPlanningMessage[]>([]);
+  const draftRef = useRef<StoryPlanningDraft>({ ...EMPTY_DRAFT });
 
-  // Load session on mount
   useEffect(() => {
     const session = loadSession();
+    messagesRef.current = session.messages;
+    draftRef.current = session.draft;
     setMessages(session.messages);
     setDraft(session.draft);
   }, []);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
 
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  async function sendMessage(text: string) {
+  async function sendMessage(text: string, baseDraft?: StoryPlanningDraft) {
     if (!text.trim() || isLoading) return;
 
+    const currentMessages = messagesRef.current;
+    const currentDraft = baseDraft ?? draftRef.current;
     const userMsg: StoryPlanningMessage = { role: 'user', content: text.trim() };
-    const newMessages = [...messages, userMsg];
+    const newMessages = [...currentMessages, userMsg];
+    messagesRef.current = newMessages;
     setMessages(newMessages);
     setInput('');
     setError('');
     setIsLoading(true);
 
-    saveSession({ messages: newMessages, draft });
+    saveSession({ messages: newMessages, draft: currentDraft });
 
     try {
       const res = await fetch('/api/story-planning/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newMessages, draft }),
+        body: JSON.stringify({ messages: newMessages, draft: currentDraft }),
       });
 
       const data = await res.json();
@@ -707,8 +814,9 @@ export function StoryPlanningTab() {
         if (data.error === 'no_provider') {
           setNoProvider(true);
           setShowSettings(true);
-          setMessages(messages);
-          saveSession({ messages, draft });
+          messagesRef.current = currentMessages;
+          setMessages(currentMessages);
+          saveSession({ messages: currentMessages, draft: currentDraft });
           return;
         }
         throw new Error(data.error || 'AI 응답 실패');
@@ -718,18 +826,83 @@ export function StoryPlanningTab() {
         role: 'assistant',
         content: data.reply,
         options: data.options,
+        draftSnapshot: data.draft ?? currentDraft,
       };
       const updatedMessages = [...newMessages, assistantMsg];
-      const updatedDraft = data.draft ?? draft;
+      const updatedDraft = data.draft ?? currentDraft;
 
+      messagesRef.current = updatedMessages;
+      draftRef.current = updatedDraft;
       setMessages(updatedMessages);
       setDraft(updatedDraft);
       saveSession({ messages: updatedMessages, draft: updatedDraft });
       setNoProvider(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'AI 응답 중 오류가 발생했습니다.');
-      setMessages(messages);
-      saveSession({ messages, draft });
+      messagesRef.current = currentMessages;
+      setMessages(currentMessages);
+      saveSession({ messages: currentMessages, draft: currentDraft });
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function requestReplacementSuggestion(
+    kind: 'character' | 'world',
+    rejectedLabel: string,
+    baseDraft: StoryPlanningDraft
+  ) {
+    if (isLoading) return;
+
+    const currentMessages = messagesRef.current;
+    const retryPrompt = kind === 'character'
+      ? `방금 제안한 등장인물 "${rejectedLabel}"은 제외하고, 이미 정해진 설정은 유지한 채 다른 등장인물 후보를 다시 제안해줘.`
+      : `방금 제안한 세계관 항목 "${rejectedLabel}"은 제외하고, 이미 정해진 설정은 유지한 채 다른 세계관 후보를 다시 제안해줘.`;
+    const requestMessages: StoryPlanningMessage[] = [
+      ...currentMessages,
+      { role: 'user', content: retryPrompt },
+    ];
+
+    setError('');
+    setIsLoading(true);
+
+    try {
+      const res = await fetch('/api/story-planning/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: requestMessages, draft: baseDraft }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (data.error === 'no_provider') {
+          setNoProvider(true);
+          setShowSettings(true);
+          saveSession({ messages: currentMessages, draft: baseDraft });
+          return;
+        }
+        throw new Error(data.error || '대체 제안 생성 실패');
+      }
+
+      const assistantMsg: StoryPlanningMessage = {
+        role: 'assistant',
+        content: data.reply,
+        options: data.options,
+        draftSnapshot: data.draft ?? baseDraft,
+      };
+      const updatedMessages = [...currentMessages, assistantMsg];
+      const updatedDraft = data.draft ?? baseDraft;
+
+      messagesRef.current = updatedMessages;
+      draftRef.current = updatedDraft;
+      setMessages(updatedMessages);
+      setDraft(updatedDraft);
+      saveSession({ messages: updatedMessages, draft: updatedDraft });
+      setNoProvider(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '대체 제안 생성 중 오류가 발생했습니다.');
+      saveSession({ messages: currentMessages, draft: baseDraft });
     } finally {
       setIsLoading(false);
     }
@@ -805,16 +978,21 @@ export function StoryPlanningTab() {
     });
   };
 
-  const handleRejectCharacter = (index: number) => {
-    setDraft((prev) => {
-      const nextPending = (prev.pendingCharacters ?? []).filter((_, i) => i !== index);
-      const newDraft: StoryPlanningDraft = {
-        ...prev,
-        pendingCharacters: nextPending.length > 0 ? nextPending : undefined,
-      };
-      saveSession({ messages, draft: newDraft });
-      return newDraft;
-    });
+  const handleRejectCharacter = async (index: number) => {
+    const pending = draftRef.current.pendingCharacters ?? [];
+    const rejected = pending[index];
+    if (!rejected) return;
+
+    const nextPending = pending.filter((_, i) => i !== index);
+    const newDraft: StoryPlanningDraft = {
+      ...draftRef.current,
+      pendingCharacters: nextPending.length > 0 ? nextPending : undefined,
+    };
+
+    draftRef.current = newDraft;
+    setDraft(newDraft);
+    saveSession({ messages: messagesRef.current, draft: newDraft });
+    await requestReplacementSuggestion('character', rejected.name, newDraft);
   };
 
   const handleAcceptWorld = (index: number) => {
@@ -833,14 +1011,67 @@ export function StoryPlanningTab() {
     });
   };
 
-  const handleRejectWorld = (index: number) => {
+  const handleRejectWorld = async (index: number) => {
+    const pending = draftRef.current.pendingWorldEntries ?? [];
+    const rejected = pending[index];
+    if (!rejected) return;
+
+    const nextPending = pending.filter((_, i) => i !== index);
+    const newDraft: StoryPlanningDraft = {
+      ...draftRef.current,
+      pendingWorldEntries: nextPending.length > 0 ? nextPending : undefined,
+    };
+
+    draftRef.current = newDraft;
+    setDraft(newDraft);
+    saveSession({ messages: messagesRef.current, draft: newDraft });
+    await requestReplacementSuggestion('world', rejected.title, newDraft);
+  };
+
+  const handleUpdatePendingCharacter = (
+    index: number,
+    field: keyof StoryPlanningCharacter,
+    value: string
+  ) => {
     setDraft((prev) => {
-      const nextPending = (prev.pendingWorldEntries ?? []).filter((_, i) => i !== index);
+      const pending = prev.pendingCharacters ?? [];
+      const target = pending[index];
+      if (!target) return prev;
+
+      const nextPending = pending.map((character, pendingIndex) =>
+        pendingIndex === index ? updateCharacterField(character, field, value) : character
+      );
       const newDraft: StoryPlanningDraft = {
         ...prev,
-        pendingWorldEntries: nextPending.length > 0 ? nextPending : undefined,
+        pendingCharacters: nextPending,
       };
-      saveSession({ messages, draft: newDraft });
+
+      draftRef.current = newDraft;
+      saveSession({ messages: messagesRef.current, draft: newDraft });
+      return newDraft;
+    });
+  };
+
+  const handleUpdatePendingWorld = (
+    index: number,
+    field: keyof StoryPlanningWorldEntry,
+    value: string
+  ) => {
+    setDraft((prev) => {
+      const pending = prev.pendingWorldEntries ?? [];
+      const target = pending[index];
+      if (!target) return prev;
+
+      const nextPending = pending.map((entry, pendingIndex) =>
+        pendingIndex === index ? updateWorldField(entry, field, value) : entry
+      );
+      const newDraft: StoryPlanningDraft = {
+        ...prev,
+        pendingWorldEntries: nextPending,
+      };
+
+      draftRef.current = newDraft;
+      saveSession({ messages: messagesRef.current, draft: newDraft });
       return newDraft;
     });
   };
@@ -848,6 +1079,8 @@ export function StoryPlanningTab() {
   const canApply = Boolean(draft.title?.trim());
   const hasAnyDraft = hasDraftContent(draft);
   const lastMessage = messages.at(-1);
+  const lastAssistantDraft =
+    lastMessage?.role === 'assistant' ? lastMessage.draftSnapshot : undefined;
   const lastAssistantOptions =
     lastMessage?.role === 'assistant' ? lastMessage.options ?? [] : [];
 
@@ -985,7 +1218,7 @@ export function StoryPlanningTab() {
                   <button
                     className="rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs text-primary hover:bg-primary/15 transition-colors"
                     key={option}
-                    onClick={() => sendMessage(option)}
+                    onClick={() => sendMessage(option, lastAssistantDraft ?? draft)}
                   >
                     {option}
                   </button>
@@ -1058,6 +1291,8 @@ export function StoryPlanningTab() {
               onAcceptWorld={handleAcceptWorld}
               onRejectCharacter={handleRejectCharacter}
               onRejectWorld={handleRejectWorld}
+              onUpdatePendingCharacter={handleUpdatePendingCharacter}
+              onUpdatePendingWorld={handleUpdatePendingWorld}
             />
 
             <ApplyDraftPanel
@@ -1080,6 +1315,8 @@ export function StoryPlanningTab() {
           onAcceptWorld={handleAcceptWorld}
           onRejectCharacter={handleRejectCharacter}
           onRejectWorld={handleRejectWorld}
+          onUpdatePendingCharacter={handleUpdatePendingCharacter}
+          onUpdatePendingWorld={handleUpdatePendingWorld}
         />
 
         <ApplyDraftPanel
