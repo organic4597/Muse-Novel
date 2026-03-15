@@ -260,7 +260,7 @@ export async function startServer(
       '--model', ggufModel,
       '--port', String(port),
       '--host', '0.0.0.0',
-      '--ctx-size', '40960',
+      '--ctx-size', '49152',
       '--n-gpu-layers', '99',
       '--flash-attn', 'on',
       '--split-mode', 'none',

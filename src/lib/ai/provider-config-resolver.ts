@@ -30,7 +30,7 @@ export function resolveStoredProviderConfig(
       provider: 'qwen-local',
       modelId: process.env.QLORA_BASE_MODEL ?? 'Qwen/Qwen3.5-9B-Base',
       baseUrl: process.env.QWEN_LOCAL_URL ?? 'http://localhost:8321',
-      contextSize: settings.contextSize ?? 40960,
+      contextSize: settings.contextSize ?? 49152,
     };
   }
 
