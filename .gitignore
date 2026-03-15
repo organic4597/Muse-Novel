@@ -50,6 +50,9 @@ CLAUDE.local.md
 data/sqlite.db
 data/sqlite.db-wal
 data/sqlite.db-shm
+muse-novel.db
+muse-novel.db-wal
+muse-novel.db-shm
 
 # runtime data
 data/embeddings/
