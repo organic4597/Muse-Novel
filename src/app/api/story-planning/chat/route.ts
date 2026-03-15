@@ -107,11 +107,19 @@ function inferPhaseFromUserText(
     return 'characters';
   }
 
-  if (currentPhase === 'characters' && (draft.characters.length > 0 || /(주인공|이름|관계|동료|악역)/.test(normalized))) {
+  if (
+    currentPhase === 'characters' &&
+    !(draft.pendingCharacters && draft.pendingCharacters.length > 0) &&
+    (draft.characters.length > 0 || /(주인공|이름|관계|동료|악역)/.test(normalized))
+  ) {
       return 'world';
     }
 
-  if (currentPhase === 'world' && (draft.worldEntries.length > 0 || /(신전|세계관|규칙|마법|조직|역사|장소)/.test(normalized))) {
+  if (
+    currentPhase === 'world' &&
+    !(draft.pendingWorldEntries && draft.pendingWorldEntries.length > 0) &&
+    (draft.worldEntries.length > 0 || /(신전|세계관|규칙|마법|조직|역사|장소)/.test(normalized))
+  ) {
       return 'plot';
     }
 

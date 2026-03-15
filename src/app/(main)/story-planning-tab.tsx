@@ -357,6 +357,8 @@ function DraftPanel({
   onRejectCharacter,
   onAcceptWorld,
   onRejectWorld,
+  onUpdateAcceptedCharacter,
+  onUpdateAcceptedWorld,
   onUpdatePendingCharacter,
   onUpdatePendingWorld,
 }: {
@@ -365,10 +367,14 @@ function DraftPanel({
   onRejectCharacter: (index: number) => void;
   onAcceptWorld: (index: number) => void;
   onRejectWorld: (index: number) => void;
+  onUpdateAcceptedCharacter: (index: number, field: keyof StoryPlanningCharacter, value: string) => void;
+  onUpdateAcceptedWorld: (index: number, field: keyof StoryPlanningWorldEntry, value: string) => void;
   onUpdatePendingCharacter: (index: number, field: keyof StoryPlanningCharacter, value: string) => void;
   onUpdatePendingWorld: (index: number, field: keyof StoryPlanningWorldEntry, value: string) => void;
 }) {
   const [expandedCharIndex, setExpandedCharIndex] = useState<number | null>(null);
+  const [editingAcceptedCharIndex, setEditingAcceptedCharIndex] = useState<number | null>(null);
+  const [editingAcceptedWorldIndex, setEditingAcceptedWorldIndex] = useState<number | null>(null);
   const [expandedPendingCharIndex, setExpandedPendingCharIndex] = useState<number | null>(null);
   const hasContent = hasDraftContent(draft);
 
@@ -435,29 +441,49 @@ function DraftPanel({
           <div className="mt-1 space-y-1">
             {draft.characters.map((ch, i) => {
               const isExpanded = expandedCharIndex === i;
+              const isEditing = editingAcceptedCharIndex === i;
               return (
                 <div
                   className="rounded bg-muted/50 px-2 py-1 cursor-pointer hover:bg-muted/80 transition-colors"
                   key={i}
-                  onClick={() => setExpandedCharIndex(isExpanded ? null : i)}
+                  onClick={() => {
+                    if (isEditing) return;
+                    setExpandedCharIndex(isExpanded ? null : i);
+                  }}
                 >
-                  <div className="flex items-center justify-between gap-1">
+                  <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <span className="text-sm font-medium">{ch.name}</span>
                       {ch.role && (
                         <span className="ml-1 text-xs text-muted-foreground">— {ch.role}</span>
                       )}
                     </div>
-                    {isExpanded ? (
-                      <ChevronUp className="size-3.5 shrink-0 text-muted-foreground" />
-                    ) : (
-                      <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
-                    )}
+                    <div className="flex shrink-0 items-center gap-1 self-start" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        className="inline-flex h-6 items-center rounded px-2 py-0 text-xs font-medium bg-background text-foreground hover:bg-accent transition-colors"
+                        onClick={() => {
+                          if (isEditing) {
+                            setEditingAcceptedCharIndex(null);
+                            return;
+                          }
+                          setExpandedCharIndex(i);
+                          setEditingAcceptedCharIndex(i);
+                        }}
+                        type="button"
+                      >
+                        {isEditing ? '완료' : '수정'}
+                      </button>
+                      {isExpanded ? (
+                        <ChevronUp className="mt-px size-3.5 shrink-0 text-muted-foreground" />
+                      ) : (
+                        <ChevronDown className="mt-px size-3.5 shrink-0 text-muted-foreground" />
+                      )}
+                    </div>
                   </div>
-                  {!isExpanded && ch.personality && (
+                  {!isExpanded && !isEditing && ch.personality && (
                     <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{ch.personality}</p>
                   )}
-                  {!isExpanded && ch.items && ch.items.length > 0 && (
+                  {!isExpanded && !isEditing && ch.items && ch.items.length > 0 && (
                     <div className="flex flex-wrap items-center gap-1 mt-1">
                       <span className="text-xs text-muted-foreground">🎒 소지품</span>
                       {ch.items.map((item, j) => (
@@ -470,9 +496,48 @@ function DraftPanel({
                       ))}
                     </div>
                   )}
-                  {isExpanded && (
+                  {isEditing ? (
+                    <div className="mt-2 space-y-2 border-t border-border/50 pt-2" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        className="w-full rounded border border-border bg-background px-2 py-1 text-sm font-medium"
+                        onChange={(e) => onUpdateAcceptedCharacter(i, 'name', e.target.value)}
+                        placeholder="이름"
+                        value={ch.name}
+                      />
+                      <input
+                        className="w-full rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground"
+                        onChange={(e) => onUpdateAcceptedCharacter(i, 'role', e.target.value)}
+                        placeholder="역할"
+                        value={ch.role ?? ''}
+                      />
+                      <textarea
+                        className="min-h-16 w-full rounded border border-border bg-background px-2 py-1 text-xs"
+                        onChange={(e) => onUpdateAcceptedCharacter(i, 'appearance', e.target.value)}
+                        placeholder="외모"
+                        value={ch.appearance ?? ''}
+                      />
+                      <textarea
+                        className="min-h-16 w-full rounded border border-border bg-background px-2 py-1 text-xs"
+                        onChange={(e) => onUpdateAcceptedCharacter(i, 'personality', e.target.value)}
+                        placeholder="성격"
+                        value={ch.personality ?? ''}
+                      />
+                      <textarea
+                        className="min-h-16 w-full rounded border border-border bg-background px-2 py-1 text-xs"
+                        onChange={(e) => onUpdateAcceptedCharacter(i, 'backstory', e.target.value)}
+                        placeholder="배경"
+                        value={ch.backstory ?? ''}
+                      />
+                      <textarea
+                        className="min-h-16 w-full rounded border border-border bg-background px-2 py-1 text-xs"
+                        onChange={(e) => onUpdateAcceptedCharacter(i, 'arcDescription', e.target.value)}
+                        placeholder="캐릭터 아크"
+                        value={ch.arcDescription ?? ''}
+                      />
+                    </div>
+                  ) : isExpanded ? (
                     <CharacterExpandedDetails character={ch} />
-                  )}
+                  ) : null}
                 </div>
               );
             })}
@@ -594,17 +659,58 @@ function DraftPanel({
             세계관 ({draft.worldEntries.length})
           </span>
           <div className="mt-1 space-y-1">
-            {draft.worldEntries.map((we, i) => (
-              <div className="rounded bg-muted/50 px-2 py-1" key={i}>
-                <span className="text-xs text-muted-foreground">[{we.category}]</span>{' '}
-                <span className="text-sm font-medium">{we.title}</span>
-                {we.content && (
-                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                    {we.content}
-                  </p>
-                )}
-              </div>
-            ))}
+            {draft.worldEntries.map((we, i) => {
+              const isEditing = editingAcceptedWorldIndex === i;
+              return (
+                <div className="rounded bg-muted/50 px-2 py-1" key={i}>
+                  <div className={`flex justify-between gap-2 ${isEditing ? 'items-start' : 'items-center'}`}>
+                    <div className="min-w-0 flex-1">
+                      {isEditing ? (
+                        <div className="space-y-1.5">
+                          <input
+                            className="w-full rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground"
+                            onChange={(e) => onUpdateAcceptedWorld(i, 'category', e.target.value)}
+                            placeholder="분류"
+                            value={we.category}
+                          />
+                          <input
+                            className="w-full rounded border border-border bg-background px-2 py-1 text-sm font-medium"
+                            onChange={(e) => onUpdateAcceptedWorld(i, 'title', e.target.value)}
+                            placeholder="항목 이름"
+                            value={we.title}
+                          />
+                          <textarea
+                            className="min-h-16 w-full rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground"
+                            onChange={(e) => onUpdateAcceptedWorld(i, 'content', e.target.value)}
+                            placeholder="설명"
+                            value={we.content ?? ''}
+                          />
+                        </div>
+                      ) : (
+                        <>
+                          <span className="text-xs text-muted-foreground">[{we.category}]</span>{' '}
+                          <span className="text-sm font-medium">{we.title}</span>
+                          {we.content && (
+                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                              {we.content}
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                    <button
+                      className="inline-flex h-6 shrink-0 items-center self-start rounded px-2 py-0 text-xs font-medium bg-background text-foreground hover:bg-accent transition-colors"
+                      onClick={() => {
+                        setEditingAcceptedWorldIndex(isEditing ? null : i);
+                      }}
+                      type="button"
+                    >
+                      {isEditing ? '완료' : '수정'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -855,9 +961,15 @@ export function StoryPlanningTab() {
     if (isLoading) return;
 
     const currentMessages = messagesRef.current;
+    const pendingLabels = kind === 'character'
+      ? (baseDraft.pendingCharacters ?? []).map((character) => character.name)
+      : (baseDraft.pendingWorldEntries ?? []).map((entry) => entry.title);
+    const pendingContext = pendingLabels.length > 0
+      ? ` 이미 제안되어 검토 중인 항목은 ${pendingLabels.map((label) => `"${label}"`).join(', ')} 이고, 이 항목들과 방금 거절한 항목은 다시 제안하지 마.`
+      : ' 방금 거절한 항목은 다시 제안하지 마.';
     const retryPrompt = kind === 'character'
-      ? `방금 제안한 등장인물 "${rejectedLabel}"은 제외하고, 이미 정해진 설정은 유지한 채 다른 등장인물 후보를 다시 제안해줘.`
-      : `방금 제안한 세계관 항목 "${rejectedLabel}"은 제외하고, 이미 정해진 설정은 유지한 채 다른 세계관 후보를 다시 제안해줘.`;
+      ? `방금 제안한 등장인물 "${rejectedLabel}"은 제외하고, 이미 정해진 설정은 유지한 채 다른 등장인물 후보를 다시 제안해줘.${pendingContext}`
+      : `방금 제안한 세계관 항목 "${rejectedLabel}"은 제외하고, 이미 정해진 설정은 유지한 채 다른 세계관 후보를 다시 제안해줘.${pendingContext}`;
     const requestMessages: StoryPlanningMessage[] = [
       ...currentMessages,
       { role: 'user', content: retryPrompt },
@@ -891,8 +1003,20 @@ export function StoryPlanningTab() {
         options: data.options,
         draftSnapshot: data.draft ?? baseDraft,
       };
-      const updatedMessages = [...currentMessages, assistantMsg];
-      const updatedDraft = data.draft ?? baseDraft;
+      const updatedMessages = [...requestMessages, assistantMsg];
+      const updatedDraft: StoryPlanningDraft = {
+        ...(data.draft ?? baseDraft),
+        pendingCharacters: kind === 'character'
+          ? (data.draft?.pendingCharacters ?? baseDraft.pendingCharacters)?.filter(
+              (character) => character.name !== rejectedLabel
+            )
+          : (data.draft?.pendingCharacters ?? baseDraft.pendingCharacters),
+        pendingWorldEntries: kind === 'world'
+          ? (data.draft?.pendingWorldEntries ?? baseDraft.pendingWorldEntries)?.filter(
+              (entry) => entry.title !== rejectedLabel
+            )
+          : (data.draft?.pendingWorldEntries ?? baseDraft.pendingWorldEntries),
+      };
 
       messagesRef.current = updatedMessages;
       draftRef.current = updatedDraft;
@@ -1068,6 +1192,52 @@ export function StoryPlanningTab() {
       const newDraft: StoryPlanningDraft = {
         ...prev,
         pendingWorldEntries: nextPending,
+      };
+
+      draftRef.current = newDraft;
+      saveSession({ messages: messagesRef.current, draft: newDraft });
+      return newDraft;
+    });
+  };
+
+  const handleUpdateAcceptedCharacter = (
+    index: number,
+    field: keyof StoryPlanningCharacter,
+    value: string
+  ) => {
+    setDraft((prev) => {
+      const target = prev.characters[index];
+      if (!target) return prev;
+
+      const nextCharacters = prev.characters.map((character, characterIndex) =>
+        characterIndex === index ? updateCharacterField(character, field, value) : character
+      );
+      const newDraft: StoryPlanningDraft = {
+        ...prev,
+        characters: nextCharacters,
+      };
+
+      draftRef.current = newDraft;
+      saveSession({ messages: messagesRef.current, draft: newDraft });
+      return newDraft;
+    });
+  };
+
+  const handleUpdateAcceptedWorld = (
+    index: number,
+    field: keyof StoryPlanningWorldEntry,
+    value: string
+  ) => {
+    setDraft((prev) => {
+      const target = prev.worldEntries[index];
+      if (!target) return prev;
+
+      const nextWorldEntries = prev.worldEntries.map((entry, entryIndex) =>
+        entryIndex === index ? updateWorldField(entry, field, value) : entry
+      );
+      const newDraft: StoryPlanningDraft = {
+        ...prev,
+        worldEntries: nextWorldEntries,
       };
 
       draftRef.current = newDraft;
@@ -1291,6 +1461,8 @@ export function StoryPlanningTab() {
               onAcceptWorld={handleAcceptWorld}
               onRejectCharacter={handleRejectCharacter}
               onRejectWorld={handleRejectWorld}
+              onUpdateAcceptedCharacter={handleUpdateAcceptedCharacter}
+              onUpdateAcceptedWorld={handleUpdateAcceptedWorld}
               onUpdatePendingCharacter={handleUpdatePendingCharacter}
               onUpdatePendingWorld={handleUpdatePendingWorld}
             />
@@ -1315,6 +1487,8 @@ export function StoryPlanningTab() {
           onAcceptWorld={handleAcceptWorld}
           onRejectCharacter={handleRejectCharacter}
           onRejectWorld={handleRejectWorld}
+          onUpdateAcceptedCharacter={handleUpdateAcceptedCharacter}
+          onUpdateAcceptedWorld={handleUpdateAcceptedWorld}
           onUpdatePendingCharacter={handleUpdatePendingCharacter}
           onUpdatePendingWorld={handleUpdatePendingWorld}
         />

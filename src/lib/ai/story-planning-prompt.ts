@@ -246,6 +246,16 @@ function buildKnownFieldsBlock(draft: StoryPlanningDraft): string {
     lines.push(`- **세계관 항목** (${draft.worldEntries.length}개): ${titles} ← 확정 완료. 새 항목 추가는 가능하나 기존 항목은 다시 묻지 마세요.`);
   }
 
+  if (draft.pendingCharacters && draft.pendingCharacters.length > 0) {
+    const names = draft.pendingCharacters.map((c) => c.name).join(', ');
+    lines.push(`- **검토 중인 등장인물 제안** (${draft.pendingCharacters.length}명): ${names} ← 이미 제안된 후보입니다. 다시 제안하지 마세요.`);
+  }
+
+  if (draft.pendingWorldEntries && draft.pendingWorldEntries.length > 0) {
+    const titles = draft.pendingWorldEntries.map((w) => w.title).join(', ');
+    lines.push(`- **검토 중인 세계관 제안** (${draft.pendingWorldEntries.length}개): ${titles} ← 이미 제안된 후보입니다. 다시 제안하지 마세요.`);
+  }
+
   if (lines.length === 0) return '';
 
   return [
@@ -591,18 +601,92 @@ function extractOptions(obj: Record<string, unknown>): string[] | undefined {
   return filtered.length > 0 ? filtered : undefined;
 }
 
-function extractPartialReply(text: string): string | undefined {
-  const replyMatch = text.match(/"reply"\s*:\s*"((?:\\.|[^"\\])*)/);
-  if (!replyMatch?.[1]) return undefined;
-
-  const rawReply = replyMatch[1]
+function decodePartialJsonString(rawValue: string): string {
+  return rawValue
     .replace(/\\n/g, '\n')
     .replace(/\\r/g, '\r')
     .replace(/\\t/g, '\t')
     .replace(/\\"/g, '"')
     .replace(/\\\\/g, '\\');
-  const cleanedReply = rawReply.trim();
-  return cleanedReply.length > 0 ? cleanedReply : undefined;
+}
+
+function extractPartialJsonStringField(text: string, key: string): string | undefined {
+  const fieldMatch = text.match(new RegExp(`"${key}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)`));
+  if (!fieldMatch?.[1]) return undefined;
+
+  const rawValue = decodePartialJsonString(fieldMatch[1]);
+  const cleanedValue = rawValue.trim();
+  return cleanedValue.length > 0 ? cleanedValue : undefined;
+}
+
+function extractPartialStringArrayField(text: string, key: string): string[] | undefined {
+  const fieldMatch = text.match(new RegExp(`"${key}"\\s*:\\s*\\[([\\s\\S]*?)(?:\\]|$)`));
+  if (!fieldMatch?.[1]) return undefined;
+
+  const values = Array.from(fieldMatch[1].matchAll(/"((?:\\.|[^"\\])*)"/g))
+    .map((match) => decodePartialJsonString(match[1] ?? '').trim())
+    .filter((value) => value.length > 0);
+
+  return values.length > 0 ? values : undefined;
+}
+
+function extractPartialReply(text: string): string | undefined {
+  return extractPartialJsonStringField(text, 'reply');
+}
+
+function extractPartialDraft(text: string, fallbackDraft: StoryPlanningDraft): StoryPlanningDraft {
+  const nextDraft: StoryPlanningDraft = { ...fallbackDraft };
+
+  const scalarFields: Array<
+    | 'title'
+    | 'genre'
+    | 'synopsis'
+    | 'premise'
+    | 'tone'
+    | 'firstChapterOutline'
+    | 'plotStructure'
+    | 'pointOfView'
+    | 'writingStyle'
+    | 'formatGoal'
+  > = [
+    'title',
+    'genre',
+    'synopsis',
+    'premise',
+    'tone',
+    'firstChapterOutline',
+    'plotStructure',
+    'pointOfView',
+    'writingStyle',
+    'formatGoal',
+  ];
+
+  for (const field of scalarFields) {
+    const value = extractPartialJsonStringField(text, field);
+    if (value) {
+      nextDraft[field] = value;
+    }
+  }
+
+  const partialThemes = extractPartialStringArrayField(text, 'themes');
+  if (partialThemes) {
+    nextDraft.themes = partialThemes;
+  }
+
+  const partialPhase = extractPartialJsonStringField(text, 'currentPhase');
+  if (partialPhase) {
+    const validPhases = new Set<StoryPlanningPhase>(PHASE_ORDER);
+    const matchedPhase = Array.from(validPhases).find((phase) => phase === partialPhase || phase.startsWith(partialPhase));
+    if (matchedPhase) {
+      nextDraft.currentPhase = matchedPhase;
+    }
+  }
+
+  return nextDraft;
+}
+
+function extractPartialOptions(text: string): string[] | undefined {
+  return extractPartialStringArrayField(text, 'options');
 }
 
 export function parseStoryPlanningResponse(
@@ -678,17 +762,21 @@ export function parseStoryPlanningResponse(
   }
 
   const partialReply = extractPartialReply(textWithoutThinkBlocks);
+  const partialDraft = extractPartialDraft(textWithoutThinkBlocks, fallbackDraft);
+  const partialOptions = extractPartialOptions(textWithoutThinkBlocks);
   if (partialReply) {
     return {
       reply: partialReply,
-      draft: fallbackDraft,
+      draft: partialDraft,
+      options: partialOptions,
       debug: buildParseDebug('fallback', textWithoutThinkBlocks, candidates.length),
     };
   }
 
   return {
     reply: textWithoutThinkBlocks,
-    draft: fallbackDraft,
+    draft: partialDraft,
+    options: partialOptions,
     debug: buildParseDebug('fallback', textWithoutThinkBlocks, candidates.length),
   };
 }
