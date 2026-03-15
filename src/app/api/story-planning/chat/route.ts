@@ -1,14 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { generateText } from 'ai';
-
-import { db } from '@/lib/db';
-import { getGlobalDefaultProvider } from '@/lib/db/queries/ai-settings';
-import { createProvider } from '@/lib/ai/provider-factory';
+import { NextRequest, NextResponse } from 'next/server';
 import { getEnvProviderConfig } from '@/lib/ai/daily-slogan';
+import { createProvider } from '@/lib/ai/provider-factory';
 import { buildStoryPlanningMessages, parseStoryPlanningResponse } from '@/lib/ai/story-planning-prompt';
 import type { StoryPlanningDraft, StoryPlanningMessage } from '@/lib/ai/story-planning-types';
 import { EMPTY_DRAFT } from '@/lib/ai/story-planning-types';
 import type { ProviderConfig } from '@/lib/ai/types';
+import { db } from '@/lib/db';
+import { getGlobalDefaultProvider } from '@/lib/db/queries/ai-settings';
 
 async function resolveProvider(): Promise<ProviderConfig | null> {
   // 1. Global AI settings (projectId IS NULL)
@@ -40,7 +39,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const lastMsg = messages[messages.length - 1];
+    const lastMsg = messages.at(-1);
     if (!lastMsg || lastMsg.role !== 'user') {
       return NextResponse.json(
         { error: '마지막 메시지는 user 역할이어야 합니다.' },
@@ -71,6 +70,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       reply: parsed.reply,
       draft: parsed.draft,
+      options: parsed.options,
     });
   } catch (error) {
     console.error('[story-planning/chat] Error:', error);

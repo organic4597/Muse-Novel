@@ -7,6 +7,7 @@ import { ChapterSidebar } from '@/components/chapter/chapter-sidebar';
 import { AutoSaveIndicator } from '@/components/editor/auto-save-indicator';
 import { PlateEditor } from '@/components/editor/plate-editor';
 import { useAutoSave } from '@/hooks/use-auto-save';
+import { convertToPlainText } from '@/lib/export/export-text';
 
 interface Chapter {
   id: string;
@@ -19,6 +20,7 @@ interface Chapter {
 export default function WritePage() {
   const params = useParams<{ id: string }>();
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
+  const [textStats, setTextStats] = useState({ characterCount: 0, byteSize: 0 });
 
   const autoSave = useAutoSave({
     projectId: params.id,
@@ -27,6 +29,11 @@ export default function WritePage() {
   });
 
   const handleContentChange = (content: string) => {
+    const plainText = convertToPlainText(content);
+    setTextStats({
+      characterCount: plainText.length,
+      byteSize: new TextEncoder().encode(plainText).length,
+    });
     autoSave.save(content);
   };
 
@@ -54,12 +61,27 @@ export default function WritePage() {
         );
 
         if (restore) {
+          const plainText = convertToPlainText(backup);
+          setTextStats({
+            characterCount: plainText.length,
+            byteSize: new TextEncoder().encode(plainText).length,
+          });
           setSelectedChapter({ ...fullChapter, contentJson: backup });
         } else {
           localStorage.removeItem(backupKey);
+          const plainText = convertToPlainText(fullChapter.contentJson);
+          setTextStats({
+            characterCount: plainText.length,
+            byteSize: new TextEncoder().encode(plainText).length,
+          });
           setSelectedChapter(fullChapter);
         }
       } else {
+        const plainText = convertToPlainText(fullChapter.contentJson);
+        setTextStats({
+          characterCount: plainText.length,
+          byteSize: new TextEncoder().encode(plainText).length,
+        });
         setSelectedChapter(fullChapter);
       }
     }
@@ -73,8 +95,8 @@ export default function WritePage() {
     <div className="flex gap-6">
       <aside className="w-64 shrink-0">
         <ChapterSidebar
-          selectedChapterId={selectedChapter?.id ?? null}
           onSelectChapter={handleSelectChapter}
+          selectedChapterId={selectedChapter?.id ?? null}
         />
       </aside>
       <div className="min-w-0 flex-1">
@@ -82,16 +104,19 @@ export default function WritePage() {
           <h1 className="sr-only">소설 작성</h1>
           {selectedChapter ? (
             <>
-              <div className="flex h-7 items-center justify-end px-2 py-1">
+              <div className="flex h-7 items-center justify-between gap-3 px-2 py-1">
+                <div className="text-xs text-muted-foreground">
+                  {textStats.characterCount.toLocaleString()}자 · {textStats.byteSize.toLocaleString()} bytes
+                </div>
                 <AutoSaveIndicator
-                  status={autoSave.status}
                   onRetry={handleRetry}
+                  status={autoSave.status}
                 />
               </div>
               <PlateEditor
-                key={selectedChapter.id}
                 chapterId={selectedChapter.id}
                 content={selectedChapter.contentJson}
+                key={selectedChapter.id}
                 onValueChange={handleContentChange}
               />
             </>

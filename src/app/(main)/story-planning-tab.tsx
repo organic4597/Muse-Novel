@@ -1,18 +1,70 @@
 'use client';
 
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 import { Button } from '@/components/ui/button';
 import type {
+  StoryPlanningCharacter,
   StoryPlanningDraft,
   StoryPlanningMessage,
+  StoryPlanningPhase,
 } from '@/lib/ai/story-planning-types';
-import { EMPTY_DRAFT } from '@/lib/ai/story-planning-types';
+import { EMPTY_DRAFT, PHASE_LABELS, PHASE_ORDER } from '@/lib/ai/story-planning-types';
 
 const STORAGE_KEY = 'muse-novel-story-planning';
+
+// Strip top-level JSON objects (>50 chars, valid JSON.parse) from display text.
+// Needed: AI sometimes embeds raw draft JSON in conversational output, and old
+// localStorage messages may still contain unstripped JSON blocks.
+function stripJsonFromDisplay(text: string): string {
+  let result = '';
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+
+    if (escaped) { escaped = false; continue; }
+    if (ch === '\\' && inString) { escaped = true; continue; }
+    if (ch === '"' && depth > 0) { inString = !inString; continue; }
+    if (inString) continue;
+
+    if (ch === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === '}') {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        const block = text.slice(start, i + 1);
+        // Only strip substantial JSON blocks, not small inline braces
+        if (block.length > 50) {
+          try {
+            JSON.parse(block);
+            start = -1;
+            continue;
+          } catch {
+            // invalid JSON — keep as text
+          }
+        }
+        result += text.slice(start, i + 1);
+        start = -1;
+        continue;
+      }
+    }
+
+    if (depth === 0) {
+      result += ch;
+    }
+  }
+
+  return result.replace(/\n{3,}/g, '\n\n').trim();
+}
 
 interface StoredSession {
   messages: StoryPlanningMessage[];
@@ -51,6 +103,10 @@ function hasDraftContent(draft: StoryPlanningDraft) {
       (draft.themes && draft.themes.length > 0) ||
       draft.characters.length > 0 ||
       draft.worldEntries.length > 0 ||
+      draft.plotStructure ||
+      draft.pointOfView ||
+      draft.writingStyle ||
+      draft.formatGoal ||
       draft.firstChapterOutline
   );
 }
@@ -168,8 +224,111 @@ function GlobalAISettingsInline({
   );
 }
 
+// ─── Character Expanded Detail Fields ───────────────────────────────────────
+function CharacterExpandedDetails({ character }: { character: StoryPlanningCharacter }) {
+  const hasExtra =
+    character.appearance || character.personality || character.backstory || character.arcDescription || (character.items && character.items.length > 0);
+
+  if (!hasExtra) return null;
+
+  return (
+    <div className="mt-2 space-y-1.5 border-t border-border/50 pt-2">
+      {character.appearance && (
+        <div>
+          <span className="text-xs font-medium text-muted-foreground">외모</span>
+          <p className="text-sm whitespace-pre-wrap">{character.appearance}</p>
+        </div>
+      )}
+      {character.personality && (
+        <div>
+          <span className="text-xs font-medium text-muted-foreground">성격</span>
+          <p className="text-sm whitespace-pre-wrap">{character.personality}</p>
+        </div>
+      )}
+      {character.backstory && (
+        <div>
+          <span className="text-xs font-medium text-muted-foreground">배경</span>
+          <p className="text-sm whitespace-pre-wrap">{character.backstory}</p>
+        </div>
+      )}
+      {character.arcDescription && (
+        <div>
+          <span className="text-xs font-medium text-muted-foreground">캐릭터 아크</span>
+          <p className="text-sm whitespace-pre-wrap">{character.arcDescription}</p>
+        </div>
+      )}
+      {character.items && character.items.length > 0 && (
+        <div>
+          <span className="text-xs font-medium text-muted-foreground">🎒 소지품</span>
+          <div className="mt-1 space-y-1">
+            {character.items.map((item, j) => (
+              <div className="rounded-xs bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1" key={j}>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">{item.name}</span>
+                  {item.status && (
+                    <span className="text-xs text-muted-foreground">({item.status})</span>
+                  )}
+                </div>
+                {item.description && (
+                  <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Phase Stepper ──────────────────────────────────────────────────────────
+function PhaseStepper({ currentPhase }: { currentPhase?: StoryPlanningPhase }) {
+  const currentIndex = currentPhase ? PHASE_ORDER.indexOf(currentPhase) : 0;
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-3">
+      <h4 className="text-xs font-semibold text-muted-foreground mb-2">진행 단계</h4>
+      <div className="flex flex-wrap gap-1.5">
+        {PHASE_ORDER.map((phase, i) => {
+          const isComplete = i < currentIndex;
+          const isCurrent = i === currentIndex;
+
+          return (
+            <span
+              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${
+                isComplete
+                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                  : isCurrent
+                    ? 'bg-primary/15 text-primary ring-1 ring-primary/30'
+                    : 'bg-muted text-muted-foreground'
+              }`}
+              key={phase}
+            >
+              {isComplete ? '✓ ' : isCurrent ? '● ' : ''}{PHASE_LABELS[phase]}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Draft Summary Panel ────────────────────────────────────────────────────
-function DraftPanel({ draft }: { draft: StoryPlanningDraft }) {
+function DraftPanel({
+  draft,
+  onAcceptCharacter,
+  onRejectCharacter,
+  onAcceptWorld,
+  onRejectWorld,
+}: {
+  draft: StoryPlanningDraft;
+  onAcceptCharacter: (index: number) => void;
+  onRejectCharacter: (index: number) => void;
+  onAcceptWorld: (index: number) => void;
+  onRejectWorld: (index: number) => void;
+}) {
+  const [expandedCharIndex, setExpandedCharIndex] = useState<number | null>(null);
+  const [expandedPendingCharIndex, setExpandedPendingCharIndex] = useState<number | null>(null);
   const hasContent = hasDraftContent(draft);
 
   return (
@@ -233,17 +392,117 @@ function DraftPanel({ draft }: { draft: StoryPlanningDraft }) {
             등장인물 ({draft.characters.length})
           </span>
           <div className="mt-1 space-y-1">
-            {draft.characters.map((ch, i) => (
-              <div className="rounded bg-muted/50 px-2 py-1" key={i}>
-                <span className="text-sm font-medium">{ch.name}</span>
-                {ch.role && (
-                  <span className="ml-1 text-xs text-muted-foreground">— {ch.role}</span>
-                )}
-                {ch.personality && (
-                  <p className="text-xs text-muted-foreground mt-0.5">{ch.personality}</p>
-                )}
-              </div>
-            ))}
+            {draft.characters.map((ch, i) => {
+              const isExpanded = expandedCharIndex === i;
+              return (
+                <div
+                  className="rounded bg-muted/50 px-2 py-1 cursor-pointer hover:bg-muted/80 transition-colors"
+                  key={i}
+                  onClick={() => setExpandedCharIndex(isExpanded ? null : i)}
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <div className="min-w-0">
+                      <span className="text-sm font-medium">{ch.name}</span>
+                      {ch.role && (
+                        <span className="ml-1 text-xs text-muted-foreground">— {ch.role}</span>
+                      )}
+                    </div>
+                    {isExpanded ? (
+                      <ChevronUp className="size-3.5 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+                    )}
+                  </div>
+                  {!isExpanded && ch.personality && (
+                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{ch.personality}</p>
+                  )}
+                  {!isExpanded && ch.items && ch.items.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1 mt-1">
+                      <span className="text-xs text-muted-foreground">🎒 소지품</span>
+                      {ch.items.map((item, j) => (
+                        <span
+                          className="inline-flex text-xs px-1.5 py-0.5 rounded-xs bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300"
+                          key={j}
+                        >
+                          {item.name}{item.status ? ` (${item.status})` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {isExpanded && (
+                    <CharacterExpandedDetails character={ch} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {draft.pendingCharacters && draft.pendingCharacters.length > 0 && (
+        <div>
+          <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
+            ✨ 제안된 등장인물 ({draft.pendingCharacters.length})
+          </span>
+          <div className="mt-1 space-y-1.5">
+            {draft.pendingCharacters.map((ch, i) => {
+              const isExpanded = expandedPendingCharIndex === i;
+              return (
+                <div
+                  className="rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5 cursor-pointer hover:bg-amber-100/60 dark:hover:bg-amber-950/50 transition-colors"
+                  key={i}
+                  onClick={() => setExpandedPendingCharIndex(isExpanded ? null : i)}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-1 min-w-0">
+                      <div className="min-w-0">
+                        <span className="text-sm font-medium">{ch.name}</span>
+                        {ch.role && (
+                          <span className="ml-1 text-xs text-muted-foreground">— {ch.role}</span>
+                        )}
+                      </div>
+                      {isExpanded ? (
+                        <ChevronUp className="size-3.5 shrink-0 text-muted-foreground" />
+                      ) : (
+                        <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+                      )}
+                    </div>
+                    <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        className="rounded px-1.5 py-0.5 text-xs font-medium bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/70 transition-colors"
+                        onClick={() => onAcceptCharacter(i)}
+                      >
+                        수락
+                      </button>
+                      <button
+                        className="rounded px-1.5 py-0.5 text-xs font-medium bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/70 transition-colors"
+                        onClick={() => onRejectCharacter(i)}
+                      >
+                        거부
+                      </button>
+                    </div>
+                  </div>
+                  {!isExpanded && ch.personality && (
+                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{ch.personality}</p>
+                  )}
+                  {!isExpanded && ch.items && ch.items.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1 mt-1">
+                      <span className="text-xs text-muted-foreground">🎒 소지품</span>
+                      {ch.items.map((item, j) => (
+                        <span
+                          className="inline-flex text-xs px-1.5 py-0.5 rounded-xs bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300"
+                          key={j}
+                        >
+                          {item.name}{item.status ? ` (${item.status})` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {isExpanded && (
+                    <CharacterExpandedDetails character={ch} />
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -265,6 +524,71 @@ function DraftPanel({ draft }: { draft: StoryPlanningDraft }) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+      {draft.pendingWorldEntries && draft.pendingWorldEntries.length > 0 && (
+        <div>
+          <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
+            ✨ 제안된 세계관 ({draft.pendingWorldEntries.length})
+          </span>
+          <div className="mt-1 space-y-1.5">
+            {draft.pendingWorldEntries.map((we, i) => (
+              <div
+                className="rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5"
+                key={i}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className="text-xs text-muted-foreground">[{we.category}]</span>{' '}
+                    <span className="text-sm font-medium">{we.title}</span>
+                    {we.content && (
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                        {we.content}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    <button
+                      className="rounded px-1.5 py-0.5 text-xs font-medium bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/70 transition-colors"
+                      onClick={() => onAcceptWorld(i)}
+                    >
+                      수락
+                    </button>
+                    <button
+                      className="rounded px-1.5 py-0.5 text-xs font-medium bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/70 transition-colors"
+                      onClick={() => onRejectWorld(i)}
+                    >
+                      거부
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {draft.plotStructure && (
+        <div>
+          <span className="text-xs font-medium text-muted-foreground">플롯/타임라인</span>
+          <p className="text-sm whitespace-pre-wrap">{draft.plotStructure}</p>
+        </div>
+      )}
+      {draft.pointOfView && (
+        <div>
+          <span className="text-xs font-medium text-muted-foreground">시점</span>
+          <p className="text-sm">{draft.pointOfView}</p>
+        </div>
+      )}
+      {draft.writingStyle && (
+        <div>
+          <span className="text-xs font-medium text-muted-foreground">문체</span>
+          <p className="text-sm">{draft.writingStyle}</p>
+        </div>
+      )}
+      {draft.formatGoal && (
+        <div>
+          <span className="text-xs font-medium text-muted-foreground">분량/형식 목표</span>
+          <p className="text-sm">{draft.formatGoal}</p>
         </div>
       )}
       {draft.firstChapterOutline && (
@@ -321,10 +645,12 @@ function StoryPlanningMessageContent({ message }: { message: StoryPlanningMessag
     return <div className="whitespace-pre-wrap">{message.content}</div>;
   }
 
+  const cleaned = stripJsonFromDisplay(message.content);
+
   return (
     <div className="prose prose-sm max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:my-2 prose-pre:overflow-x-auto prose-pre:rounded-md prose-pre:border prose-pre:border-border prose-pre:bg-muted prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:text-[0.9em] prose-headings:my-2 prose-strong:text-inherit prose-a:text-primary dark:prose-invert">
       <ReactMarkdown remarkPlugins={[remarkGfm]}>
-        {message.content}
+        {cleaned}
       </ReactMarkdown>
     </div>
   );
@@ -356,63 +682,58 @@ export function StoryPlanningTab() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const sendMessage = useCallback(
-    async (text: string) => {
-      if (!text.trim() || isLoading) return;
+  async function sendMessage(text: string) {
+    if (!text.trim() || isLoading) return;
 
-      const userMsg: StoryPlanningMessage = { role: 'user', content: text.trim() };
-      const newMessages = [...messages, userMsg];
-      setMessages(newMessages);
-      setInput('');
-      setError('');
-      setIsLoading(true);
+    const userMsg: StoryPlanningMessage = { role: 'user', content: text.trim() };
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    setInput('');
+    setError('');
+    setIsLoading(true);
 
-      // Save immediately with user message
-      saveSession({ messages: newMessages, draft });
+    saveSession({ messages: newMessages, draft });
 
-      try {
-        const res = await fetch('/api/story-planning/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: newMessages, draft }),
-        });
+    try {
+      const res = await fetch('/api/story-planning/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: newMessages, draft }),
+      });
 
-        const data = await res.json();
+      const data = await res.json();
 
-        if (!res.ok) {
-          if (data.error === 'no_provider') {
-            setNoProvider(true);
-            setShowSettings(true);
-            // Remove the user message since we couldn't process it
-            setMessages(messages);
-            saveSession({ messages, draft });
-            return;
-          }
-          throw new Error(data.error || 'AI 응답 실패');
+      if (!res.ok) {
+        if (data.error === 'no_provider') {
+          setNoProvider(true);
+          setShowSettings(true);
+          setMessages(messages);
+          saveSession({ messages, draft });
+          return;
         }
-
-        const assistantMsg: StoryPlanningMessage = {
-          role: 'assistant',
-          content: data.reply,
-        };
-        const updatedMessages = [...newMessages, assistantMsg];
-        const updatedDraft = data.draft ?? draft;
-
-        setMessages(updatedMessages);
-        setDraft(updatedDraft);
-        saveSession({ messages: updatedMessages, draft: updatedDraft });
-        setNoProvider(false);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'AI 응답 중 오류가 발생했습니다.');
-        // Revert messages on error
-        setMessages(messages);
-        saveSession({ messages, draft });
-      } finally {
-        setIsLoading(false);
+        throw new Error(data.error || 'AI 응답 실패');
       }
-    },
-    [messages, draft, isLoading]
-  );
+
+      const assistantMsg: StoryPlanningMessage = {
+        role: 'assistant',
+        content: data.reply,
+        options: data.options,
+      };
+      const updatedMessages = [...newMessages, assistantMsg];
+      const updatedDraft = data.draft ?? draft;
+
+      setMessages(updatedMessages);
+      setDraft(updatedDraft);
+      saveSession({ messages: updatedMessages, draft: updatedDraft });
+      setNoProvider(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'AI 응답 중 오류가 발생했습니다.');
+      setMessages(messages);
+      saveSession({ messages, draft });
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -468,8 +789,67 @@ export function StoryPlanningTab() {
     clearSession();
   };
 
+  const handleAcceptCharacter = (index: number) => {
+    setDraft((prev) => {
+      const pending = prev.pendingCharacters ?? [];
+      const accepted = pending[index];
+      if (!accepted) return prev;
+      const nextPending = pending.filter((_, i) => i !== index);
+      const newDraft: StoryPlanningDraft = {
+        ...prev,
+        characters: [...prev.characters, accepted],
+        pendingCharacters: nextPending.length > 0 ? nextPending : undefined,
+      };
+      saveSession({ messages, draft: newDraft });
+      return newDraft;
+    });
+  };
+
+  const handleRejectCharacter = (index: number) => {
+    setDraft((prev) => {
+      const nextPending = (prev.pendingCharacters ?? []).filter((_, i) => i !== index);
+      const newDraft: StoryPlanningDraft = {
+        ...prev,
+        pendingCharacters: nextPending.length > 0 ? nextPending : undefined,
+      };
+      saveSession({ messages, draft: newDraft });
+      return newDraft;
+    });
+  };
+
+  const handleAcceptWorld = (index: number) => {
+    setDraft((prev) => {
+      const pending = prev.pendingWorldEntries ?? [];
+      const accepted = pending[index];
+      if (!accepted) return prev;
+      const nextPending = pending.filter((_, i) => i !== index);
+      const newDraft: StoryPlanningDraft = {
+        ...prev,
+        worldEntries: [...prev.worldEntries, accepted],
+        pendingWorldEntries: nextPending.length > 0 ? nextPending : undefined,
+      };
+      saveSession({ messages, draft: newDraft });
+      return newDraft;
+    });
+  };
+
+  const handleRejectWorld = (index: number) => {
+    setDraft((prev) => {
+      const nextPending = (prev.pendingWorldEntries ?? []).filter((_, i) => i !== index);
+      const newDraft: StoryPlanningDraft = {
+        ...prev,
+        pendingWorldEntries: nextPending.length > 0 ? nextPending : undefined,
+      };
+      saveSession({ messages, draft: newDraft });
+      return newDraft;
+    });
+  };
+
   const canApply = Boolean(draft.title?.trim());
   const hasAnyDraft = hasDraftContent(draft);
+  const lastMessage = messages.at(-1);
+  const lastAssistantOptions =
+    lastMessage?.role === 'assistant' ? lastMessage.options ?? [] : [];
 
   // ─── Empty state ────────────────────────────────────────────────────────
   if (messages.length === 0 && !showSettings) {
@@ -599,6 +979,20 @@ export function StoryPlanningTab() {
               </div>
             ))}
 
+            {!isLoading && lastAssistantOptions.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {lastAssistantOptions.map((option) => (
+                  <button
+                    className="rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs text-primary hover:bg-primary/15 transition-colors"
+                    key={option}
+                    onClick={() => sendMessage(option)}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {isLoading && (
               <div className="flex justify-start">
                 <div className="rounded-lg bg-card border border-border px-3 py-2 text-sm text-muted-foreground">
@@ -657,22 +1051,36 @@ export function StoryPlanningTab() {
         {/* Draft summary panel — sticky */}
         <div className="hidden lg:block">
           <div className="sticky top-20 space-y-4 max-h-[calc(100vh-6rem)] overflow-y-auto">
-          <DraftPanel draft={draft} />
+            <PhaseStepper currentPhase={draft.currentPhase} />
+            <DraftPanel
+              draft={draft}
+              onAcceptCharacter={handleAcceptCharacter}
+              onAcceptWorld={handleAcceptWorld}
+              onRejectCharacter={handleRejectCharacter}
+              onRejectWorld={handleRejectWorld}
+            />
 
-          <ApplyDraftPanel
-            canApply={canApply}
-            hasContent={hasAnyDraft}
-            isApplying={isApplying}
-            isLoading={isLoading}
-            onApply={handleApply}
-          />
+            <ApplyDraftPanel
+              canApply={canApply}
+              hasContent={hasAnyDraft}
+              isApplying={isApplying}
+              isLoading={isLoading}
+              onApply={handleApply}
+            />
           </div>
         </div>
       </div>
 
       {/* Mobile draft panel (below chat) */}
       <div className="lg:hidden space-y-4">
-        <DraftPanel draft={draft} />
+        <PhaseStepper currentPhase={draft.currentPhase} />
+        <DraftPanel
+          draft={draft}
+          onAcceptCharacter={handleAcceptCharacter}
+          onAcceptWorld={handleAcceptWorld}
+          onRejectCharacter={handleRejectCharacter}
+          onRejectWorld={handleRejectWorld}
+        />
 
         <ApplyDraftPanel
           canApply={canApply}
