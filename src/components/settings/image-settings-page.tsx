@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
 import {
   CheckCircle2,
   Image as ImageIcon,
   Loader2,
   XCircle,
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -203,7 +203,6 @@ export function ImageSettingsPage({ projectId }: { projectId: string }) {
                     ? 'border-primary bg-primary/10 text-primary'
                     : 'border-border hover:border-muted-foreground'
                 }`}
-                type="button"
                 onClick={() =>
                   setFormState((s) => ({
                     ...s,
@@ -215,19 +214,19 @@ export function ImageSettingsPage({ projectId }: { projectId: string }) {
                     defaultCfgScale: String(parseInt(s.defaultCfgScale) || 6),
                   }))
                 }
+                type="button"
               >
                 🤗 Diffusers (로컬)
               </button>
               <button
                 className={`rounded-lg border px-4 py-2 text-sm transition-colors ${
-                  !isDiffusers
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border hover:border-muted-foreground'
+                  isDiffusers
+                    ? 'border-border hover:border-muted-foreground' : 'border-primary bg-primary/10 text-primary'
                 }`}
-                type="button"
                 onClick={() =>
                   setFormState((s) => ({ ...s, providerType: 'automatic1111' }))
                 }
+                type="button"
               >
                 🎨 SD WebUI (API)
               </button>
@@ -247,15 +246,15 @@ export function ImageSettingsPage({ projectId }: { projectId: string }) {
             </label>
             <Input
               id="sd-model"
+              onChange={(e) =>
+                setFormState((s) => ({ ...s, modelName: e.target.value }))
+              }
               placeholder={
                 isDiffusers
                   ? DEFAULT_DIFFUSERS_MODEL
                   : 'sd_xl_base_1.0.safetensors'
               }
               value={formState.modelName}
-              onChange={(e) =>
-                setFormState((s) => ({ ...s, modelName: e.target.value }))
-              }
             />
             {isDiffusers && (
               <p className="text-xs text-muted-foreground">
@@ -272,12 +271,12 @@ export function ImageSettingsPage({ projectId }: { projectId: string }) {
               </label>
               <Input
                 id="sd-base-url"
-                placeholder="http://localhost:7860"
-                required
-                value={formState.baseUrl}
                 onChange={(e) =>
                   setFormState((s) => ({ ...s, baseUrl: e.target.value }))
                 }
+                placeholder="http://localhost:7860"
+                required
+                value={formState.baseUrl}
               />
             </div>
           )}
@@ -289,11 +288,11 @@ export function ImageSettingsPage({ projectId }: { projectId: string }) {
               </label>
               <Input
                 id="sd-width"
-                type="number"
-                value={formState.defaultWidth}
                 onChange={(e) =>
                   setFormState((s) => ({ ...s, defaultWidth: e.target.value }))
                 }
+                type="number"
+                value={formState.defaultWidth}
               />
             </div>
             <div className="space-y-2">
@@ -302,11 +301,11 @@ export function ImageSettingsPage({ projectId }: { projectId: string }) {
               </label>
               <Input
                 id="sd-height"
-                type="number"
-                value={formState.defaultHeight}
                 onChange={(e) =>
                   setFormState((s) => ({ ...s, defaultHeight: e.target.value }))
                 }
+                type="number"
+                value={formState.defaultHeight}
               />
             </div>
           </div>
@@ -318,11 +317,11 @@ export function ImageSettingsPage({ projectId }: { projectId: string }) {
               </label>
               <Input
                 id="sd-steps"
-                type="number"
-                value={formState.defaultSteps}
                 onChange={(e) =>
                   setFormState((s) => ({ ...s, defaultSteps: e.target.value }))
                 }
+                type="number"
+                value={formState.defaultSteps}
               />
             </div>
             <div className="space-y-2">
@@ -333,10 +332,10 @@ export function ImageSettingsPage({ projectId }: { projectId: string }) {
                 <select
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   id="sd-sampler"
-                  value={formState.defaultSampler}
                   onChange={(e) =>
                     setFormState((s) => ({ ...s, defaultSampler: e.target.value }))
                   }
+                  value={formState.defaultSampler}
                 >
                   {SAMPLER_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
@@ -347,11 +346,11 @@ export function ImageSettingsPage({ projectId }: { projectId: string }) {
               ) : (
                 <Input
                   id="sd-sampler"
-                  placeholder="Euler a"
-                  value={formState.defaultSampler}
                   onChange={(e) =>
                     setFormState((s) => ({ ...s, defaultSampler: e.target.value }))
                   }
+                  placeholder="Euler a"
+                  value={formState.defaultSampler}
                 />
               )}
             </div>
@@ -361,11 +360,11 @@ export function ImageSettingsPage({ projectId }: { projectId: string }) {
               </label>
               <Input
                 id="sd-cfg"
-                type="number"
-                value={formState.defaultCfgScale}
                 onChange={(e) =>
                   setFormState((s) => ({ ...s, defaultCfgScale: e.target.value }))
                 }
+                type="number"
+                value={formState.defaultCfgScale}
               />
             </div>
           </div>
@@ -377,11 +376,11 @@ export function ImageSettingsPage({ projectId }: { projectId: string }) {
             <textarea
               className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               id="sd-negative"
-              placeholder="기본 품질 관련 네거티브 프롬프트는 자동으로 추가됩니다"
-              value={formState.defaultNegativePrompt}
               onChange={(e) =>
                 setFormState((s) => ({ ...s, defaultNegativePrompt: e.target.value }))
               }
+              placeholder="기본 품질 관련 네거티브 프롬프트는 자동으로 추가됩니다"
+              value={formState.defaultNegativePrompt}
             />
           </div>
 
@@ -401,9 +400,9 @@ export function ImageSettingsPage({ projectId }: { projectId: string }) {
           <div className="flex flex-wrap items-center gap-3">
             <Button
               disabled={isTesting}
+              onClick={handleTest}
               type="button"
               variant="outline"
-              onClick={handleTest}
             >
               {isTesting ? (
                 <>

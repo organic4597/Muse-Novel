@@ -11,8 +11,8 @@ import { createSlateEditor } from 'platejs';
 import { z } from 'zod';
 import { BaseEditorKit } from '@/components/editor/editor-base-kit';
 import type { ChatMessage, ToolName } from '@/components/editor/use-chat';
-import { markdownJoinerTransform } from '@/lib/markdown-joiner-transform';
 import { createProvider } from '@/lib/ai/provider-factory';
+import { markdownJoinerTransform } from '@/lib/markdown-joiner-transform';
 
 import { getChooseToolPrompt, getEditPrompt, getGeneratePrompt } from './prompts';
 

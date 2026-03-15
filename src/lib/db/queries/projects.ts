@@ -4,17 +4,17 @@ import type { DB } from '@/lib/db';
 
 import {
   aiProviderSettings,
+  chapters,
   characterEmotions,
   characterImages,
   characterRelationships,
   characters,
-  chapters,
   imageProviderSettings,
   projects,
-  writingStyleProfiles,
   worldEntries,
   worldEntryLinks,
   worldEntryTags,
+  writingStyleProfiles,
 } from '../schema';
 
 type CreateProjectData = {

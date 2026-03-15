@@ -3,11 +3,10 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-
-import * as schema from '@/lib/db/schema';
-import { chapters } from '@/lib/db/schema';
 import { createChapter, listChapters, reorderChapter } from '@/lib/db/queries/chapters';
 import { createProject } from '@/lib/db/queries/projects';
+import * as schema from '@/lib/db/schema';
+import { chapters } from '@/lib/db/schema';
 
 /**
  * Tests for chapter drag-and-drop reorder functionality.

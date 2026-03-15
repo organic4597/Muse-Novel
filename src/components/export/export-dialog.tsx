@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -9,7 +10,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
 
 export type ExportFormat = 'txt' | 'md' | 'epub';
 
@@ -45,7 +45,7 @@ export function ExportDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog onOpenChange={setOpen} open={open}>
       <DialogTrigger asChild>
         <Button variant="outline">내보내기</Button>
       </DialogTrigger>
@@ -63,14 +63,14 @@ export function ExportDialog({
             <div className="space-y-3 border rounded-lg p-3">
               <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-muted rounded">
                 <input
-                  type="radio"
-                  name="format"
-                  value="txt"
                   checked={selectedFormat === 'txt'}
+                  className="w-4 h-4"
+                  name="format"
                   onChange={(e) =>
                     setSelectedFormat(e.target.value as ExportFormat)
                   }
-                  className="w-4 h-4"
+                  type="radio"
+                  value="txt"
                 />
                 <div className="flex-1">
                   <div className="font-medium text-sm">텍스트 (Plain Text)</div>
@@ -82,14 +82,14 @@ export function ExportDialog({
 
               <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-muted rounded">
                 <input
-                  type="radio"
-                  name="format"
-                  value="md"
                   checked={selectedFormat === 'md'}
+                  className="w-4 h-4"
+                  name="format"
                   onChange={(e) =>
                     setSelectedFormat(e.target.value as ExportFormat)
                   }
-                  className="w-4 h-4"
+                  type="radio"
+                  value="md"
                 />
                 <div className="flex-1">
                   <div className="font-medium text-sm">마크다운 (Markdown)</div>
@@ -101,14 +101,14 @@ export function ExportDialog({
 
               <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-muted rounded">
                 <input
-                  type="radio"
-                  name="format"
-                  value="epub"
                   checked={selectedFormat === 'epub'}
+                  className="w-4 h-4"
+                  name="format"
                   onChange={(e) =>
                     setSelectedFormat(e.target.value as ExportFormat)
                   }
-                  className="w-4 h-4"
+                  type="radio"
+                  value="epub"
                 />
                 <div className="flex-1">
                   <div className="font-medium text-sm">EPUB</div>
@@ -123,13 +123,13 @@ export function ExportDialog({
 
         <div className="flex justify-end gap-3">
           <Button
-            variant="outline"
-            onClick={() => setOpen(false)}
             disabled={isLoading}
+            onClick={() => setOpen(false)}
+            variant="outline"
           >
             취소
           </Button>
-          <Button onClick={handleExport} disabled={isLoading}>
+          <Button disabled={isLoading} onClick={handleExport}>
             {isLoading ? '다운로드 중...' : '내보내기'}
           </Button>
         </div>

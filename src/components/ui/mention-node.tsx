@@ -1,8 +1,8 @@
 'use client';
 
+import { Globe, User } from 'lucide-react';
 import type { SlateEditor, TComboboxInputElement, TMentionElement } from 'platejs';
 import { getEditorPlugin, IS_APPLE, KEYS } from 'platejs';
-
 import type { PlateElementProps } from 'platejs/react';
 import {
   PlateElement,
@@ -10,7 +10,6 @@ import {
   useReadOnly,
   useSelected,
 } from 'platejs/react';
-import { Globe, User } from 'lucide-react';
 import * as React from 'react';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useMounted } from '@/hooks/use-mounted';

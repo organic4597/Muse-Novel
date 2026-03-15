@@ -13,10 +13,10 @@
 
 import { readTrainingLock } from '../ai/qlora-training-lock';
 import {
-  stopServer,
-  startServer,
-  isServerRunning,
   freeGpuForTraining,
+  isServerRunning,
+  startServer,
+  stopServer,
 } from '../ai/qwen-server-manager';
 
 export class VramCoordinationError extends Error {

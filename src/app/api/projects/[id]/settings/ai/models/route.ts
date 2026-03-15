@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-
-import { db } from '@/lib/db';
 import { listOllamaModelOptions } from '@/lib/ai/ollama-model-metadata';
+import { db } from '@/lib/db';
 import { listProviders } from '@/lib/db/queries/ai-settings';
 
 export async function GET(

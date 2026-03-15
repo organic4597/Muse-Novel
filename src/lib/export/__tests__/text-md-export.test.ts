@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { convertToPlainText } from '../export-text';
 import { convertToMarkdown } from '../export-md';
+import { convertToPlainText } from '../export-text';
 
 describe('Plain Text Export', () => {
   it('should convert simple paragraph to plain text', () => {

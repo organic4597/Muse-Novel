@@ -2,8 +2,7 @@ import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-
-import * as schema from '../schema';
+import { createChapter } from '../queries/chapters';
 import {
   createEmotion,
   deleteEmotion,
@@ -12,7 +11,7 @@ import {
 } from '../queries/character-emotions';
 import { createCharacter } from '../queries/characters';
 import { createProject } from '../queries/projects';
-import { createChapter } from '../queries/chapters';
+import * as schema from '../schema';
 
 describe('Character Emotion Queries', () => {
   let sqlite: InstanceType<typeof Database>;
@@ -130,7 +129,7 @@ describe('Character Emotion Queries', () => {
       });
 
       await createEmotion(db, { characterId, chapterId: chapter3.id, emotion: '체념' });
-      await createEmotion(db, { characterId, chapterId: chapterId, emotion: '기대' });
+      await createEmotion(db, { characterId, chapterId, emotion: '기대' });
       await createEmotion(db, { characterId, chapterId: chapter2.id, emotion: '갈등' });
 
       const result = await listEmotionsForCharacter(db, characterId);

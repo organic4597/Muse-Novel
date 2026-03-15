@@ -33,9 +33,9 @@ export function AutoSaveIndicator({ status, onRetry }: AutoSaveIndicatorProps) {
   // error state — clickable to retry
   return (
     <button
-      type="button"
-      onClick={onRetry}
       className="inline-flex h-5 min-w-24 items-center justify-end gap-1 text-xs text-destructive hover:underline"
+      onClick={onRetry}
+      type="button"
     >
       <span>✕</span>
       저장 실패

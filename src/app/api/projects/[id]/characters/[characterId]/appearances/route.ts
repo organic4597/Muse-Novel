@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
-
+import { extractTextFromPlateJson } from '@/lib/character-mentions';
 import { db } from '@/lib/db';
 import { listChapters } from '@/lib/db/queries/chapters';
 import { getCharacter } from '@/lib/db/queries/characters';
-import { extractTextFromPlateJson } from '@/lib/character-mentions';
 
 export async function GET(
   _request: Request,

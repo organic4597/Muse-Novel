@@ -1,12 +1,12 @@
 export const dynamic = 'force-dynamic';
 
-import { db } from '@/lib/db';
-import { getProject } from '@/lib/db/queries/projects';
-import { listLoras } from '@/lib/db/queries/loras';
+import { Toaster } from 'sonner';
 import { AISettingsPage } from '@/components/settings/ai-settings-page';
 import { ImageSettingsPage } from '@/components/settings/image-settings-page';
 import { LoraSettingsSection } from '@/components/settings/lora-settings-section';
-import { Toaster } from 'sonner';
+import { db } from '@/lib/db';
+import { listLoras } from '@/lib/db/queries/loras';
+import { getProject } from '@/lib/db/queries/projects';
 
 export default async function SettingsPage({
   params,
@@ -19,7 +19,7 @@ export default async function SettingsPage({
 
   return (
     <>
-      <Toaster richColors position="top-right" />
+      <Toaster position="top-right" richColors />
       <div className="space-y-10">
         <div className="space-y-6">
           <h1 className="text-2xl font-bold tracking-tight">AI 설정</h1>
@@ -29,9 +29,9 @@ export default async function SettingsPage({
         <ImageSettingsPage projectId={id} />
         <hr className="border-border" />
         <LoraSettingsSection
-          projectId={id}
-          initialLoras={loras}
           activeLoraId={project?.activeLoraId ?? null}
+          initialLoras={loras}
+          projectId={id}
         />
       </div>
     </>

@@ -1,6 +1,6 @@
+import { extractLatinParts } from './tag-translator';
 import type { CharacterPromptContext, ImageKind } from './types';
 import { SHOT_PRESETS } from './types';
-import { extractLatinParts } from './tag-translator';
 
 /**
  * Deduplicate tags while preserving order.

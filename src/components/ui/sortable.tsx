@@ -237,15 +237,15 @@ function Sortable<T>(props: SortableProps<T>) {
         modifiers={modifiers ?? config.modifiers}
         sensors={sensors}
         {...sortableProps}
-        id={id}
-        onDragStart={onDragStart}
-        onDragEnd={onDragEnd}
-        onDragCancel={onDragCancel}
         accessibility={{
           announcements,
           screenReaderInstructions,
           ...accessibility,
         }}
+        id={id}
+        onDragCancel={onDragCancel}
+        onDragEnd={onDragEnd}
+        onDragStart={onDragStart}
       />
     </SortableRootContext.Provider>
   );
@@ -386,15 +386,13 @@ function SortableItem(props: SortableItemProps) {
   return (
     <SortableItemContext.Provider value={itemContext}>
       <ItemPrimitive
-        id={id}
         data-disabled={disabled}
         data-dragging={isDragging ? '' : undefined}
         data-slot="sortable-item"
+        id={id}
         {...itemProps}
         {...(asHandle && !disabled ? attributes : {})}
         {...(asHandle && !disabled ? listeners : {})}
-        ref={composedRef}
-        style={composedStyle}
         className={cn(
           'focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1',
           {
@@ -407,6 +405,8 @@ function SortableItem(props: SortableItemProps) {
           },
           className
         )}
+        ref={composedRef}
+        style={composedStyle}
       />
     </SortableItemContext.Provider>
   );
@@ -434,15 +434,14 @@ function SortableItemHandle(props: SortableItemHandleProps) {
 
   return (
     <HandlePrimitive
-      type="button"
       aria-controls={itemContext.id}
       data-disabled={isDisabled}
       data-dragging={itemContext.isDragging ? '' : undefined}
       data-slot="sortable-item-handle"
+      type="button"
       {...itemHandleProps}
       {...(isDisabled ? {} : itemContext.attributes)}
       {...(isDisabled ? {} : itemContext.listeners)}
-      ref={composedRef}
       className={cn(
         'select-none disabled:pointer-events-none disabled:opacity-50',
         context.flatCursor
@@ -451,6 +450,7 @@ function SortableItemHandle(props: SortableItemHandleProps) {
         className
       )}
       disabled={isDisabled}
+      ref={composedRef}
     />
   );
 }
@@ -491,9 +491,9 @@ function SortableOverlay(props: SortableOverlayProps) {
 
   return ReactDOM.createPortal(
     <DragOverlay
+      className={cn(!context.flatCursor && 'cursor-grabbing')}
       dropAnimation={dropAnimation}
       modifiers={context.modifiers}
-      className={cn(!context.flatCursor && 'cursor-grabbing')}
       {...overlayProps}
     >
       <SortableOverlayContext.Provider value={true}>

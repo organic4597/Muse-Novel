@@ -83,11 +83,11 @@ vi.mock('@/lib/db/queries/chapters', () => ({
   listChapters: vi.fn(),
 }));
 
-import { getProject } from '@/lib/db/queries/projects';
-import { listCharacters } from '@/lib/db/queries/characters';
-import { listWorldEntries } from '@/lib/db/queries/world-entries';
-import { getChapter, listChapters } from '@/lib/db/queries/chapters';
 import type { DB } from '@/lib/db';
+import { getChapter, listChapters } from '@/lib/db/queries/chapters';
+import { listCharacters } from '@/lib/db/queries/characters';
+import { getProject } from '@/lib/db/queries/projects';
+import { listWorldEntries } from '@/lib/db/queries/world-entries';
 
 const fakeDb = {} as DB;
 

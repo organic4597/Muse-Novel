@@ -1,8 +1,6 @@
 import type { Metadata } from 'next';
-
-import Script from 'next/script';
-
 import { Noto_Sans_KR } from 'next/font/google';
+import Script from 'next/script';
 
 import './globals.css';
 import { themeInitScript } from '@/lib/theme';

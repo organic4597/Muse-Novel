@@ -2,7 +2,7 @@
  * Client for the tag recommender Python server.
  * Auto-starts the server on first request, keeps it running across requests.
  */
-import { spawn, type ChildProcess } from 'child_process';
+import { type ChildProcess, spawn } from 'child_process';
 import path from 'path';
 
 const SERVER_HOST = '127.0.0.1';

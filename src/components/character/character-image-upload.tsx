@@ -1,10 +1,9 @@
 'use client';
 
-import { useRef, useState } from 'react';
 import { Sparkles } from 'lucide-react';
-
-import { Button } from '@/components/ui/button';
+import { useRef, useState } from 'react';
 import { ImageGenerationDialog } from '@/components/character/image-generation-dialog';
+import { Button } from '@/components/ui/button';
 
 type Props = {
   projectId: string;
@@ -191,12 +190,12 @@ export function CharacterImageUpload({
       />
 
       <ImageGenerationDialog
-        open={isGenDialogOpen}
-        onOpenChange={setIsGenDialogOpen}
-        projectId={_projectId}
         characterId={characterId}
         characterName={characterName}
         onGenerated={onImageChange}
+        onOpenChange={setIsGenDialogOpen}
+        open={isGenDialogOpen}
+        projectId={_projectId}
       />
     </div>
   );

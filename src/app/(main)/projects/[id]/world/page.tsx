@@ -4,8 +4,8 @@ import { notFound } from 'next/navigation';
 
 import { WorldEntryList } from '@/components/world/world-entry-list';
 import { db } from '@/lib/db';
-import { listWorldEntries } from '@/lib/db/queries/world-entries';
 import { getProject } from '@/lib/db/queries/projects';
+import { listWorldEntries } from '@/lib/db/queries/world-entries';
 
 export default async function WorldPage({
   params,

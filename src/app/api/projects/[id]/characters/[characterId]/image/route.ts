@@ -1,7 +1,6 @@
 import { mkdir, unlink, writeFile } from 'fs/promises';
-import path from 'path';
-
 import { NextResponse } from 'next/server';
+import path from 'path';
 
 import { db } from '@/lib/db';
 import { getCharacter, updateCharacter } from '@/lib/db/queries/characters';

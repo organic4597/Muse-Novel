@@ -18,6 +18,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import type { CharacterItem } from '@/lib/ai/story-planning-types';
 
 type Character = {
   id: string;
@@ -28,6 +29,7 @@ type Character = {
   personality: string | null;
   backstory: string | null;
   arcDescription: string | null;
+  itemsJson: string | null;
   imagePath: string | null;
   createdAt: Date | null;
   updatedAt: Date | null;
@@ -225,6 +227,9 @@ function CharacterDetailView({
 }) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [galleryRefreshKey, setGalleryRefreshKey] = useState(0);
+  const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
+  const [isAddingItem, setIsAddingItem] = useState(false);
+  const [itemForm, setItemForm] = useState({ name: '', description: '', status: '보유' });
   const router = useRouter();
 
   const handleDelete = async () => {
@@ -253,6 +258,67 @@ function CharacterDetailView({
     { label: '배경', value: character.backstory },
     { label: '캐릭터 아크', value: character.arcDescription },
   ];
+
+  const items: CharacterItem[] = (() => {
+    try {
+      return JSON.parse(character.itemsJson ?? '[]');
+    } catch {
+      return [];
+    }
+  })();
+
+  const STATUS_COLORS: Record<string, string> = {
+    '보유': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+    '장착중': 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300',
+    '분실': 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
+    '기타': 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800/50 dark:text-zinc-400',
+  };
+
+  const saveItems = async (updatedItems: CharacterItem[]) => {
+    const res = await fetch(
+      `/api/projects/${projectId}/characters/${character.id}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemsJson: JSON.stringify(updatedItems) }),
+      }
+    );
+    if (res.ok) {
+      onImageChange();
+    }
+  };
+
+  const handleAddItem = async () => {
+    if (!itemForm.name.trim()) return;
+    const newItem: CharacterItem = {
+      name: itemForm.name.trim(),
+      ...(itemForm.description.trim() && { description: itemForm.description.trim() }),
+      ...(itemForm.status && { status: itemForm.status }),
+    };
+    await saveItems([...items, newItem]);
+    setItemForm({ name: '', description: '', status: '보유' });
+    setIsAddingItem(false);
+  };
+
+  const handleEditItem = async (index: number) => {
+    if (!itemForm.name.trim()) return;
+    const updated = items.map((item, i) =>
+      i === index
+        ? {
+            name: itemForm.name.trim(),
+            ...(itemForm.description.trim() && { description: itemForm.description.trim() }),
+            ...(itemForm.status && { status: itemForm.status }),
+          }
+        : item
+    );
+    await saveItems(updated);
+    setEditingItemIndex(null);
+    setItemForm({ name: '', description: '', status: '보유' });
+  };
+
+  const handleDeleteItem = async (index: number) => {
+    await saveItems(items.filter((_, i) => i !== index));
+  };
 
   return (
     <>
@@ -298,6 +364,171 @@ function CharacterDetailView({
         )}
       </div>
 
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-muted-foreground">🎒 소지품</h3>
+          {!isAddingItem && (
+            <button
+              className="text-xs font-medium text-primary hover:underline"
+              onClick={() => {
+                setItemForm({ name: '', description: '', status: '보유' });
+                setIsAddingItem(true);
+                setEditingItemIndex(null);
+              }}
+              type="button"
+            >
+              추가
+            </button>
+          )}
+        </div>
+
+        {items.length > 0 && (
+          <div className="divide-y divide-border rounded-lg border border-border">
+            {items.map((item, index) =>
+              editingItemIndex === index ? (
+                <div className="space-y-2 p-3" key={index}>
+                  <input
+                    className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
+                    onChange={(e) => setItemForm((f) => ({ ...f, name: e.target.value }))}
+                    placeholder="아이템 이름"
+                    value={itemForm.name}
+                  />
+                  <textarea
+                    className="w-full resize-none rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
+                    onChange={(e) => setItemForm((f) => ({ ...f, description: e.target.value }))}
+                    placeholder="설명 (선택)"
+                    rows={2}
+                    value={itemForm.description}
+                  />
+                  <select
+                    className="rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
+                    onChange={(e) => setItemForm((f) => ({ ...f, status: e.target.value }))}
+                    value={itemForm.status}
+                  >
+                    <option value="보유">보유</option>
+                    <option value="장착중">장착중</option>
+                    <option value="분실">분실</option>
+                    <option value="기타">기타</option>
+                  </select>
+                  <div className="flex gap-2">
+                    <button
+                      className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+                      onClick={() => handleEditItem(index)}
+                      type="button"
+                    >
+                      저장
+                    </button>
+                    <button
+                      className="rounded-md px-3 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                      onClick={() => {
+                        setEditingItemIndex(null);
+                        setItemForm({ name: '', description: '', status: '보유' });
+                      }}
+                      type="button"
+                    >
+                      취소
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start justify-between gap-2 p-3" key={index}>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold">{item.name}</span>
+                      {item.status && (
+                        <span
+                          className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium leading-tight ${STATUS_COLORS[item.status] ?? STATUS_COLORS['기타']}`}
+                        >
+                          {item.status}
+                        </span>
+                      )}
+                    </div>
+                    {item.description && (
+                      <p className="mt-0.5 text-xs text-muted-foreground">{item.description}</p>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    <button
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => {
+                        setItemForm({
+                          name: item.name,
+                          description: item.description ?? '',
+                          status: item.status ?? '보유',
+                        });
+                        setEditingItemIndex(index);
+                        setIsAddingItem(false);
+                      }}
+                      type="button"
+                    >
+                      수정
+                    </button>
+                    <button
+                      className="text-xs text-muted-foreground hover:text-destructive"
+                      onClick={() => handleDeleteItem(index)}
+                      type="button"
+                    >
+                      삭제
+                    </button>
+                  </div>
+                </div>
+              )
+            )}
+          </div>
+        )}
+
+        {isAddingItem && (
+          <div className="space-y-2 rounded-lg border border-border p-3">
+            <input
+              className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
+              onChange={(e) => setItemForm((f) => ({ ...f, name: e.target.value }))}
+              placeholder="아이템 이름"
+              value={itemForm.name}
+            />
+            <textarea
+              className="w-full resize-none rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
+              onChange={(e) => setItemForm((f) => ({ ...f, description: e.target.value }))}
+              placeholder="설명 (선택)"
+              rows={2}
+              value={itemForm.description}
+            />
+            <select
+              className="rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
+              onChange={(e) => setItemForm((f) => ({ ...f, status: e.target.value }))}
+              value={itemForm.status}
+            >
+              <option value="보유">보유</option>
+              <option value="장착중">장착중</option>
+              <option value="분실">분실</option>
+              <option value="기타">기타</option>
+            </select>
+            <div className="flex gap-2">
+              <button
+                className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+                onClick={handleAddItem}
+                type="button"
+              >
+                추가
+              </button>
+              <button
+                className="rounded-md px-3 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  setIsAddingItem(false);
+                  setItemForm({ name: '', description: '', status: '보유' });
+                }}
+                type="button"
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        )}
+
+        {items.length === 0 && !isAddingItem && (
+          <p className="text-xs text-muted-foreground">등록된 소지품이 없습니다</p>
+        )}
+      </div>
+
       <CharacterImageUpload
         characterId={character.id}
         characterName={character.name}
@@ -311,8 +542,8 @@ function CharacterDetailView({
 
       <CharacterGallery
         characterId={character.id}
-        projectId={projectId}
         onPrimaryChanged={onImageChange}
+        projectId={projectId}
         refreshKey={galleryRefreshKey}
       />
 

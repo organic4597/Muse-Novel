@@ -2,8 +2,6 @@ import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-
-import * as schema from '../schema';
 import {
   createRelationship,
   deleteRelationship,
@@ -13,6 +11,7 @@ import {
 } from '../queries/character-relationships';
 import { createCharacter } from '../queries/characters';
 import { createProject } from '../queries/projects';
+import * as schema from '../schema';
 
 describe('Character Relationship Queries', () => {
   let sqlite: InstanceType<typeof Database>;

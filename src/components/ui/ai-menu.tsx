@@ -139,7 +139,7 @@ export function AIMenu() {
 
   React.useEffect(() => {
     if (toolName === 'edit' && mode === 'chat' && !isLoading) {
-      let anchorNode = editor
+      const anchorNode = editor
         .getApi(BlockSelectionPlugin)
         .blockSelection.getNodes({ selectionFallback: true, sort: true })
         .at(-1);

@@ -4,9 +4,6 @@ import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { decryptApiKey, encryptApiKey, maskApiKey } from '@/lib/ai/encryption';
-
-import * as schema from '../schema';
-import { createProject } from '../queries/projects';
 import {
   deleteProvider,
   getDefaultProvider,
@@ -14,6 +11,8 @@ import {
   setProvider,
   updateProvider,
 } from '../queries/ai-settings';
+import { createProject } from '../queries/projects';
+import * as schema from '../schema';
 
 describe('AI Settings Queries', () => {
   let sqlite: InstanceType<typeof Database>;

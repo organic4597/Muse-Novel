@@ -4,13 +4,13 @@ import path from 'path';
 import { getImageGenGpus } from '../gpu-config';
 import { Automatic1111Client } from './automatic1111-client';
 import { generateWithDiffusers, type ProgressEvent } from './diffusers-client';
-import { buildKoreanCharacterTexts, translateToTags } from './tag-translator';
 import { buildCharacterPrompt, buildDefaultNegativePrompt } from './prompt-builder';
+import { buildKoreanCharacterTexts, translateToTags } from './tag-translator';
 import type {
   CharacterPromptContext,
   ImageKind,
 } from './types';
-import { DEFAULT_BATCH_SIZE, SHOT_PRESETS, DEFAULT_DIFFUSERS_MODEL } from './types';
+import { DEFAULT_BATCH_SIZE, DEFAULT_DIFFUSERS_MODEL, SHOT_PRESETS } from './types';
 
 export interface ImageProviderConfig {
   providerType: string;

@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
-
-import { db } from '@/lib/db';
 import { decryptApiKey } from '@/lib/ai/encryption';
 import { checkProviderHealth } from '@/lib/ai/health-check';
 import type { ProviderType } from '@/lib/ai/types';
+import { db } from '@/lib/db';
 import { listProviders } from '@/lib/db/queries/ai-settings';
 
 const VALID_PROVIDER_TYPES: ProviderType[] = [

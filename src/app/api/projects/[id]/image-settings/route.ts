@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server';
 
 import { db } from '@/lib/db';
 import {
+  deleteImageProvider,
   listImageProviders,
   setImageProvider,
   updateImageProvider,
-  deleteImageProvider,
 } from '@/lib/db/queries/image-provider-settings';
 
 export async function GET(

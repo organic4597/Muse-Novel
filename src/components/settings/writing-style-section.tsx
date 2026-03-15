@@ -1,8 +1,8 @@
 'use client';
 
+import { Loader2, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Loader2, Plus, Sparkles, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import type { WritingStyleProfile } from '@/lib/db/queries/writing-style-profiles';
@@ -236,9 +236,9 @@ export function WritingStyleSection({ projectId, initialProfiles, activeProfileI
         <div className="flex gap-2">
           <select
             className={selectClass}
-            value={activeProfileId ?? ''}
-            onChange={(e) => void handleAssign(e.target.value || null)}
             disabled={isAssigning}
+            onChange={(e) => void handleAssign(e.target.value || null)}
+            value={activeProfileId ?? ''}
           >
             <option value="">— 적용 안 함 —</option>
             {profiles.map((p) => (
@@ -269,8 +269,8 @@ export function WritingStyleSection({ projectId, initialProfiles, activeProfileI
             {profiles.length > 0 ? (
               <select
                 className={selectClass}
-                value={selectedId}
                 onChange={(e) => handleSelectChange(e.target.value)}
+                value={selectedId}
               >
                 {profiles.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -289,18 +289,18 @@ export function WritingStyleSection({ projectId, initialProfiles, activeProfileI
           <div className="flex gap-2 pt-1">
             <input
               className={inputClass}
-              placeholder="새 프로파일 이름..."
-              value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') void handleCreate();
               }}
+              placeholder="새 프로파일 이름..."
+              value={newName}
             />
             <Button
               disabled={isCreating || !newName.trim()}
+              onClick={handleCreate}
               type="button"
               variant="outline"
-              onClick={handleCreate}
             >
               {isCreating ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -329,10 +329,10 @@ export function WritingStyleSection({ projectId, initialProfiles, activeProfileI
                 )}
                 <Button
                   disabled={isUploading}
+                  onClick={() => fileInputRef.current?.click()}
+                  size="sm"
                   type="button"
                   variant="outline"
-                  size="sm"
-                  onClick={() => fileInputRef.current?.click()}
                 >
                   {isUploading ? (
                     <>
@@ -347,18 +347,18 @@ export function WritingStyleSection({ projectId, initialProfiles, activeProfileI
               <input
                 accept=".txt"
                 className="hidden"
+                onChange={handleFileChange}
                 ref={fileInputRef}
                 type="file"
-                onChange={handleFileChange}
               />
             </div>
 
             {/* Analyze button */}
             <Button
               disabled={isAnalyzing || !selected.filePath}
+              onClick={handleAnalyze}
               type="button"
               variant="outline"
-              onClick={handleAnalyze}
             >
               {isAnalyzing ? (
                 <>
@@ -382,9 +382,9 @@ export function WritingStyleSection({ projectId, initialProfiles, activeProfileI
               <textarea
                 className={`${textareaClass} min-h-24`}
                 id="style-description"
+                onChange={(e) => setEditDescription(e.target.value)}
                 placeholder="예: 단문 위주의 간결한 문체, 3인칭 관찰자 시점, 감정 묘사보다 행동 묘사 중심..."
                 value={editDescription}
-                onChange={(e) => setEditDescription(e.target.value)}
               />
             </div>
 
@@ -392,10 +392,10 @@ export function WritingStyleSection({ projectId, initialProfiles, activeProfileI
             <div className="flex items-center justify-between gap-2">
               <Button
                 disabled={isDeleting}
+                onClick={handleDelete}
+                size="sm"
                 type="button"
                 variant="outline"
-                size="sm"
-                onClick={handleDelete}
               >
                 {isDeleting ? (
                   <Loader2 className="size-4 animate-spin" />
@@ -406,8 +406,8 @@ export function WritingStyleSection({ projectId, initialProfiles, activeProfileI
               </Button>
               <Button
                 disabled={isSaving}
-                type="button"
                 onClick={handleSaveDescription}
+                type="button"
               >
                 {isSaving ? (
                   <>

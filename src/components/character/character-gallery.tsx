@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { Loader2, Star, Trash2, X, ZoomIn } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -144,15 +144,15 @@ export function CharacterGallery({
           const badge = KIND_BADGES[img.kind] ?? KIND_BADGES.profile;
           return (
             <div
-              key={img.id}
               className="group relative overflow-hidden rounded-lg border border-border"
+              key={img.id}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 alt="캐릭터 이미지"
                 className="aspect-square w-full cursor-pointer object-cover"
-                src={img.imagePath}
                 onClick={() => setZoomedImage(img)}
+                src={img.imagePath}
               />
               {/* Kind badge */}
               <span
@@ -169,29 +169,29 @@ export function CharacterGallery({
               {/* Hover actions */}
               <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-gradient-to-t from-black/60 to-transparent p-1.5 opacity-0 transition-opacity group-hover:opacity-100">
                 <Button
-                  size="sm"
-                  variant="secondary"
                   className="h-6 px-2 text-[10px]"
                   onClick={() => setZoomedImage(img)}
+                  size="sm"
+                  variant="secondary"
                 >
                   <ZoomIn className="size-3" />
                 </Button>
                 {img.isPrimary !== 1 && (
                   <Button
-                    size="sm"
-                    variant="secondary"
                     className="h-6 px-2 text-[10px]"
                     onClick={() => handleSetPrimary(img.id)}
+                    size="sm"
+                    variant="secondary"
                   >
                     <Star className="size-3" />
                   </Button>
                 )}
                 <Button
-                  size="sm"
-                  variant="destructive"
                   className="h-6 px-2 text-[10px]"
                   disabled={deletingId === img.id}
                   onClick={() => handleDelete(img.id)}
+                  size="sm"
+                  variant="destructive"
                 >
                   {deletingId === img.id ? (
                     <Loader2 className="size-3 animate-spin" />
@@ -208,8 +208,8 @@ export function CharacterGallery({
       {/* Zoom Dialog */}
       {zoomedImage && (
         <Dialog
-          open={!!zoomedImage}
           onOpenChange={(open) => !open && setZoomedImage(null)}
+          open={!!zoomedImage}
         >
           <DialogContent className="max-h-[95vh] overflow-y-auto sm:max-w-3xl">
             <DialogHeader>
@@ -243,26 +243,26 @@ export function CharacterGallery({
               <div className="flex gap-2">
                 {zoomedImage.isPrimary !== 1 && (
                   <Button
-                    size="sm"
-                    variant="outline"
                     onClick={() => {
                       handleSetPrimary(zoomedImage.id);
                       setZoomedImage((prev) =>
                         prev ? { ...prev, isPrimary: 1 } : null
                       );
                     }}
+                    size="sm"
+                    variant="outline"
                   >
                     <Star className="size-4" />
                     대표로 지정
                   </Button>
                 )}
                 <Button
-                  size="sm"
-                  variant="destructive"
                   onClick={() => {
                     handleDelete(zoomedImage.id);
                     setZoomedImage(null);
                   }}
+                  size="sm"
+                  variant="destructive"
                 >
                   <Trash2 className="size-4" />
                   삭제

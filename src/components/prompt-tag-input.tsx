@@ -1,12 +1,12 @@
 'use client';
 
-import { Loader2, SparklesIcon, XIcon, WandSparklesIcon } from 'lucide-react';
+import { Loader2, SparklesIcon, WandSparklesIcon, XIcon } from 'lucide-react';
 import {
+  type KeyboardEvent,
   useCallback,
   useEffect,
   useRef,
   useState,
-  type KeyboardEvent,
 } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -283,38 +283,38 @@ export function PromptTagInput({
   );
 
   return (
-    <div ref={containerRef} className={cn('space-y-2', className)}>
+    <div className={cn('space-y-2', className)} ref={containerRef}>
       {/* Toolbar buttons */}
       <div className="flex flex-wrap gap-1.5">
         {characterId && (
           <button
-            type="button"
-            disabled={disabled}
             className={cn(
               'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors',
               showRecommend
                 ? 'border-primary bg-primary/10 text-primary'
                 : 'border-border text-muted-foreground hover:border-primary/50 hover:text-primary'
             )}
+            disabled={disabled}
             onClick={fetchRecommendations}
+            type="button"
           >
             <SparklesIcon className="size-3" />
             캐릭터 추천
           </button>
         )}
         <button
-          type="button"
-          disabled={disabled}
           className={cn(
             'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors',
             showDescConvert
               ? 'border-primary bg-primary/10 text-primary'
               : 'border-border text-muted-foreground hover:border-primary/50 hover:text-primary'
           )}
+          disabled={disabled}
           onClick={() => {
             setShowDescConvert(!showDescConvert);
             setShowRecommend(false);
           }}
+          type="button"
         >
           <WandSparklesIcon className="size-3" />
           설명→태그 변환
@@ -327,9 +327,9 @@ export function PromptTagInput({
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-primary">캐릭터 기반 추천 태그</span>
             <button
-              type="button"
               className="text-xs text-muted-foreground hover:text-foreground"
               onClick={() => setShowRecommend(false)}
+              type="button"
             >
               닫기
             </button>
@@ -348,17 +348,17 @@ export function PromptTagInput({
                   );
                   return (
                     <button
-                      key={`${rec.tag}-${rec.reason}`}
-                      type="button"
-                      disabled={already}
                       className={cn(
                         'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs transition-colors',
                         already
                           ? 'bg-muted text-muted-foreground opacity-50'
                           : 'bg-primary/10 text-primary hover:bg-primary/20'
                       )}
+                      disabled={already}
+                      key={`${rec.tag}-${rec.reason}`}
                       onClick={() => addTag(rec.tag)}
                       title={`${rec.categoryLabel} — ${rec.reason}에서 추출${rec.score ? ` (${Math.round(rec.score * 100)}%)` : ''}`}
+                      type="button"
                     >
                       {colorDot(rec.color)}
                       {rec.tag}
@@ -373,11 +373,11 @@ export function PromptTagInput({
                 })}
               </div>
               <button
-                type="button"
                 className="text-xs text-primary hover:underline"
                 onClick={() =>
                   addMultipleTags(recommendations.map((r) => r.tag))
                 }
+                type="button"
               >
                 추천 태그 전체 추가
               </button>
@@ -396,12 +396,12 @@ export function PromptTagInput({
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-primary">설명 → 태그 변환</span>
             <button
-              type="button"
               className="text-xs text-muted-foreground hover:text-foreground"
               onClick={() => {
                 setShowDescConvert(false);
                 setDescTags([]);
               }}
+              type="button"
             >
               닫기
             </button>
@@ -409,8 +409,6 @@ export function PromptTagInput({
           <div className="flex gap-2">
             <textarea
               className="flex-1 min-h-[40px] max-h-[80px] rounded-md border border-input bg-transparent px-2 py-1.5 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
-              placeholder="예: 빨간 머리에 파란 눈의 소녀가 숲에서 검을 들고 서있는 모습"
-              value={descText}
               onChange={(e) => setDescText(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -418,12 +416,14 @@ export function PromptTagInput({
                   convertDescription();
                 }
               }}
+              placeholder="예: 빨간 머리에 파란 눈의 소녀가 숲에서 검을 들고 서있는 모습"
+              value={descText}
             />
             <button
-              type="button"
-              disabled={descLoading || !descText.trim()}
               className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50 shrink-0"
+              disabled={descLoading || !descText.trim()}
               onClick={convertDescription}
+              type="button"
             >
               {descLoading ? (
                 <Loader2 className="size-3 animate-spin" />
@@ -441,17 +441,17 @@ export function PromptTagInput({
                   );
                   return (
                     <button
-                      key={`${dt.tag}-${dt.category}`}
-                      type="button"
-                      disabled={already}
                       className={cn(
                         'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs transition-colors',
                         already
                           ? 'bg-muted text-muted-foreground opacity-50'
                           : 'bg-primary/10 text-primary hover:bg-primary/20'
                       )}
+                      disabled={already}
+                      key={`${dt.tag}-${dt.category}`}
                       onClick={() => addTag(dt.tag)}
                       title={`${dt.categoryLabel} (${Math.round((dt.score ?? 0) * 100)}%)`}
+                      type="button"
                     >
                       {colorDot(dt.color)}
                       {dt.tag}
@@ -466,9 +466,9 @@ export function PromptTagInput({
                 })}
               </div>
               <button
-                type="button"
                 className="text-xs text-primary hover:underline"
                 onClick={() => addMultipleTags(descTags.map((d) => d.tag))}
+                type="button"
               >
                 변환 결과 전체 추가
               </button>
@@ -489,18 +489,18 @@ export function PromptTagInput({
         >
           {tags.map((tag, i) => (
             <span
-              key={`${tag}-${i}`}
               className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs text-primary"
+              key={`${tag}-${i}`}
             >
               {tag}
               {!disabled && (
                 <button
-                  type="button"
                   className="hover:text-destructive transition-colors"
                   onClick={(e) => {
                     e.stopPropagation();
                     removeTag(i);
                   }}
+                  type="button"
                 >
                   <XIcon className="size-3" />
                 </button>
@@ -508,26 +508,26 @@ export function PromptTagInput({
             </span>
           ))}
           <input
-            ref={inputRef}
-            type="text"
             className="flex-1 min-w-[120px] bg-transparent outline-none text-sm placeholder:text-muted-foreground"
-            placeholder={tags.length === 0 ? placeholder : '태그 추가...'}
             disabled={disabled}
-            value={inputValue}
             onChange={(e) => {
               setInputValue(e.target.value);
               setIsOpen(true);
             }}
             onFocus={() => setIsOpen(true)}
             onKeyDown={handleKeyDown}
+            placeholder={tags.length === 0 ? placeholder : '태그 추가...'}
+            ref={inputRef}
+            type="text"
+            value={inputValue}
           />
         </div>
 
         {/* Autocomplete dropdown */}
         {isOpen && !disabled && (
           <div
-            ref={dropdownRef}
             className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-lg overflow-hidden"
+            ref={dropdownRef}
           >
             {items === 'categories' ? (
               /* Category browser */
@@ -537,10 +537,10 @@ export function PromptTagInput({
                 </div>
                 {categories.map((cat) => (
                   <button
-                    key={cat.id}
-                    type="button"
                     className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground transition-colors"
+                    key={cat.id}
                     onClick={() => browseCategory(cat.id)}
+                    type="button"
                   >
                     {colorDot(cat.color)}
                     <span>{cat.label}</span>
@@ -555,13 +555,13 @@ export function PromptTagInput({
               <div className="max-h-[250px] overflow-y-auto p-1">
                 {browsingCategory && (
                   <button
-                    type="button"
                     className="flex w-full items-center gap-1 rounded-sm px-2 py-1 text-xs text-muted-foreground hover:bg-accent transition-colors mb-1"
                     onClick={() => {
                       setBrowsingCategory(null);
                       setSuggestions([]);
                       setSelectedIndex(0);
                     }}
+                    type="button"
                   >
                     ← 카테고리로 돌아가기
                   </button>
@@ -572,9 +572,6 @@ export function PromptTagInput({
                   );
                   return (
                     <button
-                      key={`${item.tag}-${item.category}`}
-                      type="button"
-                      data-selected={i === selectedIndex}
                       className={cn(
                         'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors',
                         i === selectedIndex
@@ -582,7 +579,10 @@ export function PromptTagInput({
                           : 'hover:bg-accent/50',
                         alreadyAdded && 'opacity-40'
                       )}
+                      data-selected={i === selectedIndex}
+                      key={`${item.tag}-${item.category}`}
                       onClick={() => addTag(item.tag)}
+                      type="button"
                     >
                       {colorDot(item.color)}
                       <span className={cn(alreadyAdded && 'line-through')}>
@@ -609,10 +609,10 @@ export function PromptTagInput({
               <div className="flex flex-wrap gap-1 border-t border-border px-2 py-1.5">
                 {categories.slice(0, 8).map((cat) => (
                   <button
-                    key={cat.id}
-                    type="button"
                     className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-accent transition-colors"
+                    key={cat.id}
                     onClick={() => browseCategory(cat.id)}
+                    type="button"
                   >
                     {colorDot(cat.color)}
                     {cat.label}

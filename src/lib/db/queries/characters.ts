@@ -12,6 +12,7 @@ type CreateCharacterData = {
   personality?: string;
   backstory?: string;
   arcDescription?: string;
+  itemsJson?: string | null;
 };
 
 type UpdateCharacterData = Partial<Omit<CreateCharacterData, 'projectId'> & { imagePath: string | null }>;
@@ -27,6 +28,7 @@ export async function createCharacter(db: DB, data: CreateCharacterData) {
       personality: data.personality ?? null,
       backstory: data.backstory ?? null,
       arcDescription: data.arcDescription ?? null,
+      itemsJson: data.itemsJson ?? null,
     })
     .returning()
     .all();

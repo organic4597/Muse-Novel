@@ -1,9 +1,8 @@
 import { eq } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
-
-import { db } from '@/lib/db';
-import { projects, characters, worldEntries, chapters } from '@/lib/db/schema';
 import type { StoryPlanningDraft } from '@/lib/ai/story-planning-types';
+import { db } from '@/lib/db';
+import { chapters, characters, projects, worldEntries } from '@/lib/db/schema';
 
 export async function POST(request: NextRequest) {
   try {
@@ -47,6 +46,7 @@ export async function POST(request: NextRequest) {
             personality: ch.personality ?? null,
             backstory: ch.backstory ?? null,
             arcDescription: ch.arcDescription ?? null,
+            itemsJson: ch.items?.length ? JSON.stringify(ch.items) : null,
           })
           .returning()
           .all()[0]

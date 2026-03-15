@@ -57,6 +57,13 @@
       "when": 1773560000000,
       "tag": "0007_shared_loras",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1773574670939,
+      "tag": "0008_wild_speed",
+      "breakpoints": true
     }
   ]
 }

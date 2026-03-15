@@ -1,17 +1,15 @@
-import { readFile } from 'fs/promises';
-import path from 'path';
-
 import { generateText } from 'ai';
+import { readFile } from 'fs/promises';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
+import path from 'path';
 
 import { getEnvProviderConfig } from '@/lib/ai/daily-slogan';
 import { decryptApiKey } from '@/lib/ai/encryption';
+import { resolveStoredProviderConfig } from '@/lib/ai/provider-config-resolver';
 import { createProvider } from '@/lib/ai/provider-factory';
 import { getProviderOptions } from '@/lib/ai/provider-options';
-import { resolveStoredProviderConfig } from '@/lib/ai/provider-config-resolver';
-import type { ProviderType } from '@/lib/ai/types';
-import type { ProviderConfig } from '@/lib/ai/types';
+import type { ProviderConfig, ProviderType } from '@/lib/ai/types';
 import { db } from '@/lib/db';
 import { getDefaultProvider } from '@/lib/db/queries/ai-settings';
 import {

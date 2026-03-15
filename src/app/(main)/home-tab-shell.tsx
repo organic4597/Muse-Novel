@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { CreateProjectForm } from './create-project-form';
 import { StoryPlanningTab } from './story-planning-tab';
@@ -38,10 +38,10 @@ export function HomeTabShell({ projects, slogan }: HomeTabShellProps) {
   };
 
   return (
-    <Tabs value={activeTab} onValueChange={handleTabChange}>
+    <Tabs onValueChange={handleTabChange} value={activeTab}>
       <TabsList className="w-full h-11">
-        <TabsTrigger value="projects" className="text-sm py-2">📚 소설 목록</TabsTrigger>
-        <TabsTrigger value="planning" className="text-sm py-2">💡 스토리 구상</TabsTrigger>
+        <TabsTrigger className="text-sm py-2" value="projects">📚 소설 목록</TabsTrigger>
+        <TabsTrigger className="text-sm py-2" value="planning">💡 스토리 구상</TabsTrigger>
       </TabsList>
 
       <TabsContent value="projects">
@@ -85,9 +85,9 @@ export function HomeTabShell({ projects, slogan }: HomeTabShellProps) {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
               {projects.map((project) => (
                 <Link
-                  key={project.id}
                   className="group rounded-lg border border-border bg-card p-5 transition-colors hover:border-foreground/20 hover:bg-accent/50"
                   href={`/projects/${project.id}`}
+                  key={project.id}
                 >
                   <h2 className="font-semibold text-card-foreground group-hover:text-foreground">
                     {project.title}

@@ -1,5 +1,5 @@
 import { spawn } from 'child_process';
-import { writeFile, unlink, mkdir } from 'fs/promises';
+import { mkdir, unlink, writeFile } from 'fs/promises';
 import path from 'path';
 
 import { getImageGenGpus } from '../gpu-config';

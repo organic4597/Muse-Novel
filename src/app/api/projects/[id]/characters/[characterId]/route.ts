@@ -45,6 +45,7 @@ export async function PUT(
     personality: body.personality ?? undefined,
     backstory: body.backstory ?? undefined,
     arcDescription: body.arcDescription ?? undefined,
+    itemsJson: body.itemsJson ?? undefined,
   });
 
   if (!updated) {

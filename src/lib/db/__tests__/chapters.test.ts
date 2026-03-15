@@ -3,8 +3,6 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-
-import * as schema from '../schema';
 import {
   createChapter,
   deleteChapter,
@@ -15,6 +13,7 @@ import {
   updateContent,
 } from '../queries/chapters';
 import { createProject } from '../queries/projects';
+import * as schema from '../schema';
 
 describe('Chapter Queries', () => {
   let sqlite: InstanceType<typeof Database>;

@@ -3,7 +3,7 @@
 import { FileText, GripVertical, Plus, Trash2 } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-
+import { Button } from '@/components/ui/button';
 import {
   Sortable,
   SortableContent,
@@ -11,7 +11,6 @@ import {
   SortableItemHandle,
   SortableOverlay,
 } from '@/components/ui/sortable';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 interface Chapter {
@@ -122,11 +121,11 @@ export function ChapterSidebar({
           챕터 목록
         </h2>
         <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={handleCreateChapter}
-          disabled={isCreating}
           aria-label="새 챕터"
+          disabled={isCreating}
+          onClick={handleCreateChapter}
+          size="icon-sm"
+          variant="ghost"
         >
           <Plus />
         </Button>
@@ -141,29 +140,27 @@ export function ChapterSidebar({
       ) : (
         <nav aria-label="챕터 목록">
           <Sortable
-            value={chapters}
-            onValueChange={handleReorder}
             getItemValue={(chapter) => chapter.id}
+            onValueChange={handleReorder}
             orientation="vertical"
+            value={chapters}
           >
             <SortableContent asChild>
               <ul className="space-y-1">
                 {chapters.map((chapter) => (
                   <SortableItem
+                    asChild
                     key={chapter.id}
                     value={chapter.id}
-                    asChild
                   >
                     <li className="group/item flex items-center">
                       <SortableItemHandle
-                        className="shrink-0 p-0.5 text-muted-foreground/40 hover:text-muted-foreground"
                         aria-label="드래그하여 순서 변경"
+                        className="shrink-0 p-0.5 text-muted-foreground/40 hover:text-muted-foreground"
                       >
                         <GripVertical className="size-3.5" />
                       </SortableItemHandle>
                       <button
-                        type="button"
-                        onClick={() => onSelectChapter(chapter)}
                         className={cn(
                           'flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
                           'hover:bg-accent hover:text-accent-foreground',
@@ -171,6 +168,8 @@ export function ChapterSidebar({
                             ? 'bg-accent text-accent-foreground font-medium'
                             : 'text-muted-foreground'
                         )}
+                        onClick={() => onSelectChapter(chapter)}
+                        type="button"
                       >
                         <FileText className="size-3.5 shrink-0" />
                         <span className="truncate">
@@ -178,10 +177,10 @@ export function ChapterSidebar({
                         </span>
                       </button>
                       <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); handleDeleteChapter(chapter.id); }}
-                        className="ml-1 shrink-0 rounded p-0.5 text-muted-foreground/40 opacity-0 hover:text-destructive group-hover/item:opacity-100 transition-opacity"
                         aria-label="챕터 삭제"
+                        className="ml-1 shrink-0 rounded p-0.5 text-muted-foreground/40 opacity-0 hover:text-destructive group-hover/item:opacity-100 transition-opacity"
+                        onClick={(e) => { e.stopPropagation(); handleDeleteChapter(chapter.id); }}
+                        type="button"
                       >
                         <Trash2 className="size-3.5" />
                       </button>

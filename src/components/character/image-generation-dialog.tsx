@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
-import { Loader2, Sparkles, Eye } from 'lucide-react';
-
+import { Eye, Loader2, Sparkles } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { PromptTagInput } from '@/components/prompt-tag-input';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -12,7 +12,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { PromptTagInput } from '@/components/prompt-tag-input';
 
 type ImageKind = 'profile' | 'full-body' | 'illustration';
 
@@ -353,11 +352,11 @@ export function ImageGenerationDialog({
 
   return (
     <Dialog
-      open={open}
       onOpenChange={(val) => {
         if (isGenerating && !val) return; // Prevent closing during generation
         onOpenChange(val);
       }}
+      open={open}
     >
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
@@ -374,15 +373,15 @@ export function ImageGenerationDialog({
             <div className="flex gap-2">
               {(Object.keys(KIND_LABELS) as ImageKind[]).map((k) => (
                 <button
-                  key={k}
-                  type="button"
-                  disabled={isGenerating}
                   className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${
                     kind === k
                       ? 'border-primary bg-primary/10 text-primary'
                       : 'border-border hover:border-foreground/30'
                   } disabled:opacity-50`}
+                  disabled={isGenerating}
+                  key={k}
                   onClick={() => handleKindChange(k)}
+                  type="button"
                 >
                   {KIND_LABELS[k]}
                 </button>
@@ -396,11 +395,11 @@ export function ImageGenerationDialog({
               추가 지시문 <span className="text-muted-foreground">(선택사항)</span>
             </label>
             <PromptTagInput
-              value={additionalPrompt}
+              characterId={characterId}
+              disabled={isGenerating}
               onChange={setAdditionalPrompt}
               placeholder="태그 입력 후 Enter (예: smile, blue eyes, forest)"
-              disabled={isGenerating}
-              characterId={characterId}
+              value={additionalPrompt}
             />
           </div>
 
@@ -410,13 +409,13 @@ export function ImageGenerationDialog({
               생성 장수
             </label>
             <Input
-              id="batch-size"
-              type="number"
-              min={1}
-              max={8}
               disabled={isGenerating}
-              value={batchSize}
+              id="batch-size"
+              max={8}
+              min={1}
               onChange={(e) => setBatchSize(parseInt(e.target.value) || 1)}
+              type="number"
+              value={batchSize}
             />
           </div>
 
@@ -427,18 +426,18 @@ export function ImageGenerationDialog({
               <select
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
                 disabled={isGenerating}
-                value={selectedLoraId}
                 onChange={(e) => handleLoraChange(e.target.value)}
+                value={selectedLoraId}
               >
                 <option value="">없음 (기본 스타일)</option>
                 {loraOptions.map((lora) => (
                   <option
+                    disabled={!lora.downloaded}
                     key={lora.id}
                     value={lora.id}
-                    disabled={!lora.downloaded}
                   >
                     {lora.name}
-                    {!lora.downloaded ? ' (다운로드 필요)' : ''}
+                    {lora.downloaded ? '' : ' (다운로드 필요)'}
                     {lora.format === 'lokr' ? ' ⚠️ LoKR' : ''}
                     {' — '}
                     {lora.type}
@@ -463,8 +462,8 @@ export function ImageGenerationDialog({
                         <span className="text-xs text-muted-foreground">트리거:</span>
                         {lora.triggerWords.map((tw) => (
                           <span
-                            key={tw}
                             className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary"
+                            key={tw}
                           >
                             {tw}
                           </span>
@@ -477,14 +476,14 @@ export function ImageGenerationDialog({
                         <span className="text-xs font-mono">{loraWeight.toFixed(2)}</span>
                       </div>
                       <input
-                        type="range"
-                        min={0}
-                        max={1.5}
-                        step={0.05}
-                        disabled={isGenerating}
-                        value={loraWeight}
-                        onChange={(e) => setLoraWeight(parseFloat(e.target.value))}
                         className="w-full accent-primary"
+                        disabled={isGenerating}
+                        max={1.5}
+                        min={0}
+                        onChange={(e) => setLoraWeight(parseFloat(e.target.value))}
+                        step={0.05}
+                        type="range"
+                        value={loraWeight}
                       />
                     </div>
                   </div>
@@ -496,10 +495,10 @@ export function ImageGenerationDialog({
           {/* Preview / Generate buttons */}
           <div className="flex gap-2">
             <Button
-              type="button"
-              variant="outline"
               disabled={isPreviewing || isGenerating}
               onClick={fetchPreview}
+              type="button"
+              variant="outline"
             >
               {isPreviewing ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -509,9 +508,9 @@ export function ImageGenerationDialog({
               프롬프트 미리보기
             </Button>
             <Button
-              type="button"
               disabled={isGenerating}
               onClick={handleGenerate}
+              type="button"
             >
               {isGenerating ? (
                 <>
@@ -600,8 +599,8 @@ export function ImageGenerationDialog({
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {results.map((img) => (
                   <div
-                    key={img.id}
                     className="group relative overflow-hidden rounded-lg border border-border"
+                    key={img.id}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
@@ -611,10 +610,10 @@ export function ImageGenerationDialog({
                     />
                     <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 transition-opacity group-hover:opacity-100">
                       <Button
-                        size="sm"
-                        variant="secondary"
                         className="h-7 text-xs"
                         onClick={() => handleSetPrimary(img.id)}
+                        size="sm"
+                        variant="secondary"
                       >
                         {img.isPrimary === 1 ? '✓ 대표' : '대표로 지정'}
                       </Button>

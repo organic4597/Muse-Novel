@@ -1,7 +1,7 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as schema from '@/lib/db/schema';
 import type { ProviderConfig } from '../types';

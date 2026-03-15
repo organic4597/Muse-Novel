@@ -458,9 +458,8 @@ export function LoraSettingsSection({
                         {lora.sourceDescription
                           ? ` · ${lora.sourceDescription}`
                           : ''}
-                        {!isOwnedByCurrentProject
-                          ? ' · 다른 프로젝트에서 생성'
-                          : ''}
+                        {isOwnedByCurrentProject
+                          ? '' : ' · 다른 프로젝트에서 생성'}
                       </p>
                     )}
                   </div>

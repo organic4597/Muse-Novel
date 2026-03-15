@@ -96,7 +96,7 @@ function extractInlineSuggestionContext(fullContent: string): {
 function parseBracketedSuggestion(text: string): string {
   const bracketPatterns = [
     /==([^=\n]+)==/,
-    /\[([^\[\]\n]+)\]/,
+    /\[([^[\]\n]+)\]/,
     /\(([^()\n]+)\)/,
     /「([^「」\n]+)」/,
     /『([^『』\n]+)』/,

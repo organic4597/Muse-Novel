@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server';
 
 import { db } from '@/lib/db';
 import {
+  deleteProvider,
   getGlobalDefaultProvider,
   listGlobalProviders,
   setGlobalProvider,
-  deleteProvider,
   updateProvider,
 } from '@/lib/db/queries/ai-settings';
 

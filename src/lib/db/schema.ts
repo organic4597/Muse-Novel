@@ -63,6 +63,7 @@ export const characters = sqliteTable('characters', {
   personality: text('personality'),
   backstory: text('backstory'),
   arcDescription: text('arc_description'),
+  itemsJson: text('items_json'),
   imagePath: text('image_path'),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(
     () => new Date()

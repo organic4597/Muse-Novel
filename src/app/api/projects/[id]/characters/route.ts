@@ -38,6 +38,7 @@ export async function POST(
     personality: body.personality ?? undefined,
     backstory: body.backstory ?? undefined,
     arcDescription: body.arcDescription ?? undefined,
+    itemsJson: body.itemsJson ?? undefined,
   });
 
   return NextResponse.json(character, { status: 201 });

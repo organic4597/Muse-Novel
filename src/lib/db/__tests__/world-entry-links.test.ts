@@ -2,16 +2,15 @@ import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-
-import * as schema from '../schema';
+import { createProject } from '../queries/projects';
+import { createWorldEntry } from '../queries/world-entries';
 import {
   createLink,
   deleteLink,
   getLinksForEntry,
   searchWorldEntries,
 } from '../queries/world-entry-links';
-import { createWorldEntry } from '../queries/world-entries';
-import { createProject } from '../queries/projects';
+import * as schema from '../schema';
 
 describe('World Entry Link Queries', () => {
   let sqlite: InstanceType<typeof Database>;

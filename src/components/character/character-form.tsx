@@ -2,10 +2,10 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-
 import { StructuredFieldSuggestions } from '@/components/ai/structured-field-suggestions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import type { CharacterItem } from '@/lib/ai/story-planning-types';
 
 const ROLE_OPTIONS = ['주인공', '조연', '악역', '조력자', '기타'] as const;
 
@@ -16,6 +16,7 @@ type CharacterSuggestion = {
   personality?: string;
   backstory?: string;
   arcDescription?: string;
+  items?: CharacterItem[];
 };
 
 type Character = {
@@ -27,6 +28,7 @@ type Character = {
   personality: string | null;
   backstory: string | null;
   arcDescription: string | null;
+  itemsJson: string | null;
   imagePath: string | null;
   createdAt: Date | null;
   updatedAt: Date | null;
@@ -52,6 +54,13 @@ export function CharacterForm({
   const [arcDescription, setArcDescription] = useState(
     character?.arcDescription ?? ''
   );
+  const [items, setItems] = useState<CharacterItem[]>(() => {
+    try {
+      return JSON.parse(character?.itemsJson ?? '[]');
+    } catch {
+      return [];
+    }
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [suggestionPrompt, setSuggestionPrompt] = useState('');
   const [isSuggesting, setIsSuggesting] = useState(false);
@@ -66,6 +75,9 @@ export function CharacterForm({
     suggestion?.backstory ? { key: 'backstory', label: '배경', value: suggestion.backstory } : null,
     suggestion?.arcDescription
       ? { key: 'arcDescription', label: '캐릭터 아크', value: suggestion.arcDescription }
+      : null,
+    suggestion?.items?.length
+      ? { key: 'items', label: '소지품', value: suggestion.items.map((i) => i.name).join(', ') }
       : null,
   ].filter((field): field is { key: string; label: string; value: string } => Boolean(field));
 
@@ -90,6 +102,9 @@ export function CharacterForm({
         return;
       case 'arcDescription':
         if (suggestion?.arcDescription) setArcDescription(suggestion.arcDescription);
+        return;
+      case 'items':
+        setItems(suggestion?.items ?? []);
         return;
       default:
         return;
@@ -143,6 +158,7 @@ export function CharacterForm({
           personality: personality.trim() || null,
           backstory: backstory.trim() || null,
           arcDescription: arcDescription.trim() || null,
+          itemsJson: items.length > 0 ? JSON.stringify(items) : null,
         }),
       });
 
@@ -260,6 +276,70 @@ export function CharacterForm({
           placeholder="캐릭터의 변화와 성장을 묘사하세요"
           value={arcDescription}
         />
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-sm font-medium">🎒 소지품</label>
+        <div className="space-y-2">
+          {items.map((item, index) => (
+            <div className="flex items-start gap-2" key={index}>
+              <Input
+                className="flex-1"
+                disabled={isLoading}
+                onChange={(e) => {
+                  const next = [...items];
+                  next[index] = { ...next[index], name: e.target.value };
+                  setItems(next);
+                }}
+                placeholder="이름"
+                value={item.name}
+              />
+              <Input
+                className="flex-1"
+                disabled={isLoading}
+                onChange={(e) => {
+                  const next = [...items];
+                  next[index] = { ...next[index], description: e.target.value };
+                  setItems(next);
+                }}
+                placeholder="설명"
+                value={item.description ?? ''}
+              />
+              <select
+                className="h-9 rounded-md border border-input bg-transparent px-2 py-1 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
+                disabled={isLoading}
+                onChange={(e) => {
+                  const next = [...items];
+                  next[index] = { ...next[index], status: e.target.value };
+                  setItems(next);
+                }}
+                value={item.status ?? '보유'}
+              >
+                <option value="보유">보유</option>
+                <option value="장착중">장착중</option>
+                <option value="분실">분실</option>
+                <option value="기타">기타</option>
+              </select>
+              <button
+                className="mt-1 text-muted-foreground hover:text-destructive"
+                disabled={isLoading}
+                onClick={() => setItems(items.filter((_, i) => i !== index))}
+                type="button"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+        <Button
+          disabled={isLoading}
+          onClick={() => setItems([...items, { name: '', description: '', status: '보유' }])}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          항목 추가
+        </Button>
       </div>
 
       <div className="flex justify-end gap-2">

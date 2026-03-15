@@ -1,15 +1,15 @@
 import { NextResponse } from 'next/server';
 
 import { db } from '@/lib/db';
-import { getCharacter } from '@/lib/db/queries/characters';
 import {
   createCharacterImage,
   listCharacterImages,
 } from '@/lib/db/queries/character-images';
+import { getCharacter } from '@/lib/db/queries/characters';
 import { getDefaultImageProvider, setImageProvider } from '@/lib/db/queries/image-provider-settings';
 import { generateCharacterImages, previewPrompt } from '@/lib/image-gen/image-generation-service';
-import { withGpuForImageGen, VramCoordinationError } from '@/lib/image-gen/vram-coordinator';
 import { DEFAULT_DIFFUSERS_MODEL, type ImageKind } from '@/lib/image-gen/types';
+import { VramCoordinationError, withGpuForImageGen } from '@/lib/image-gen/vram-coordinator';
 
 const VALID_KINDS: ImageKind[] = ['profile', 'full-body', 'illustration'];
 
