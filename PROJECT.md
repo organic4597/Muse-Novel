@@ -175,7 +175,7 @@ drizzle/
 - `bun dev`는 태그 서버를 함께 실행함
 - `bun run dev:web`는 웹만 실행함
 - 태그 서버는 첫 실행 시 모델 다운로드로 느릴 수 있음
-- GitHub 원격은 외부 저장소 URL 연결 후 push 가능
+- GitHub 위키는 저장소 설정에서 활성화 후 별도 push 가능
 
 ## 확인 포인트
 
@@ -184,40 +184,6 @@ drizzle/
 - prompt tag 추천 품질
 - 프로젝트 삭제 시 공유 LoRA 유지
 - 반응형 레이아웃 동작
-├── outline             TEXT
-├── summary             TEXT
-├── memo                TEXT
-├── word_count          INTEGER DEFAULT 0
-├── created_at          INTEGER
-└── updated_at          INTEGER
-
-characters
-├── id                  TEXT PK
-├── project_id          TEXT → projects.id
-├── name                TEXT NOT NULL
-├── role                TEXT
-├── appearance          TEXT
-├── personality         TEXT
-├── backstory           TEXT
-├── arc_description     TEXT
-├── image_path          TEXT
-├── created_at          INTEGER
-└── updated_at          INTEGER
-
-character_relationships
-├── id                  TEXT PK
-├── character_a_id      TEXT → characters.id
-├── character_b_id      TEXT → characters.id
-├── relationship_type   TEXT NOT NULL
-├── description         TEXT
-└── created_at          INTEGER
-
-character_emotions
-├── id                  TEXT PK
-├── character_id        TEXT → characters.id
-├── chapter_id          TEXT → chapters.id
-├── emotion             TEXT NOT NULL  ← 챕터별 감정 상태
-├── note                TEXT
 └── created_at          INTEGER
 
 world_entries
