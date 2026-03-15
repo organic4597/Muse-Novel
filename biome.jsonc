@@ -7,7 +7,20 @@
     }
   },
   "files": {
-    "includes": ["**", "!!node_modules", "!!build", "!!.next", "!next-env.d.ts"]
+    "includes": [
+      "**",
+      "!!node_modules",
+      "!!build",
+      "!!.next",
+      "!!loras",
+      "!!data",
+      "!!checkpoints",
+      "!!doc-to-lora",
+      "!!public",
+      "!!playwright-report",
+      "!!drizzle",
+      "!next-env.d.ts"
+    ]
   },
   "linter": {
     "rules": {
