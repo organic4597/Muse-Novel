@@ -1,7 +1,5 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -13,6 +11,8 @@ import {
   Settings2,
   XCircle,
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -110,7 +110,7 @@ const PROVIDER_CONFIGS: {
   },
   {
     type: 'qwen-local',
-    label: 'Qwen Local (QLoRA)',
+    label: 'Local',
     defaultBaseUrl: 'http://localhost:8321',
     requiresApiKey: false,
   },
@@ -241,7 +241,6 @@ function OllamaModelSelect({
           <select
             className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             id="ollama-model"
-            value={models.some((model) => model.name === value) ? value : ''}
             onChange={(e) => {
               if (!e.target.value) {
                 return;
@@ -250,6 +249,7 @@ function OllamaModelSelect({
               const nextModel = models.find((model) => model.name === e.target.value);
               onChange(e.target.value, nextModel?.recommendedContextSize);
             }}
+            value={models.some((model) => model.name === value) ? value : ''}
           >
             <option value="">모델 선택...</option>
             {models.map((model) => (
@@ -272,10 +272,10 @@ function OllamaModelSelect({
       ) : (
         <Input
           id="ollama-model"
+          onChange={(e) => onChange(e.target.value)}
           placeholder={isLoading ? '모델 목록 로딩 중...' : 'llama3.2, gemma2 등'}
           required
           value={value}
-          onChange={(e) => onChange(e.target.value)}
         />
       )}
     </div>
@@ -463,12 +463,12 @@ function ProviderForm({
           <div className="relative">
             <Input
               id={`${config.type}-api-key`}
-              placeholder="API 키를 입력하세요"
-              type={showKey ? 'text' : 'password'}
-              value={formState.apiKey}
               onChange={(e) =>
                 setFormState((s) => ({ ...s, apiKey: e.target.value }))
               }
+              placeholder="API 키를 입력하세요"
+              type={showKey ? 'text' : 'password'}
+              value={formState.apiKey}
             />
             <button
               className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
@@ -490,8 +490,6 @@ function ProviderForm({
         <OllamaModelSelect
           baseUrl={formState.baseUrl}
           contextSize={formState.contextSize}
-          projectId={projectId}
-          value={formState.modelName}
           onChange={(modelName, recommendedContextSize) =>
             setFormState((s) => ({
               ...s,
@@ -502,6 +500,8 @@ function ProviderForm({
                   : s.contextSize,
             }))
           }
+          projectId={projectId}
+          value={formState.modelName}
         />
       ) : (
         <div className="space-y-2">
@@ -509,20 +509,29 @@ function ProviderForm({
             모델 이름 <span className="text-destructive">*</span>
           </label>
           <Input
+            className={config.type === 'qwen-local' ? 'bg-muted text-muted-foreground cursor-default' : ''}
             id={`${config.type}-model`}
+            onChange={(e) =>
+              setFormState((s) => ({ ...s, modelName: e.target.value }))
+            }
             placeholder={
               config.type === 'nvidia'
                 ? 'meta/llama-3.1-8b-instruct 등'
                 : config.type === 'openai'
                   ? 'gpt-4o, gpt-4o-mini 등'
-                  : 'claude-sonnet-4-20250514 등'
+                  : config.type === 'qwen-local'
+                    ? ''
+                    : 'claude-sonnet-4-20250514 등'
             }
+            readOnly={config.type === 'qwen-local'}
             required
             value={formState.modelName}
-            onChange={(e) =>
-              setFormState((s) => ({ ...s, modelName: e.target.value }))
-            }
           />
+          {config.type === 'qwen-local' && (
+            <p className="text-xs text-muted-foreground">
+              모델명은 저장된 설정에서 자동으로 불러옵니다
+            </p>
+          )}
         </div>
       )}
 
@@ -536,11 +545,11 @@ function ProviderForm({
         </label>
         <Input
           id={`${config.type}-base-url`}
-          placeholder={config.defaultBaseUrl || 'https://...'}
-          value={formState.baseUrl}
           onChange={(e) =>
             setFormState((s) => ({ ...s, baseUrl: e.target.value }))
           }
+          placeholder={config.defaultBaseUrl || 'https://...'}
+          value={formState.baseUrl}
         />
       </div>
 
@@ -550,12 +559,12 @@ function ProviderForm({
         </label>
         <Input
           id={`${config.type}-context-size`}
-          placeholder="예: 24000, 32768"
-          type="number"
-          value={formState.contextSize}
           onChange={(e) =>
             setFormState((s) => ({ ...s, contextSize: e.target.value }))
           }
+          placeholder="예: 24000, 32768"
+          type="number"
+          value={formState.contextSize}
         />
         <p className="text-xs text-muted-foreground">
           Ollama 모델 선택 시 현재 시스템에서 안정적으로 동작할 권장값이 자동 입력됩니다
@@ -582,15 +591,20 @@ function ProviderForm({
       <div className="flex flex-wrap items-center gap-3">
         {config.type === 'qwen-local' && (
           <Button
-            disabled={isStartingLlm || !formState.modelName.trim()}
+            disabled={isStartingLlm || !formState.modelName.trim() || qwenStatus?.running === true}
+            onClick={handleStartLlm}
             type="button"
             variant="secondary"
-            onClick={handleStartLlm}
           >
             {isStartingLlm ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
                 LLM 시작 중...
+              </>
+            ) : qwenStatus?.running ? (
+              <>
+                <Play className="size-4" />
+                실행 중
               </>
             ) : (
               <>
@@ -602,9 +616,9 @@ function ProviderForm({
         )}
         <Button
           disabled={isTesting}
+          onClick={handleTest}
           type="button"
           variant="outline"
-          onClick={handleTest}
         >
           {isTesting ? (
             <>
@@ -667,9 +681,7 @@ export function AISettingsPage({ projectId }: { projectId: string }) {
     fetchProviders();
   }, [projectId]);
 
-  const getProviderData = (type: ProviderType): ProviderRow | undefined => {
-    return providers.find((p) => p.providerType === type);
-  };
+  const getProviderData = (type: ProviderType): ProviderRow | undefined => providers.find((p) => p.providerType === type);
 
   if (isLoading) {
     return (

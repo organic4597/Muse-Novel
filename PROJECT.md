@@ -157,6 +157,7 @@ drizzle/
 - 홈 레이아웃 반응형 확장
 - 스토리 구상 탭 반응형 비율 조정
 - 우측 기획 초안 sticky 패널 추가
+- 스토리 구상 우측 패널 항상 표시 (대화 전/후 무관)
 
 ### 데이터/DB
 
@@ -169,6 +170,9 @@ drizzle/
 - 한국어 프롬프트 자동 번역 및 태그 추천 고도화
 - 짧은 입력 직접 태그 alias 처리
 - Python 상주 태그 추천 서버 도입
+- qwen-local(Local) AI provider 추가 — llama.cpp llama-server 기반
+- llama-server 자동 시작/중지 및 검열 해제 (`--jinja` + `--chat-template`)
+- Qwen3 Base의 `<think>…</think>` 응답 블록 자동 제거 (스토리 구상 파싱 안정화)
 
 ## 운영 및 개발 메모
 
@@ -365,6 +369,8 @@ writing_style_profiles
 | `koboldcpp` | `createOpenAICompatible` | localhost:5001/v1 | 불필요 |
 | `qwen-local` | `createOpenAICompatible` | localhost:8321/v1 | 불필요 |
 
+> qwen-local은 앱 설정 탭에서 "Local"로 표시됩니다. 모델명은 DB에 저장된 값으로 고정되며 변경 불가입니다. 서버 시작 버튼은 추론 서버가 비활성 상태일 때만 활성화됩니다.
+
 ```typescript
 export type ProviderType = 'ollama' | 'nvidia' | 'openai' | 'anthropic' | 'koboldcpp' | 'qwen-local';
 ```
@@ -415,6 +421,13 @@ NVIDIA_MODEL=
 
 # Ollama (로컬, API 키 불필요)
 OLLAMA_BASE_URL=http://localhost:11434
+
+# qwen-local (로컬 llama-server, API 키 불필요)
+QWEN_LOCAL_URL=http://localhost:8321
+QWEN_GGUF_MODEL_PATH=/path/to/model.gguf
+LLAMA_SERVER_PATH=/usr/local/bin/llama-server
+QWEN_INFERENCE_GPU=0              # GPU 인덱스 (선택)
+QWEN_INFERENCE_GPU_UUID=GPU-xxxx  # GPU UUID (선택, GPU 인덱스보다 우선)
 
 # API 키 암호화 (32자 필수)
 ENCRYPTION_KEY=
@@ -505,4 +518,4 @@ uv run python scripts/qlora_trainer.py \
 
 ---
 
-*최종 업데이트: 2026-03-09*
+*최종 업데이트: 2026-03-15*

@@ -23,7 +23,7 @@ cp .env.example .env.local
 
 ## 환경 변수
 
-주요 항목:
+### 기본 항목
 
 - `DATABASE_PROVIDER=sqlite` 또는 `turso`
 - `DATABASE_URL`
@@ -37,6 +37,26 @@ cp .env.example .env.local
 - `ENCRYPTION_KEY`
 - `TAG_RECOMMENDER_PORT`
 - `PYTHON_BIN`
+
+### qwen-local (Local) 추론 서버
+
+로컬 llama-server를 사용할 경우 추가로 설정합니다.
+
+| 변수 | 설명 | 기본값 |
+|------|------|--------|
+| `QWEN_LOCAL_URL` | 추론 서버 주소 | `http://localhost:8321` |
+| `QWEN_GGUF_MODEL_PATH` | GGUF 모델 파일 경로 | — |
+| `LLAMA_SERVER_PATH` | llama-server 바이너리 경로 | — |
+| `QWEN_INFERENCE_GPU` | GPU 인덱스 (선택) | — |
+| `QWEN_INFERENCE_GPU_UUID` | GPU UUID (선택, GPU 인덱스보다 우선) | — |
+
+예시:
+
+```bash
+QWEN_LOCAL_URL=http://localhost:8321
+QWEN_GGUF_MODEL_PATH=/root/models/Qwen3.5-9B-Base-Q4_K_M.gguf
+LLAMA_SERVER_PATH=/usr/local/bin/llama-server
+```
 
 ## 개발 실행
 
@@ -56,6 +76,36 @@ bun run dev:web
 
 ```bash
 bun run tag-server
+```
+
+## qwen-local 추론 서버 수동 실행
+
+앱 설정 UI의 "서버 시작" 버튼으로 자동 실행할 수 있습니다. 직접 실행할 경우:
+
+```bash
+llama-server \
+  --model /path/to/model.gguf \
+  --port 8321 \
+  --host 0.0.0.0 \
+  --ctx-size 8192 \
+  --n-gpu-layers 99 \
+  --flash-attn on \
+  --jinja \
+  --chat-template "{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}"
+```
+
+> **주의**: llama.cpp b463 이상에서는 `--system-prompt` 플래그가 제거되었습니다. 반드시 `--jinja` + `--chat-template` 조합을 사용하십시오.
+
+서버 상태 확인:
+
+```bash
+curl http://localhost:8321/health
+```
+
+로그 확인:
+
+```bash
+tail -f /tmp/qwen-local.log
 ```
 
 ## 프로덕션 실행

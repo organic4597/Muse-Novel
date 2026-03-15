@@ -1,15 +1,15 @@
-import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
-
-import { db } from '@/lib/db';
+import { NextResponse } from 'next/server';
 import { encryptApiKey, maskApiKey } from '@/lib/ai/encryption';
 import type { ProviderType } from '@/lib/ai/types';
-import { aiProviderSettings } from '@/lib/db/schema';
+import { db } from '@/lib/db';
 import {
+  listGlobalProviders,
   listProviders,
   setProvider,
   updateProvider,
 } from '@/lib/db/queries/ai-settings';
+import { aiProviderSettings } from '@/lib/db/schema';
 
 const VALID_PROVIDER_TYPES: ProviderType[] = [
   'ollama',
@@ -35,9 +35,17 @@ export async function GET(
 ) {
   const { id: projectId } = await params;
 
-  const providers = await listProviders(db, projectId);
+  const projectProviders = await listProviders(db, projectId);
+  const globalProviders = await listGlobalProviders(db);
 
-  return NextResponse.json(maskProviderKeys(providers));
+  // Merge: project-specific providers take priority, global providers fill gaps
+  const projectTypes = new Set(projectProviders.map((p) => p.providerType));
+  const fallbackGlobals = globalProviders.filter(
+    (g) => !projectTypes.has(g.providerType)
+  );
+  const merged = [...projectProviders, ...fallbackGlobals];
+
+  return NextResponse.json(maskProviderKeys(merged));
 }
 
 export async function POST(

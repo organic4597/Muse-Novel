@@ -3,3 +3,4 @@
 - [주요 기능](Features)
 - [아키텍처 개요](Architecture)
 - [스토리 구상 기능](Story-Planning)
+- [트러블슈팅](Troubleshooting)

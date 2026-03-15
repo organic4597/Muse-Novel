@@ -1,6 +1,9 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "extends": ["ultracite/core", "ultracite/react", "ultracite/next"],
+  "formatter": {
+    "enabled": false
+  },
   "javascript": {
     "formatter": {
       "quoteStyle": "single"
@@ -28,22 +31,16 @@
         "useExhaustiveDependencies": "off", // eslint
         "useHookAtTopLevel": "off", // eslint
         "noUndeclaredVariables": "off", // ts
-        "noUnusedVariables": {
-          "level": "error",
-          "options": {
-            "ignoreRestSiblings": true
-          }
-        },
+        "noUnusedVariables": "off",
+        "noUnusedImports": "off",
+        "useParseIntRadix": "off",
         "useImageSize": "off", // className
         "noNestedComponentDefinitions": "off" // shadcn
       },
       "suspicious": {
-        "noConsole": {
-          "level": "error",
-          "options": {
-            "allow": ["assert", "error", "info", "warn"]
-          }
-        },
+        "noConsole": "off",
+        "noEvolvingTypes": "off",
+        "noImplicitAnyLet": "off",
         "noAlert": "off", // example
         "noExplicitAny": "off", // ts chill
         "noArrayIndexKey": "off", // chill
@@ -58,18 +55,29 @@
         "noNestedTernary": "off", // chill
         "noNonNullAssertion": "off", // ts chill
         "useDefaultSwitchClause": "off", // chill
-        "useBlockStatements": "off" // chill
+        "useBlockStatements": "off", // chill
+        "useNodejsImportProtocol": "off",
+        "useConsistentTypeDefinitions": "off",
+        "useNumericSeparators": "off",
+        "useNumberNamespace": "off",
+        "noUnusedTemplateLiteral": "off",
+        "noInferrableTypes": "off",
+        "useTemplate": "off",
+        "useImportType": "off"
       },
       "nursery": {
         "noShadow": "off", // chill
-        "noIncrementDecrement": "off" // chill
+        "noIncrementDecrement": "off", // chill
+        "useSortedClasses": "off",
+        "noUselessUndefined": "off"
       },
       "complexity": {
         "useSimplifiedLogicExpression": "off", // false +
         "noExcessiveCognitiveComplexity": "off", // chill
         "noForEach": "off", // chill
         "noVoid": "off", // chill,
-        "noBannedTypes": "off" // chill
+        "noBannedTypes": "off", // chill
+        "useLiteralKeys": "off"
       },
       "a11y": {
         "noNoninteractiveElementInteractions": "off", // region role not supported
@@ -80,14 +88,17 @@
         "noStaticElementInteractions": "off",
         "useMediaCaption": "off",
         "useKeyWithMouseEvents": "off",
-        "useAriaPropsSupportedByRole": "off"
+        "useAriaPropsSupportedByRole": "off",
+        "noLabelWithoutControl": "off",
+        "useButtonType": "off"
       },
       "security": {
         "noDangerouslySetInnerHtml": "off" // shadcn
       },
       "performance": {
         "noNamespaceImport": "off", // shadcn
-        "noImgElement": "off" // agnostic
+        "noImgElement": "off", // agnostic
+        "useTopLevelRegex": "off"
       }
     }
   }

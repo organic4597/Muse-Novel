@@ -7,6 +7,7 @@
 - DB: Drizzle ORM + SQLite / Turso
 - AI: provider-factory 기반 다중 provider 추상화
 - 태그 추천: 별도 Python HTTP 서버
+- 로컬 추론: llama.cpp llama-server (qwen-local provider)
 
 ## 주요 계층
 
@@ -28,6 +29,36 @@
 - 공용 AI 설정: 홈 스토리 구상 탭
 - 프로젝트별 AI 설정: 집필/편집 기능
 - fallback: 환경 변수 provider
+
+지원 provider:
+
+| Provider | 방식 | 비고 |
+|----------|------|------|
+| `openai` | @ai-sdk/openai | API 키 필요 |
+| `anthropic` | @ai-sdk/anthropic | API 키 필요 |
+| `ollama` | ollama-ai-provider-v2 | 로컬 |
+| `nvidia` | OpenAI compat | API 키 필요 |
+| `koboldcpp` | OpenAI compat | 로컬 |
+| `qwen-local` | OpenAI compat | 로컬 llama-server |
+
+### qwen-local 추론 서버 계층
+
+`qwen-local` provider는 로컬에서 실행하는 llama-server와 통신합니다.
+
+```
+앱 (Next.js)
+  └─ /api/projects/[id]/settings/ai/qwen-local/start  → QwenServerManager
+       └─ llama-server (localhost:8321)
+            └─ GGUF 모델 파일
+```
+
+관련 파일:
+- `src/lib/ai/qwen-server-manager.ts` — 서버 시작/중지/상태 관리
+- `src/app/api/projects/[id]/settings/ai/qwen-local/start/route.ts` — 시작 API
+- 로그: `/tmp/qwen-local.log`
+- PID: `.qwen-server.pid` (프로젝트 루트)
+
+llama-server는 검열 해제를 위해 `--jinja` + `--chat-template` (Qwen ChatML 형식)으로 실행됩니다. `--system-prompt` 플래그는 llama.cpp b463 이후 제거되어 사용할 수 없습니다.
 
 ### 태그 추천 계층
 

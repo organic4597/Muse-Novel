@@ -1,4 +1,4 @@
-import { spawn, execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
@@ -264,6 +264,8 @@ export async function startServer(
       '--n-gpu-layers', '99',
       '--flash-attn', 'on',
       '--split-mode', 'none',
+      '--jinja',
+      '--chat-template', "{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}",
     ];
 
     if (loraPath) {
@@ -386,7 +388,7 @@ export async function freeGpuForTraining(): Promise<void> {
       for (const line of lines) {
         const [idx, used] = line.split(',').map(s => s.trim());
         const usedMiB = parseInt(used, 10);
-        if (!isNaN(usedMiB) && usedMiB >= 500) {
+        if (!Number.isNaN(usedMiB) && usedMiB >= 500) {
           console.log(`[qwen-manager] GPU ${idx}: ${usedMiB} MiB still used, waiting...`);
           allFree = false;
         }

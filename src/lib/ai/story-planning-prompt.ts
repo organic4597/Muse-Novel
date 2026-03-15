@@ -83,21 +83,21 @@ export function parseStoryPlanningResponse(
   text: string,
   fallbackDraft: StoryPlanningDraft
 ): StoryPlanningResponse {
-  // Try to extract JSON from the response
-  const jsonMatch = text.match(/```json\s*([\s\S]*?)```/) || text.match(/\{[\s\S]*"reply"[\s\S]*"draft"[\s\S]*\}/);
+  const textWithoutThinkBlocks = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+
+  const jsonMatch = textWithoutThinkBlocks.match(/```json\s*([\s\S]*?)```/) || textWithoutThinkBlocks.match(/\{[\s\S]*"reply"[\s\S]*"draft"[\s\S]*\}/);
 
   let parsed: unknown;
   try {
-    const jsonStr = jsonMatch ? (jsonMatch[1] ?? jsonMatch[0]) : text;
+    const jsonStr = jsonMatch ? (jsonMatch[1] ?? jsonMatch[0]) : textWithoutThinkBlocks;
     parsed = JSON.parse(jsonStr);
   } catch {
-    // If JSON parsing fails, treat the whole thing as a reply
-    return { reply: text, draft: fallbackDraft };
+    return { reply: textWithoutThinkBlocks, draft: fallbackDraft };
   }
 
   if (typeof parsed === 'object' && parsed !== null && 'reply' in parsed) {
     const obj = parsed as Record<string, unknown>;
-    const reply = typeof obj.reply === 'string' ? obj.reply : text;
+    const reply = typeof obj.reply === 'string' ? obj.reply : textWithoutThinkBlocks;
     const rawDraft = (typeof obj.draft === 'object' && obj.draft !== null) ? obj.draft as Record<string, unknown> : {};
 
     const draft: StoryPlanningDraft = {
@@ -136,5 +136,5 @@ export function parseStoryPlanningResponse(
     return { reply, draft };
   }
 
-  return { reply: text, draft: fallbackDraft };
+  return { reply: textWithoutThinkBlocks, draft: fallbackDraft };
 }

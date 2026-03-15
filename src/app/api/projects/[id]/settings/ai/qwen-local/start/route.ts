@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server';
-
-import { db } from '@/lib/db';
-import { listProviders } from '@/lib/db/queries/ai-settings';
-import { getProject } from '@/lib/db/queries/projects';
-import { getLora } from '@/lib/db/queries/loras';
 import { ensureServerForInference } from '@/lib/ai/qwen-server-manager';
+import { db } from '@/lib/db';
+import { listGlobalProviders, listProviders } from '@/lib/db/queries/ai-settings';
+import { getLora } from '@/lib/db/queries/loras';
+import { getProject } from '@/lib/db/queries/projects';
 
 type RequestBody = {
   modelName?: string;
@@ -19,7 +18,12 @@ export async function POST(
   const body = (await request.json().catch(() => ({}))) as RequestBody;
 
   const providers = await listProviders(db, projectId);
-  const qwenLocal = providers.find((provider) => provider.providerType === 'qwen-local');
+  let qwenLocal = providers.find((provider) => provider.providerType === 'qwen-local');
+
+  if (!qwenLocal) {
+    const globalProviders = await listGlobalProviders(db);
+    qwenLocal = globalProviders.find((p) => p.providerType === 'qwen-local');
+  }
 
   if (!qwenLocal && !body.modelName) {
     return NextResponse.json(

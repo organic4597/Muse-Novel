@@ -22,6 +22,10 @@
 - 한국어 프롬프트 태그 추천을 위한 상주 Python 서버 추가
 - 개발/실행 스크립트에서 태그 서버 자동 실행
 - 프로젝트 삭제 시 공유 LoRA는 유지하고 프로젝트 소유 데이터만 정리하도록 수정
+- qwen-local(Local) AI provider 추가 — llama-server 기반 로컬 추론 지원
+- llama-server 자동 시작/중지 및 검열 해제(`--jinja` + `--chat-template`) 적용
+- Qwen3 Base 모델의 `<think>…</think>` 블록 자동 제거로 스토리 구상 파싱 안정화
+- 스토리 구상 우측 패널을 대화 전/후 관계없이 항상 표시하도록 개선
 
 ## 기술 스택
 
@@ -84,6 +88,16 @@ pip install numpy sentence-transformers transformers torch
 - `ENCRYPTION_KEY` 프로젝트/공용 AI 설정 API 키 암호화용
 - `TAG_RECOMMENDER_PORT` 태그 추천 서버 포트, 기본값 `9877`
 - `PYTHON_BIN` 태그 서버 실행용 Python 바이너리 경로
+
+### qwen-local (Local) 추론 서버 환경 변수
+
+로컬 llama-server를 사용할 경우 추가로 설정합니다.
+
+- `QWEN_LOCAL_URL` 추론 서버 주소, 기본값 `http://localhost:8321`
+- `QWEN_GGUF_MODEL_PATH` GGUF 모델 파일 경로 (예: `/root/models/Qwen3.5-9B-Base-Q4_K_M.gguf`)
+- `LLAMA_SERVER_PATH` llama-server 바이너리 경로 (예: `/usr/local/bin/llama-server`)
+- `QWEN_INFERENCE_GPU` GPU 인덱스 (선택, 예: `0`)
+- `QWEN_INFERENCE_GPU_UUID` GPU UUID (선택, `QWEN_INFERENCE_GPU`보다 우선)
 
 AI는 두 단계로 선택됩니다.
 
@@ -248,6 +262,75 @@ bun run test:e2e
 - 공용 AI 설정에 저장되는 API 키는 DB 암호화를 전제로 합니다. `ENCRYPTION_KEY` 설정을 권장합니다.
 - 태그 추천 서버는 메모리를 사용하며 초기 모델 로딩 시간이 깁니다.
 - 홈 스토리 구상 세션은 서버 DB가 아니라 브라우저 localStorage에 임시 저장됩니다.
+
+## qwen-local(Local) 추론 서버
+
+AI 설정에서 "Local" 탭을 사용하면 llama.cpp의 `llama-server`를 통해 로컬 GGUF 모델로 추론합니다.
+
+### 사전 준비
+
+1. llama.cpp 빌드 또는 바이너리 설치 (`llama-server` 바이너리)
+2. GGUF 모델 파일 준비 (예: `Qwen3.5-9B-Base-Q4_K_M.gguf`)
+3. `.env.local`에 환경 변수 설정:
+
+```bash
+QWEN_LOCAL_URL=http://localhost:8321
+QWEN_GGUF_MODEL_PATH=/path/to/model.gguf
+LLAMA_SERVER_PATH=/usr/local/bin/llama-server
+```
+
+### 서버 시작
+
+앱 내에서 AI 설정 → Local 탭 → "서버 시작" 버튼으로 자동 시작할 수 있습니다.
+
+수동으로 실행할 경우:
+
+```bash
+llama-server \
+  --model /path/to/model.gguf \
+  --port 8321 \
+  --host 0.0.0.0 \
+  --ctx-size 8192 \
+  --n-gpu-layers 99 \
+  --flash-attn on \
+  --jinja \
+  --chat-template "{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}"
+```
+
+> `--jinja` + `--chat-template`은 llama.cpp b463 이상에서 검열 해제에 필요합니다. `--system-prompt` 플래그는 b463 이후 제거되었으므로 사용하지 마십시오.
+
+### 로그 및 PID
+
+- 로그: `/tmp/qwen-local.log`
+- PID 파일: `.qwen-server.pid` (프로젝트 루트)
+
+## 오류 해결
+
+### "추론 서버가 시작 중 종료됨"
+
+```bash
+tail -50 /tmp/qwen-local.log
+```
+
+로그를 확인하여 원인을 파악합니다. 흔한 원인:
+
+- 모델 파일 경로 오류 → `QWEN_GGUF_MODEL_PATH` 확인
+- GPU VRAM 부족 → `--n-gpu-layers` 값을 줄이거나 `QWEN_INFERENCE_GPU` 지정
+- 포트 충돌 → 8321 포트 사용 중인 프로세스 종료
+
+### "invalid argument: --system-prompt"
+
+llama.cpp b463 이상에서 `--system-prompt` 플래그가 제거되었습니다. `--jinja` + `--chat-template` 조합을 사용하십시오 (위 수동 실행 예시 참고).
+
+### draft가 업데이트되지 않거나 스토리 구상 응답이 없음
+
+Qwen3 Base 모델은 응답 앞에 `<think>…</think>` 블록을 출력합니다. `parseStoryPlanningResponse`에서 이를 자동으로 제거하므로 최신 코드에서는 정상 동작합니다. 구버전 체크아웃을 사용 중이면 업데이트하십시오.
+
+### AI 응답이 아예 없음
+
+- llama-server가 실행 중인지 확인: `curl http://localhost:8321/health`
+- AI 설정 페이지에서 연결 상태(헬스체크) 확인
+- 로그 파일 확인: `tail /tmp/qwen-local.log`
 
 ## 라이선스
 

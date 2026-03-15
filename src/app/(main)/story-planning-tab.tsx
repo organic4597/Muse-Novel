@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -116,8 +116,8 @@ function GlobalAISettingsInline({
           <label className="text-xs text-muted-foreground">Provider</label>
           <select
             className="mt-1 w-full rounded border border-border bg-background px-2 py-1.5 text-sm"
-            value={providerType}
             onChange={(e) => setProviderType(e.target.value)}
+            value={providerType}
           >
             <option value="openai">OpenAI</option>
             <option value="anthropic">Anthropic</option>
@@ -130,38 +130,38 @@ function GlobalAISettingsInline({
         <div>
           <label className="text-xs text-muted-foreground">모델명</label>
           <input
-            type="text"
             className="mt-1 w-full rounded border border-border bg-background px-2 py-1.5 text-sm"
-            value={modelName}
             onChange={(e) => setModelName(e.target.value)}
             placeholder="gpt-4o-mini"
+            type="text"
+            value={modelName}
           />
         </div>
         <div>
           <label className="text-xs text-muted-foreground">API Key (선택)</label>
           <input
-            type="password"
             className="mt-1 w-full rounded border border-border bg-background px-2 py-1.5 text-sm"
-            value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder="sk-..."
+            type="password"
+            value={apiKey}
           />
         </div>
         <div>
           <label className="text-xs text-muted-foreground">Base URL (선택)</label>
           <input
-            type="text"
             className="mt-1 w-full rounded border border-border bg-background px-2 py-1.5 text-sm"
-            value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
             placeholder="http://localhost:11434"
+            type="text"
+            value={baseUrl}
           />
         </div>
       </div>
 
       {error && <p className="text-xs text-red-500">{error}</p>}
 
-      <Button size="sm" onClick={handleSave} disabled={saving}>
+      <Button disabled={saving} onClick={handleSave} size="sm">
         {saving ? '저장 중...' : '설정 저장'}
       </Button>
     </div>
@@ -172,11 +172,15 @@ function GlobalAISettingsInline({
 function DraftPanel({ draft }: { draft: StoryPlanningDraft }) {
   const hasContent = hasDraftContent(draft);
 
-  if (!hasContent) return null;
-
   return (
     <div className="rounded-lg border border-border bg-card p-4 space-y-3">
       <h3 className="text-sm font-semibold text-foreground">📋 기획 초안</h3>
+
+      {!hasContent && (
+        <p className="text-xs text-muted-foreground">
+          AI와 대화하면 여기에 기획 초안이 정리됩니다.
+        </p>
+      )}
 
       {draft.title && (
         <div>
@@ -214,8 +218,8 @@ function DraftPanel({ draft }: { draft: StoryPlanningDraft }) {
           <div className="mt-1 flex flex-wrap gap-1">
             {draft.themes.map((t, i) => (
               <span
-                key={i}
                 className="rounded-full bg-secondary px-2 py-0.5 text-xs text-secondary-foreground"
+                key={i}
               >
                 {t}
               </span>
@@ -230,7 +234,7 @@ function DraftPanel({ draft }: { draft: StoryPlanningDraft }) {
           </span>
           <div className="mt-1 space-y-1">
             {draft.characters.map((ch, i) => (
-              <div key={i} className="rounded bg-muted/50 px-2 py-1">
+              <div className="rounded bg-muted/50 px-2 py-1" key={i}>
                 <span className="text-sm font-medium">{ch.name}</span>
                 {ch.role && (
                   <span className="ml-1 text-xs text-muted-foreground">— {ch.role}</span>
@@ -250,7 +254,7 @@ function DraftPanel({ draft }: { draft: StoryPlanningDraft }) {
           </span>
           <div className="mt-1 space-y-1">
             {draft.worldEntries.map((we, i) => (
-              <div key={i} className="rounded bg-muted/50 px-2 py-1">
+              <div className="rounded bg-muted/50 px-2 py-1" key={i}>
                 <span className="text-xs text-muted-foreground">[{we.category}]</span>{' '}
                 <span className="text-sm font-medium">{we.title}</span>
                 {we.content && (
@@ -286,8 +290,6 @@ function ApplyDraftPanel({
   isLoading: boolean;
   onApply: () => void;
 }) {
-  if (!hasContent) return null;
-
   return (
     <div className="rounded-lg border border-border bg-card p-4 space-y-3">
       <div>
@@ -297,7 +299,7 @@ function ApplyDraftPanel({
         </p>
       </div>
 
-      {!canApply && (
+      {hasContent && !canApply && (
         <p className="text-xs text-amber-600 dark:text-amber-400">
           제목이 정리되면 바로 소설 목록에 추가할 수 있습니다.
         </p>
@@ -305,8 +307,8 @@ function ApplyDraftPanel({
 
       <Button
         className="w-full"
+        disabled={!hasContent || !canApply || isApplying || isLoading}
         onClick={onApply}
-        disabled={!canApply || isApplying || isLoading}
       >
         {isApplying ? '생성 중...' : '🚀 이 기획으로 소설 목록에 추가'}
       </Button>
@@ -483,21 +485,21 @@ export function StoryPlanningTab() {
           </p>
 
           {/* Direct input */}
-          <form onSubmit={handleSubmit} className="mt-6 w-full max-w-2xl flex gap-2">
+          <form className="mt-6 w-full max-w-2xl flex gap-2" onSubmit={handleSubmit}>
             <textarea
-              ref={textareaRef}
               className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm resize-none placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              rows={3}
-              placeholder="어떤 소설을 구상하고 싶으신가요? 자유롭게 입력하세요... (Shift+Enter로 줄바꿈)"
-              value={input}
+              disabled={isLoading}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              disabled={isLoading}
+              placeholder="어떤 소설을 구상하고 싶으신가요? 자유롭게 입력하세요... (Shift+Enter로 줄바꿈)"
+              ref={textareaRef}
+              rows={3}
+              value={input}
             />
             <Button
-              type="submit"
-              disabled={!input.trim() || isLoading}
               className="self-end"
+              disabled={!input.trim() || isLoading}
+              type="submit"
             >
               {isLoading ? '전송 중...' : '전송'}
             </Button>
@@ -506,8 +508,8 @@ export function StoryPlanningTab() {
           <div className="mt-4 flex flex-wrap justify-center gap-2">
             {SUGGESTIONS.map((suggestion) => (
               <button
-                key={suggestion}
                 className="rounded-full border border-border bg-card px-4 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                key={suggestion}
                 onClick={() => sendMessage(suggestion)}
               >
                 {suggestion}
@@ -582,8 +584,8 @@ export function StoryPlanningTab() {
           <div className="max-h-[55vh] lg:max-h-[60vh] xl:max-h-[70vh] overflow-y-auto space-y-3 rounded-lg border border-border bg-muted/20 p-4">
             {messages.map((msg, i) => (
               <div
-                key={i}
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                key={i}
               >
                 <div
                   className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
@@ -608,21 +610,21 @@ export function StoryPlanningTab() {
           </div>
 
           {/* Input */}
-          <form onSubmit={handleSubmit} className="flex gap-2">
+          <form className="flex gap-2" onSubmit={handleSubmit}>
             <textarea
-              ref={textareaRef}
               className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm resize-none placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              rows={3}
-              placeholder="아이디어를 입력하세요... (Shift+Enter로 줄바꿈)"
-              value={input}
+              disabled={isLoading || isApplying}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              disabled={isLoading || isApplying}
+              placeholder="아이디어를 입력하세요... (Shift+Enter로 줄바꿈)"
+              ref={textareaRef}
+              rows={3}
+              value={input}
             />
             <Button
-              type="submit"
-              disabled={!input.trim() || isLoading || isApplying}
               className="self-end"
+              disabled={!input.trim() || isLoading || isApplying}
+              type="submit"
             >
               전송
             </Button>
@@ -641,8 +643,8 @@ export function StoryPlanningTab() {
                 '첫 챕터 개요를 잡아볼까?',
               ].map((s) => (
                 <button
-                  key={s}
                   className="rounded-full border border-border bg-card px-3 py-1 text-xs transition-colors hover:bg-accent"
+                  key={s}
                   onClick={() => sendMessage(s)}
                 >
                   {s}
