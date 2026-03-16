@@ -152,7 +152,7 @@ bun run db:studio
 
 - `0007_shared_loras.sql` : `loras.project_id` nullable + `ON DELETE SET NULL`
 
-## 사용 방법
+## 📖 사용 방법
 
 ### 1. 소설 목록에서 수동 생성
 
@@ -184,7 +184,7 @@ bun run db:studio
 - **캐릭터 이미지 생성** (프로필 / 전신 / 일러스트)
 - LoRA 및 스타일 프로필 관리
 
-## 주요 API
+## 🔌 주요 API
 
 ### 홈 / 스토리 구상
 
@@ -216,7 +216,7 @@ bun run db:studio
 - `GET /api/projects/[id]/characters/[characterId]/images`
 - `POST /api/projects/[id]/characters/[characterId]/images/generate` (SSE 스트리밍)
 
-## 디렉토리 개요
+## 📁 디렉토리 개요
 
 ```text
 src/
@@ -247,7 +247,7 @@ drizzle/
 	0007_shared_loras.sql
 ```
 
-## 테스트 / 검증
+## 🧪 테스트 / 검증
 
 ```bash
 bun run typecheck
@@ -263,13 +263,22 @@ bun run test:e2e
 - 프로젝트 삭제 시 공유 LoRA 유지 여부
 - 한국어 프롬프트 태그 추천 품질
 
-## 주의 사항
+## ⚠️ 주의 사항
 
 - 현재 GitHub 사용자 인증 기능은 없습니다.
 - 공용 AI 설정에 저장되는 API 키는 DB 암호화를 전제로 합니다. `ENCRYPTION_KEY` 설정을 권장합니다.
 - 태그 추천 서버는 메모리를 사용하며 초기 모델 로딩 시간이 깁니다.
 - 홈 스토리 구상 세션은 서버 DB가 아니라 브라우저 localStorage에 임시 저장됩니다.
 
-## 라이선스
+## 📌 GitHub 토픽 (Topics)
+
+이 저장소에 다음 토픽을 추가하면 검색 가시성이 높아집니다.  
+저장소 메인 페이지 → **⚙ Settings → Topics** 에서 직접 입력하세요.
+
+`nextjs` `react` `typescript` `tailwindcss` `ai` `writing-assistant`  
+`novel-writing` `korean` `llm` `openai` `anthropic` `ollama`  
+`drizzle-orm` `sqlite` `turso` `platejs` `image-generation` `lora`
+
+## 📄 라이선스
 
 저장소의 LICENSE를 따릅니다.
