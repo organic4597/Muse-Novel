@@ -72,6 +72,24 @@ interface StoredSession {
   draft: StoryPlanningDraft;
 }
 
+function normalizeDraftShape(draft: StoryPlanningDraft | null | undefined): StoryPlanningDraft {
+  const nextDraft: Partial<StoryPlanningDraft> = draft ?? {};
+
+  return {
+    ...EMPTY_DRAFT,
+    ...nextDraft,
+    themes: Array.isArray(nextDraft.themes) ? nextDraft.themes : [],
+    characters: Array.isArray(nextDraft.characters) ? nextDraft.characters : [],
+    worldEntries: Array.isArray(nextDraft.worldEntries) ? nextDraft.worldEntries : [],
+    pendingCharacters: Array.isArray(nextDraft.pendingCharacters)
+      ? nextDraft.pendingCharacters
+      : undefined,
+    pendingWorldEntries: Array.isArray(nextDraft.pendingWorldEntries)
+      ? nextDraft.pendingWorldEntries
+      : undefined,
+  };
+}
+
 function loadSession(): StoredSession {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -79,15 +97,21 @@ function loadSession(): StoredSession {
       const parsed = JSON.parse(raw);
       return {
         messages: Array.isArray(parsed.messages) ? parsed.messages : [],
-        draft: parsed.draft ?? { ...EMPTY_DRAFT },
+        draft: normalizeDraftShape(parsed.draft),
       };
     }
   } catch {}
-  return { messages: [], draft: { ...EMPTY_DRAFT } };
+  return { messages: [], draft: normalizeDraftShape(undefined) };
 }
 
 function saveSession(session: StoredSession) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({
+      messages: session.messages,
+      draft: normalizeDraftShape(session.draft),
+    })
+  );
 }
 
 function clearSession() {
@@ -355,6 +379,7 @@ function DraftPanel({
   draft,
   onAcceptCharacter,
   onRejectCharacter,
+  onDeleteCharacter,
   onAcceptWorld,
   onRejectWorld,
   onUpdateAcceptedCharacter,
@@ -365,6 +390,7 @@ function DraftPanel({
   draft: StoryPlanningDraft;
   onAcceptCharacter: (index: number) => void;
   onRejectCharacter: (index: number) => void;
+  onDeleteCharacter: (index: number) => void;
   onAcceptWorld: (index: number) => void;
   onRejectWorld: (index: number) => void;
   onUpdateAcceptedCharacter: (index: number, field: keyof StoryPlanningCharacter, value: string) => void;
@@ -459,6 +485,13 @@ function DraftPanel({
                       )}
                     </div>
                     <div className="flex shrink-0 items-center gap-1 self-start" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        className="inline-flex h-6 items-center rounded px-2 py-0 text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-900/70 transition-colors"
+                        onClick={() => onDeleteCharacter(i)}
+                        type="button"
+                      >
+                        삭제
+                      </button>
                       <button
                         className="inline-flex h-6 items-center rounded px-2 py-0 text-xs font-medium bg-background text-foreground hover:bg-accent transition-colors"
                         onClick={() => {
@@ -1091,10 +1124,14 @@ export function StoryPlanningTab() {
       const pending = prev.pendingCharacters ?? [];
       const accepted = pending[index];
       if (!accepted) return prev;
+      const acceptedKey = `${accepted.name}::${accepted.role ?? ''}`;
+      const hasExistingCharacter = prev.characters.some(
+        (character) => `${character.name}::${character.role ?? ''}` === acceptedKey
+      );
       const nextPending = pending.filter((_, i) => i !== index);
       const newDraft: StoryPlanningDraft = {
         ...prev,
-        characters: [...prev.characters, accepted],
+        characters: hasExistingCharacter ? prev.characters : [...prev.characters, accepted],
         pendingCharacters: nextPending.length > 0 ? nextPending : undefined,
       };
       saveSession({ messages, draft: newDraft });
@@ -1117,6 +1154,23 @@ export function StoryPlanningTab() {
     setDraft(newDraft);
     saveSession({ messages: messagesRef.current, draft: newDraft });
     await requestReplacementSuggestion('character', rejected.name, newDraft);
+  };
+
+  const handleDeleteCharacter = (index: number) => {
+    setDraft((prev) => {
+      const target = prev.characters[index];
+      if (!target) return prev;
+
+      const nextCharacters = prev.characters.filter((_, characterIndex) => characterIndex !== index);
+      const newDraft: StoryPlanningDraft = {
+        ...prev,
+        characters: nextCharacters,
+      };
+
+      draftRef.current = newDraft;
+      saveSession({ messages: messagesRef.current, draft: newDraft });
+      return newDraft;
+    });
   };
 
   const handleAcceptWorld = (index: number) => {
@@ -1459,6 +1513,7 @@ export function StoryPlanningTab() {
               draft={draft}
               onAcceptCharacter={handleAcceptCharacter}
               onAcceptWorld={handleAcceptWorld}
+              onDeleteCharacter={handleDeleteCharacter}
               onRejectCharacter={handleRejectCharacter}
               onRejectWorld={handleRejectWorld}
               onUpdateAcceptedCharacter={handleUpdateAcceptedCharacter}
@@ -1485,6 +1540,7 @@ export function StoryPlanningTab() {
           draft={draft}
           onAcceptCharacter={handleAcceptCharacter}
           onAcceptWorld={handleAcceptWorld}
+          onDeleteCharacter={handleDeleteCharacter}
           onRejectCharacter={handleRejectCharacter}
           onRejectWorld={handleRejectWorld}
           onUpdateAcceptedCharacter={handleUpdateAcceptedCharacter}

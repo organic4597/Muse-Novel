@@ -1,4 +1,11 @@
-import type { CharacterItem, StoryPlanningDraft, StoryPlanningMessage, StoryPlanningPhase } from './story-planning-types';
+import type {
+  CharacterItem,
+  StoryPlanningCharacter,
+  StoryPlanningDraft,
+  StoryPlanningMessage,
+  StoryPlanningPhase,
+  StoryPlanningWorldEntry,
+} from './story-planning-types';
 import { PHASE_LABELS, PHASE_ORDER } from './story-planning-types';
 
 const SYSTEM_PROMPT = `당신은 소설 기획 전문가입니다. 사용자와 대화하며 소설의 설정을 단계별로 함께 구상합니다.
@@ -25,6 +32,13 @@ const SYSTEM_PROMPT = `당신은 소설 기획 전문가입니다. 사용자와 
 - 사용자가 이전 단계 주제를 언급하면 해당 단계 필드도 자유롭게 수정합니다 (draft.currentPhase는 유지).
 - 사용자가 특정 단계를 건너뛰길 원하면 그에 따릅니다.
 - complete 단계에서는 전체 기획을 검토하고 빈 부분을 보완합니다.
+
+### 다중 정보 추출 규칙
+- 사용자가 한 메시지에서 여러 단계의 정보를 함께 말하면, **현재 단계만 보지 말고 draft의 모든 관련 필드에 정보를 분배**하세요.
+- 예: 장르, 주제, 시점, 문체, 플롯 단서가 함께 들어오면 각 필드에 동시에 반영하세요.
+- 단, **등장인물(characters)과 세계관(worldEntries) 정보는 현재 단계가 각각 characters/world가 아닐 때는 바로 확정하지 말고 \`pendingCharacters\`, \`pendingWorldEntries\`에 제안 형태로 넣으세요.**
+- 현재 단계가 characters/world일 때도 새 후보를 제안하는 경우에는 pending 배열을 우선 사용하세요. 이미 확정된 항목과 같은 이름/제목의 수정 제안만 현재 단계에서 확정 draft에 반영할 수 있습니다.
+- 사용자가 한 번에 많은 정보를 줘도, reply는 현재 단계 중심으로 진행하되 "다른 정보도 미리 반영했다"는 식으로 자연스럽게 안내하세요.
 
 ### ⛔ 반복 금지 — 절대 규칙 (위반 시 응답 오류로 간주)
 - **reply를 생성하기 전에, 반드시 아래 주입된 "## ✅ 이미 확정된 정보" 블록을 먼저 읽으세요.**
@@ -91,7 +105,24 @@ JSON 스키마:
         ]
       }
     ],
+    "pendingCharacters": [
+      {
+        "name": "이름",
+        "role": "역할 (주인공/조연/악역 등)",
+        "appearance": "외모 설명",
+        "personality": "성격",
+        "backstory": "배경 이야기",
+        "arcDescription": "캐릭터 아크"
+      }
+    ],
     "worldEntries": [
+      {
+        "category": "장소/마법체계/기술/조직/역사 등",
+        "title": "항목 이름",
+        "content": "설명"
+      }
+    ],
+    "pendingWorldEntries": [
       {
         "category": "장소/마법체계/기술/조직/역사 등",
         "title": "항목 이름",
@@ -112,6 +143,8 @@ JSON 스키마:
 - draft 에는 지금까지 대화에서 합의된 내용만 포함하세요.
 - 사용자가 명시적으로 언급하지 않은 필드는 이전 draft 값을 유지하거나 null/빈 배열로 두세요.
 - characters와 worldEntries 배열은 대화가 진행됨에 따라 점진적으로 추가/수정합니다.
+- 현재 단계가 characters/world가 아닐 때 새로 추출한 인물/세계관 정보는 각각 \`pendingCharacters\`, \`pendingWorldEntries\`에 넣으세요.
+- 이미 확정된 인물/세계관과 같은 이름/제목의 수정 제안도, 현재 단계가 characters/world가 아니면 pending 배열에 넣으세요.
 - currentPhase는 항상 현재 진행 중인 단계를 반영해야 합니다. 단계를 이동할 때 반드시 업데이트하세요.
 - options 배열은 매 응답마다 3~6개의 선택지를 제공하세요. 현재 단계에 맞는 구체적인 선택지여야 합니다.
   - 예: genre_tone 단계 → ["다크 판타지", "로맨틱 판타지", "하이 판타지", "현대 판타지", "SF"]
@@ -430,6 +463,58 @@ function parseCharacter(c: unknown) {
   };
 }
 
+function normalizeCharacterIdentityPart(value: string | undefined) {
+  return value?.trim().toLowerCase().replace(/\s+/g, ' ') ?? '';
+}
+
+function isPlaceholderCharacterName(name: string | undefined) {
+  const normalized = normalizeCharacterIdentityPart(name);
+  return normalized === '' || normalized === '이름 없음';
+}
+
+function getCharacterIdentityKey(character: Pick<StoryPlanningCharacter, 'name' | 'role'>) {
+  const normalizedName = normalizeCharacterIdentityPart(character.name);
+  const normalizedRole = normalizeCharacterIdentityPart(character.role);
+
+  if (!isPlaceholderCharacterName(character.name)) {
+    return `name:${normalizedName}`;
+  }
+
+  if (normalizedRole) {
+    return `placeholder-role:${normalizedRole}`;
+  }
+
+  return `placeholder-name:${normalizedName}`;
+}
+
+function normalizeCharacterItems(items: CharacterItem[] | undefined) {
+  return (items ?? []).map((item) => ({
+    name: normalizeCharacterIdentityPart(item.name),
+    description: normalizeCharacterIdentityPart(item.description),
+    status: normalizeCharacterIdentityPart(item.status),
+  }));
+}
+
+function areCharactersEquivalent(a: StoryPlanningCharacter, b: StoryPlanningCharacter) {
+  return (
+    normalizeCharacterIdentityPart(a.name) === normalizeCharacterIdentityPart(b.name) &&
+    normalizeCharacterIdentityPart(a.role) === normalizeCharacterIdentityPart(b.role) &&
+    normalizeCharacterIdentityPart(a.appearance) === normalizeCharacterIdentityPart(b.appearance) &&
+    normalizeCharacterIdentityPart(a.personality) === normalizeCharacterIdentityPart(b.personality) &&
+    normalizeCharacterIdentityPart(a.backstory) === normalizeCharacterIdentityPart(b.backstory) &&
+    normalizeCharacterIdentityPart(a.arcDescription) === normalizeCharacterIdentityPart(b.arcDescription) &&
+    JSON.stringify(normalizeCharacterItems(a.items)) === JSON.stringify(normalizeCharacterItems(b.items))
+  );
+}
+
+function areWorldEntriesEquivalent(a: StoryPlanningWorldEntry, b: StoryPlanningWorldEntry) {
+  return (
+    normalizeCharacterIdentityPart(a.category) === normalizeCharacterIdentityPart(b.category) &&
+    normalizeCharacterIdentityPart(a.title) === normalizeCharacterIdentityPart(b.title) &&
+    normalizeCharacterIdentityPart(a.content) === normalizeCharacterIdentityPart(b.content)
+  );
+}
+
 function parseWorldEntry(w: unknown) {
   const we = w as Record<string, unknown>;
   return {
@@ -439,9 +524,20 @@ function parseWorldEntry(w: unknown) {
   };
 }
 
-function parseDraftFields(rawDraft: Record<string, unknown>, fallback: StoryPlanningDraft): StoryPlanningDraft {
-  const existingCharacterNames = new Set(fallback.characters.map((c) => c.name));
+type ParseDraftFieldOptions = {
+  stagedPhase?: StoryPlanningPhase;
+};
+
+function parseDraftFields(
+  rawDraft: Record<string, unknown>,
+  fallback: StoryPlanningDraft,
+  options: ParseDraftFieldOptions = {}
+): StoryPlanningDraft {
+  const existingCharacterKeys = new Set(fallback.characters.map(getCharacterIdentityKey));
   const existingWorldTitles = new Set(fallback.worldEntries.map((w) => w.title));
+  const stagedPhase = options.stagedPhase ?? fallback.currentPhase ?? 'genre_tone';
+  const allowAcceptedCharacterUpdates = stagedPhase === 'characters';
+  const allowAcceptedWorldUpdates = stagedPhase === 'world';
 
   let characters = fallback.characters;
   let pendingCharacters = fallback.pendingCharacters ?? [];
@@ -452,24 +548,48 @@ function parseDraftFields(rawDraft: Record<string, unknown>, fallback: StoryPlan
 
     for (const c of rawDraft.characters) {
       const parsed = parseCharacter(c);
-      if (existingCharacterNames.has(parsed.name)) {
+      const characterKey = getCharacterIdentityKey(parsed);
+      const existingAccepted = fallback.characters.find(
+        (character) => getCharacterIdentityKey(character) === characterKey
+      );
+      if (existingCharacterKeys.has(characterKey) && allowAcceptedCharacterUpdates) {
         updatedExisting.push(parsed);
+      } else if (existingAccepted && areCharactersEquivalent(existingAccepted, parsed)) {
       } else {
         newPending.push(parsed);
       }
     }
 
     characters = fallback.characters.map((existing) => {
-      const updated = updatedExisting.find((u) => u.name === existing.name);
+      const existingKey = getCharacterIdentityKey(existing);
+      const updated = updatedExisting.find((u) => getCharacterIdentityKey(u) === existingKey);
       return updated ?? existing;
     });
 
-    const alreadyPendingNames = new Set(pendingCharacters.map((p) => p.name));
+    const alreadyPendingKeys = new Set(pendingCharacters.map(getCharacterIdentityKey));
     pendingCharacters = [
       ...pendingCharacters,
-      ...newPending.filter((p) => !alreadyPendingNames.has(p.name)),
+      ...newPending.filter((p) => !alreadyPendingKeys.has(getCharacterIdentityKey(p))),
     ];
   }
+
+  pendingCharacters = mergePendingCharacters(
+    pendingCharacters,
+    parsePendingCharacters(rawDraft).filter(
+      (character) => {
+        const identityKey = getCharacterIdentityKey(character);
+        if (!existingCharacterKeys.has(identityKey)) {
+          return true;
+        }
+
+        const existingAccepted = fallback.characters.find(
+          (candidate) => getCharacterIdentityKey(candidate) === identityKey
+        );
+
+        return existingAccepted ? !areCharactersEquivalent(existingAccepted, character) : true;
+      }
+    )
+  ) ?? [];
 
   let worldEntries = fallback.worldEntries;
   let pendingWorldEntries = fallback.pendingWorldEntries ?? [];
@@ -480,8 +600,10 @@ function parseDraftFields(rawDraft: Record<string, unknown>, fallback: StoryPlan
 
     for (const w of rawDraft.worldEntries) {
       const parsed = parseWorldEntry(w);
-      if (existingWorldTitles.has(parsed.title)) {
+      const existingAccepted = fallback.worldEntries.find((entry) => entry.title === parsed.title);
+      if (existingWorldTitles.has(parsed.title) && allowAcceptedWorldUpdates) {
         updatedExisting.push(parsed);
+      } else if (existingAccepted && areWorldEntriesEquivalent(existingAccepted, parsed)) {
       } else {
         newPending.push(parsed);
       }
@@ -498,6 +620,18 @@ function parseDraftFields(rawDraft: Record<string, unknown>, fallback: StoryPlan
       ...newPending.filter((p) => !alreadyPendingTitles.has(p.title)),
     ];
   }
+
+  pendingWorldEntries = mergePendingWorldEntries(
+    pendingWorldEntries,
+    parsePendingWorldEntries(rawDraft).filter((entry) => {
+      if (!existingWorldTitles.has(entry.title)) {
+        return true;
+      }
+
+      const existingAccepted = fallback.worldEntries.find((candidate) => candidate.title === entry.title);
+      return existingAccepted ? !areWorldEntriesEquivalent(existingAccepted, entry) : true;
+    })
+  ) ?? [];
 
   const str = (key: string, fb: string | undefined): string | undefined => {
     if (!(key in rawDraft)) return fb;
@@ -554,6 +688,99 @@ function parseDraftFields(rawDraft: Record<string, unknown>, fallback: StoryPlan
     formatGoal: str('formatGoal', fallback.formatGoal),
     plotStructure: str('plotStructure', fallback.plotStructure),
   };
+}
+
+type ParseResponseOptions = {
+  stagedPhase?: StoryPlanningPhase;
+};
+
+function parsePendingCharacters(rawDraft: Record<string, unknown>) {
+  if (!Array.isArray(rawDraft.pendingCharacters)) {
+    return [] as ReturnType<typeof parseCharacter>[];
+  }
+
+  return rawDraft.pendingCharacters.map(parseCharacter);
+}
+
+function parsePendingWorldEntries(rawDraft: Record<string, unknown>) {
+  if (!Array.isArray(rawDraft.pendingWorldEntries)) {
+    return [] as ReturnType<typeof parseWorldEntry>[];
+  }
+
+  return rawDraft.pendingWorldEntries.map(parseWorldEntry);
+}
+
+function mergePendingCharacters(
+  existing: StoryPlanningDraft['pendingCharacters'],
+  incoming: StoryPlanningCharacter[]
+) {
+  const next = [...(existing ?? [])];
+  const byIdentity = new Map(next.map((character) => [getCharacterIdentityKey(character), character]));
+
+  for (const character of incoming) {
+    const identityKey = getCharacterIdentityKey(character);
+    if (byIdentity.has(identityKey)) {
+      byIdentity.set(identityKey, character);
+      continue;
+    }
+
+    next.push(character);
+    byIdentity.set(identityKey, character);
+  }
+
+  return next.length > 0 ? Array.from(byIdentity.values()) : undefined;
+}
+
+function mergePendingWorldEntries(
+  existing: StoryPlanningDraft['pendingWorldEntries'],
+  incoming: StoryPlanningWorldEntry[]
+) {
+  const next = [...(existing ?? [])];
+  const byTitle = new Map(next.map((entry) => [entry.title, entry]));
+
+  for (const entry of incoming) {
+    if (byTitle.has(entry.title)) {
+      byTitle.set(entry.title, entry);
+      continue;
+    }
+
+    next.push(entry);
+    byTitle.set(entry.title, entry);
+  }
+
+  return next.length > 0 ? Array.from(byTitle.values()) : undefined;
+}
+
+function enforceCrossPhasePending(
+  draft: StoryPlanningDraft,
+  fallback: StoryPlanningDraft,
+  stagedPhase: StoryPlanningPhase
+): StoryPlanningDraft {
+  let nextDraft = draft;
+
+  if (stagedPhase !== 'characters' && draft.characters.length > fallback.characters.length) {
+    const existingNames = new Set(fallback.characters.map((character) => character.name));
+    const promoted = draft.characters.filter((character) => !existingNames.has(character.name));
+
+    nextDraft = {
+      ...nextDraft,
+      characters: fallback.characters,
+      pendingCharacters: mergePendingCharacters(nextDraft.pendingCharacters, promoted),
+    };
+  }
+
+  if (stagedPhase !== 'world' && draft.worldEntries.length > fallback.worldEntries.length) {
+    const existingTitles = new Set(fallback.worldEntries.map((entry) => entry.title));
+    const promoted = draft.worldEntries.filter((entry) => !existingTitles.has(entry.title));
+
+    nextDraft = {
+      ...nextDraft,
+      worldEntries: fallback.worldEntries,
+      pendingWorldEntries: mergePendingWorldEntries(nextDraft.pendingWorldEntries, promoted),
+    };
+  }
+
+  return nextDraft;
 }
 
 /** JSON 문자열에서 가장 바깥쪽 { } 블럭을 모두 추출한다. */
@@ -689,12 +916,16 @@ function extractPartialOptions(text: string): string[] | undefined {
   return extractPartialStringArrayField(text, 'options');
 }
 
+export { isPhaseComplete, getNextPhase };
+
 export function parseStoryPlanningResponse(
   text: string,
-  fallbackDraft: StoryPlanningDraft
+  fallbackDraft: StoryPlanningDraft,
+  options: ParseResponseOptions = {}
 ): StoryPlanningResponse {
   const textWithoutThinkBlocks = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
   const codeBlockMatch = textWithoutThinkBlocks.match(/```json\s*([\s\S]*?)```/);
+  const stagedPhase = options.stagedPhase ?? fallbackDraft.currentPhase ?? 'genre_tone';
 
   if (codeBlockMatch) {
     try {
@@ -708,18 +939,22 @@ export function parseStoryPlanningResponse(
           const rawDraft = (typeof obj.draft === 'object' && obj.draft !== null)
             ? obj.draft as Record<string, unknown>
             : obj; // draft 키 없으면 obj 자체를 draft로
+          const parsedDraft = parseDraftFields(rawDraft, fallbackDraft, { stagedPhase });
+          const enforcedDraft = enforceCrossPhasePending(parsedDraft, fallbackDraft, stagedPhase);
           return {
             reply,
-            draft: parseDraftFields(rawDraft, fallbackDraft),
+            draft: enforcedDraft,
             options: extractOptions(obj),
             debug: buildParseDebug('codeblock', textWithoutThinkBlocks, 1),
           };
         }
 
         if (isDraftLike(obj)) {
+          const parsedDraft = parseDraftFields(obj, fallbackDraft, { stagedPhase });
+          const enforcedDraft = enforceCrossPhasePending(parsedDraft, fallbackDraft, stagedPhase);
           return {
             reply: textWithoutThinkBlocks,
-            draft: parseDraftFields(obj, fallbackDraft),
+            draft: enforcedDraft,
             options: extractOptions(obj),
             debug: buildParseDebug('codeblock', textWithoutThinkBlocks, 1),
           };
@@ -741,9 +976,11 @@ export function parseStoryPlanningResponse(
         const rawDraft = (typeof obj.draft === 'object' && obj.draft !== null)
           ? obj.draft as Record<string, unknown>
           : obj;
+        const parsedDraft = parseDraftFields(rawDraft, fallbackDraft, { stagedPhase });
+        const enforcedDraft = enforceCrossPhasePending(parsedDraft, fallbackDraft, stagedPhase);
         return {
           reply,
-          draft: parseDraftFields(rawDraft, fallbackDraft),
+          draft: enforcedDraft,
           options: extractOptions(obj),
           debug: buildParseDebug('embedded', textWithoutThinkBlocks, candidates.length),
         };
@@ -751,9 +988,11 @@ export function parseStoryPlanningResponse(
 
       if (isDraftLike(obj)) {
         const replyText = stripAllJsonBlocks(textWithoutThinkBlocks, candidates);
+        const parsedDraft = parseDraftFields(obj, fallbackDraft, { stagedPhase });
+        const enforcedDraft = enforceCrossPhasePending(parsedDraft, fallbackDraft, stagedPhase);
         return {
           reply: replyText || textWithoutThinkBlocks,
-          draft: parseDraftFields(obj, fallbackDraft),
+          draft: enforcedDraft,
           options: extractOptions(obj),
           debug: buildParseDebug('embedded', textWithoutThinkBlocks, candidates.length),
         };
@@ -762,7 +1001,11 @@ export function parseStoryPlanningResponse(
   }
 
   const partialReply = extractPartialReply(textWithoutThinkBlocks);
-  const partialDraft = extractPartialDraft(textWithoutThinkBlocks, fallbackDraft);
+  const partialDraft = enforceCrossPhasePending(
+    extractPartialDraft(textWithoutThinkBlocks, fallbackDraft),
+    fallbackDraft,
+    stagedPhase
+  );
   const partialOptions = extractPartialOptions(textWithoutThinkBlocks);
   if (partialReply) {
     return {

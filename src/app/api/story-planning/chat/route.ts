@@ -2,8 +2,8 @@ import { generateText } from 'ai';
 import { NextRequest, NextResponse } from 'next/server';
 import { getEnvProviderConfig } from '@/lib/ai/daily-slogan';
 import { createProvider } from '@/lib/ai/provider-factory';
-import { buildStoryPlanningMessages, parseStoryPlanningResponse } from '@/lib/ai/story-planning-prompt';
-import type { StoryPlanningDraft, StoryPlanningMessage } from '@/lib/ai/story-planning-types';
+import { buildStoryPlanningMessages, getNextPhase as getNextPhaseFromPrompt, isPhaseComplete, parseStoryPlanningResponse } from '@/lib/ai/story-planning-prompt';
+import type { StoryPlanningDraft, StoryPlanningMessage, StoryPlanningPhase } from '@/lib/ai/story-planning-types';
 import { EMPTY_DRAFT, PHASE_LABELS } from '@/lib/ai/story-planning-types';
 import type { ProviderConfig } from '@/lib/ai/types';
 import { db } from '@/lib/db';
@@ -139,6 +139,7 @@ function inferDraftFromUserText(
   draft: StoryPlanningDraft
 ) {
   const nextDraft: StoryPlanningDraft = { ...draft };
+  const stagedPhase = draft.currentPhase ?? 'genre_tone';
 
   if (!nextDraft.genre) {
     const genreHints = [
@@ -158,17 +159,44 @@ function inferDraftFromUserText(
     nextDraft.premise = userText.trim();
   }
 
-  if (nextDraft.worldEntries.length === 0 && /(신전|바다신전|유물|세계관|장소)/.test(userText)) {
-    nextDraft.worldEntries = [
-      {
-        category: '장소',
-        title: '잊혀진 바다신전',
-        content: userText.trim(),
-      },
-    ];
+  if (
+    nextDraft.worldEntries.length === 0 &&
+    !(nextDraft.pendingWorldEntries && nextDraft.pendingWorldEntries.length > 0) &&
+    /(신전|바다신전|유물|세계관|장소)/.test(userText)
+  ) {
+    const inferredWorldEntry = {
+      category: '장소',
+      title: '잊혀진 바다신전',
+      content: userText.trim(),
+    };
+
+    if (stagedPhase === 'world') {
+      nextDraft.worldEntries = [inferredWorldEntry];
+    } else {
+      nextDraft.pendingWorldEntries = [
+        ...(nextDraft.pendingWorldEntries ?? []),
+        inferredWorldEntry,
+      ];
+    }
   }
 
-  nextDraft.currentPhase = inferPhaseFromUserText(userText, nextDraft);
+  const inferredNextPhase = inferPhaseFromUserText(userText, nextDraft);
+  if (stagedPhase === 'genre_tone' && inferredNextPhase === 'premise') {
+    nextDraft.currentPhase = inferredNextPhase;
+    return nextDraft;
+  }
+
+  if (stagedPhase === 'premise' && inferredNextPhase === 'themes') {
+    nextDraft.currentPhase = inferredNextPhase;
+    return nextDraft;
+  }
+
+  if (/(다음|넘어가자|다음 단계|계속)/.test(userText.trim())) {
+    nextDraft.currentPhase = inferredNextPhase;
+    return nextDraft;
+  }
+
+  nextDraft.currentPhase = stagedPhase;
   return nextDraft;
 }
 
@@ -339,6 +367,24 @@ function repairDraftFromUserIntent(
   return inferDraftFromUserText(userText, mergedDraft);
 }
 
+function computeOverlapRatio(a: string, b: string): number {
+  const shorter = a.length <= b.length ? a : b;
+  const longer = a.length > b.length ? a : b;
+  if (shorter.length === 0) return 0;
+
+  const windowSize = Math.min(20, shorter.length);
+  let matchingChars = 0;
+
+  for (let i = 0; i <= shorter.length - windowSize; i += windowSize) {
+    const chunk = shorter.slice(i, i + windowSize);
+    if (longer.includes(chunk)) {
+      matchingChars += windowSize;
+    }
+  }
+
+  return matchingChars / shorter.length;
+}
+
 async function resolveProvider(): Promise<ProviderConfig | null> {
   // 1. Global AI settings (projectId IS NULL)
   const globalSetting = await getGlobalDefaultProvider(db);
@@ -395,13 +441,60 @@ export async function POST(request: NextRequest) {
       temperature: 0.7,
     });
 
-    const parsed = parseStoryPlanningResponse(text, currentDraft);
-    const repairedDraft = parsed.debug?.mode === 'fallback' && lastMsg.content
-      ? repairDraftFromUserIntent(parsed.draft, currentDraft, lastMsg.content)
-      : parsed.draft;
-    const repairedReply = parsed.debug?.mode === 'fallback' && lastMsg.content
-      ? selectFallbackReply(parsed.reply, currentDraft, repairedDraft, lastMsg.content)
-      : parsed.reply;
+    const stagedPhase: StoryPlanningPhase = currentDraft.currentPhase ?? 'genre_tone';
+    const parsed = parseStoryPlanningResponse(text, currentDraft, {
+      stagedPhase,
+    });
+
+    let repairedDraft: StoryPlanningDraft;
+    if (lastMsg.content) {
+      repairedDraft = repairDraftFromUserIntent(parsed.draft, currentDraft, lastMsg.content);
+    } else {
+      repairedDraft = parsed.draft;
+    }
+
+    const repairedPhase = repairedDraft.currentPhase ?? 'genre_tone';
+    if (repairedPhase === stagedPhase && isPhaseComplete(stagedPhase, repairedDraft) && stagedPhase !== 'complete') {
+      const forcedNext = getNextPhaseFromPrompt(stagedPhase);
+      if (forcedNext !== stagedPhase) {
+        console.info('[story-planning/chat] Forcing phase advancement', {
+          from: stagedPhase,
+          to: forcedNext,
+        });
+        repairedDraft = { ...repairedDraft, currentPhase: forcedNext };
+      }
+    }
+
+    const assistantMessages = messages.filter((m) => m.role === 'assistant');
+    const lastAssistantReply = assistantMessages.at(-1)?.content ?? '';
+    const replyForComparison = parsed.reply.replace(/\s+/g, ' ').trim();
+    const lastReplyForComparison = lastAssistantReply.replace(/\s+/g, ' ').trim();
+    const isRepetitiveReply =
+      replyForComparison.length > 30 &&
+      lastReplyForComparison.length > 30 &&
+      (replyForComparison === lastReplyForComparison ||
+        computeOverlapRatio(replyForComparison, lastReplyForComparison) > 0.8);
+
+    if (isRepetitiveReply && repairedDraft.currentPhase !== 'complete') {
+      const currentPhaseNow = repairedDraft.currentPhase ?? 'genre_tone';
+      const forcedNext = getNextPhaseFromPrompt(currentPhaseNow);
+      if (forcedNext !== currentPhaseNow) {
+        console.warn('[story-planning/chat] Repetitive reply detected, forcing phase advancement', {
+          from: currentPhaseNow,
+          to: forcedNext,
+        });
+        repairedDraft = { ...repairedDraft, currentPhase: forcedNext };
+      }
+    }
+
+    let repairedReply: string;
+    if (parsed.debug?.mode === 'fallback' && lastMsg.content) {
+      repairedReply = selectFallbackReply(parsed.reply, currentDraft, repairedDraft, lastMsg.content);
+    } else if (isRepetitiveReply && lastMsg.content) {
+      repairedReply = buildFallbackReply(currentDraft, repairedDraft, lastMsg.content);
+    } else {
+      repairedReply = parsed.reply;
+    }
 
     if (parsed.debug?.mode === 'fallback') {
       console.warn('[story-planning/chat] Parser fallback detected', {
