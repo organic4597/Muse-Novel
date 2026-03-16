@@ -1,20 +1,35 @@
-# muse-novel
+# ✍️ Muse Novel
 
-한국어 소설 집필을 위한 AI 보조 웹앱입니다. 프로젝트, 챕터, 등장인물, 세계관을 한곳에서 관리하고, AI 보조 작성과 스토리 구상 기능으로 초안 작성부터 설정 정리까지 이어서 작업할 수 있습니다.
+> **한국어 소설 작가를 위한 AI 보조 창작 플랫폼**  
+> AI-powered writing assistant for Korean novelists
 
-## 핵심 기능
+<p align="center">
+  <a href="https://github.com/organic4597/Muse-Novel/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/organic4597/Muse-Novel?style=flat-square" alt="License" />
+  </a>
+  <img src="https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js" alt="Next.js" />
+  <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react" alt="React" />
+  <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Tailwind_CSS-v4-06B6D4?style=flat-square&logo=tailwindcss" alt="Tailwind CSS" />
+  <img src="https://img.shields.io/badge/AI-OpenAI%20%7C%20Claude%20%7C%20Ollama-blueviolet?style=flat-square" alt="AI" />
+</p>
 
-- 소설 프로젝트 생성 및 관리
-- 챕터 작성, 정렬, 자동 저장
-- 등장인물 / 세계관 항목 CRUD
-- AI 보조 작성 및 명령형 편집
-- 홈 화면 스토리 구상 탭
-- 공용 AI 설정과 프로젝트별 AI 설정 분리
-- 캐릭터 이미지 프롬프트용 한국어 태그 추천 및 번역
-- 다크 모드 / 시스템 테마 동기화
-- LoRA 관리 및 프로젝트 삭제 시 공유 LoRA 보존
+프로젝트, 챕터, 등장인물, 세계관을 한곳에서 관리하고, AI 보조 작성과 스토리 구상 기능으로 초안 작성부터 설정 정리까지 이어서 작업할 수 있습니다.
 
-## 최근 반영 사항
+## ✨ 핵심 기능
+
+- 📚 소설 프로젝트 생성 및 관리
+- ✏️ 챕터 작성, 정렬, 자동 저장
+- 👤 등장인물 / 세계관 항목 CRUD
+- 🤖 AI 보조 작성 및 명령형 편집
+- 💡 홈 화면 스토리 구상 탭
+- ⚙️ 공용 AI 설정과 프로젝트별 AI 설정 분리
+- 🖼️ 캐릭터별 이미지 생성 (프로필 · 전신 · 일러스트, SSE 실시간 진행)
+- 🏷️ 캐릭터 이미지 프롬프트용 한국어 태그 추천 및 번역
+- 🌙 다크 모드 / 시스템 테마 동기화
+- 🎨 LoRA 관리 및 프로젝트 삭제 시 공유 LoRA 보존
+
+## 🆕 최근 반영 사항
 
 - 홈 화면에 소설 목록 / 스토리 구상 탭 추가
 - 스토리 구상 대화 결과를 새 소설 프로젝트로 일괄 적용 가능
@@ -23,18 +38,18 @@
 - 개발/실행 스크립트에서 태그 서버 자동 실행
 - 프로젝트 삭제 시 공유 LoRA는 유지하고 프로젝트 소유 데이터만 정리하도록 수정
 
-## 기술 스택
+## 🛠️ 기술 스택
 
-- Next.js 16 App Router
-- React 19
-- TypeScript 5
-- Tailwind CSS v4
-- Drizzle ORM + SQLite / Turso
-- Vercel AI SDK
-- Plate.js editor
-- Python tag recommender server
+| 분류 | 기술 |
+|------|------|
+| 프레임워크 | Next.js 16 App Router |
+| UI | React 19, Tailwind CSS v4, Plate.js editor |
+| 언어 | TypeScript 5 |
+| DB / ORM | Drizzle ORM + SQLite / Turso |
+| AI | Vercel AI SDK (OpenAI · Anthropic · Ollama) |
+| 태그 추천 | Python tag recommender server |
 
-## 요구 사항
+## 📋 요구 사항
 
 ### Node / Bun
 
@@ -52,7 +67,7 @@ pip install numpy sentence-transformers transformers torch
 
 태그 추천 서버는 한국어 입력을 영어 태그로 번역하고 임베딩 검색을 수행하므로 첫 실행 시 모델 다운로드에 시간이 걸릴 수 있습니다.
 
-## 설치
+## 🚀 설치
 
 ```bash
 git clone <your-repo-url>
@@ -67,7 +82,7 @@ cp .env.example .env.local
 pip install numpy sentence-transformers transformers torch
 ```
 
-## 환경 변수 설정
+## 🔑 환경 변수 설정
 
 기본 예시는 .env.example에 있습니다.
 
@@ -90,7 +105,7 @@ AI는 두 단계로 선택됩니다.
 1. 홈 스토리 구상 탭의 공용 AI 설정
 2. 없으면 환경 변수 기반 기본 provider fallback
 
-## 개발 실행
+## 💻 개발 실행
 
 기본 개발 모드는 태그 추천 서버를 함께 띄웁니다.
 
@@ -114,7 +129,7 @@ bun run tag-server
 
 - `http://localhost:3000`
 
-## 프로덕션 실행
+## 🖥️ 프로덕션 실행
 
 ```bash
 bun run build
@@ -123,7 +138,7 @@ bun run start
 
 `start`와 `preview`도 태그 서버를 함께 실행합니다.
 
-## 데이터베이스
+## 🗄️ 데이터베이스
 
 마이그레이션 관련 명령:
 
@@ -166,6 +181,7 @@ bun run db:studio
 - 세계관 문서화
 - AI 보조 작성
 - 이미지 프롬프트 태그 추천
+- **캐릭터 이미지 생성** (프로필 / 전신 / 일러스트)
 - LoRA 및 스타일 프로필 관리
 
 ## 주요 API
@@ -194,6 +210,11 @@ bun run db:studio
 - `POST /api/ai/copilot`
 - `POST /api/ai/command`
 - `POST /api/prompt-tags/recommend`
+
+### 캐릭터 이미지
+
+- `GET /api/projects/[id]/characters/[characterId]/images`
+- `POST /api/projects/[id]/characters/[characterId]/images/generate` (SSE 스트리밍)
 
 ## 디렉토리 개요
 
