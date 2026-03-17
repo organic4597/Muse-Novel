@@ -33,7 +33,7 @@
 
 ## AI 설정 정책
 
-- 홈 스토리 구상은 공용 AI 설정 우선
+- 홈 스토리 구상은 전역 AI 설정 페이지(`/settings/ai`)의 공용 AI 설정을 우선 사용
 - 공용 설정이 없으면 환경 변수 provider fallback
 
 ## Qwen3 Base 모델 응답 처리
