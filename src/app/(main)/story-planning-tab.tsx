@@ -7,14 +7,16 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 import { Button } from '@/components/ui/button';
+import { buildStoryPlanningOptions } from '@/lib/ai/story-planning-phase-config';
 import type {
   StoryPlanningCharacter,
   StoryPlanningDraft,
   StoryPlanningMessage,
-  StoryPlanningPhase,
   StoryPlanningWorldEntry,
 } from '@/lib/ai/story-planning-types';
-import { EMPTY_DRAFT, PHASE_LABELS, PHASE_ORDER } from '@/lib/ai/story-planning-types';
+import {
+  EMPTY_DRAFT,
+} from '@/lib/ai/story-planning-types';
 
 const STORAGE_KEY = 'muse-novel-story-planning';
 
@@ -154,6 +156,115 @@ function updateWorldField(
   };
 }
 
+function normalizePendingIdentity(value: string | undefined) {
+  return value?.trim().toLowerCase().replace(/\s+/g, ' ') ?? '';
+}
+
+function getPendingCharacterIdentity(character: Pick<StoryPlanningCharacter, 'name' | 'role'>) {
+  const normalizedName = normalizePendingIdentity(character.name);
+  if (normalizedName && normalizedName !== '이름 없음') {
+    return `name:${normalizedName}`;
+  }
+
+  const normalizedRole = normalizePendingIdentity(character.role);
+  if (normalizedRole) {
+    return `role:${normalizedRole}`;
+  }
+
+  return 'placeholder';
+}
+
+function mergeReplacementPendingCharacters(
+  existing: StoryPlanningDraft['pendingCharacters'],
+  incoming: StoryPlanningDraft['pendingCharacters'],
+  rejectedLabel: string
+) {
+  const next = [...(existing ?? [])];
+  const existingKeys = new Set(next.map(getPendingCharacterIdentity));
+  const rejectedKey = getPendingCharacterIdentity({ name: rejectedLabel, role: undefined });
+
+  const replacement = (incoming ?? []).find((character) => {
+    const identityKey = getPendingCharacterIdentity(character);
+    return identityKey !== rejectedKey && !existingKeys.has(identityKey);
+  });
+
+  if (!replacement) {
+    return next.length > 0 ? next : undefined;
+  }
+
+  return [...next, replacement];
+}
+
+function mergeReplacementPendingWorldEntries(
+  existing: StoryPlanningDraft['pendingWorldEntries'],
+  incoming: StoryPlanningDraft['pendingWorldEntries'],
+  rejectedLabel: string
+) {
+  const next = [...(existing ?? [])];
+  const existingTitles = new Set(next.map((entry) => normalizePendingIdentity(entry.title)));
+  const rejectedTitle = normalizePendingIdentity(rejectedLabel);
+
+  const replacement = (incoming ?? []).find((entry) => {
+    const normalizedTitle = normalizePendingIdentity(entry.title);
+    return normalizedTitle !== rejectedTitle && !existingTitles.has(normalizedTitle);
+  });
+
+  if (!replacement) {
+    return next.length > 0 ? next : undefined;
+  }
+
+  return [...next, replacement];
+}
+
+function findNewPendingCharacter(
+  existing: StoryPlanningDraft['pendingCharacters'],
+  next: StoryPlanningDraft['pendingCharacters']
+) {
+  const existingKeys = new Set((existing ?? []).map(getPendingCharacterIdentity));
+  return (next ?? []).find((character) => !existingKeys.has(getPendingCharacterIdentity(character)));
+}
+
+function findNewPendingWorldEntry(
+  existing: StoryPlanningDraft['pendingWorldEntries'],
+  next: StoryPlanningDraft['pendingWorldEntries']
+) {
+  const existingTitles = new Set(
+    (existing ?? []).map((entry) => normalizePendingIdentity(entry.title))
+  );
+  return (next ?? []).find((entry) => !existingTitles.has(normalizePendingIdentity(entry.title)));
+}
+
+function buildReplacementAssistantReply(
+  kind: 'character' | 'world',
+  rejectedLabel: string,
+  previousDraft: StoryPlanningDraft,
+  nextDraft: StoryPlanningDraft
+) {
+  if (kind === 'character') {
+    const replacement = findNewPendingCharacter(previousDraft.pendingCharacters, nextDraft.pendingCharacters);
+    if (replacement) {
+      return `좋아요. **${rejectedLabel}**은 제외했고, 대신 **${replacement.name}** 후보를 추가해 뒀어요. 지금 남아 있는 후보들과 비교해서 어떤 인물이 더 맞는지 골라볼까요?`;
+    }
+
+    if ((nextDraft.pendingCharacters?.length ?? 0) > 0) {
+      return `좋아요. **${rejectedLabel}**은 제외했어요. 우선 남아 있는 등장인물 후보들부터 비교해 볼까요? 원하면 원하는 역할이나 분위기를 더 말해 주시면 새 후보를 다시 뽑아볼게요.`;
+    }
+
+    return `좋아요. **${rejectedLabel}**은 제외했어요. 원하는 역할이나 분위기를 조금 더 말해 주시면 그 기준으로 새 등장인물 후보를 다시 제안할게요.`;
+  }
+
+  const replacement = findNewPendingWorldEntry(previousDraft.pendingWorldEntries, nextDraft.pendingWorldEntries);
+  if (replacement) {
+    return `좋아요. **${rejectedLabel}**은 제외했고, 대신 **${replacement.title}** 후보를 추가해 뒀어요. 지금 남아 있는 세계관 후보들과 비교해서 어떤 설정이 더 맞는지 골라볼까요?`;
+  }
+
+  if ((nextDraft.pendingWorldEntries?.length ?? 0) > 0) {
+    return `좋아요. **${rejectedLabel}**은 제외했어요. 우선 남아 있는 세계관 후보들부터 비교해 볼까요? 원하면 더 밀고 싶은 분위기나 규칙을 말해 주시면 새 후보를 다시 제안할게요.`;
+  }
+
+  return `좋아요. **${rejectedLabel}**은 제외했어요. 더 원하는 배경 분위기나 세계 규칙을 말해 주시면 그 기준으로 새 세계관 후보를 다시 제안할게요.`;
+}
+
 function hasDraftContent(draft: StoryPlanningDraft) {
   return Boolean(
     draft.title ||
@@ -179,111 +290,6 @@ const SUGGESTIONS = [
   '일상 로맨스를 구상해 봅시다',
   '미스터리/추리 소설 아이디어가 있어요',
 ];
-
-// ─── Inline AI Settings ─────────────────────────────────────────────────────
-function GlobalAISettingsInline({
-  onSaved,
-}: {
-  onSaved: () => void;
-}) {
-  const [providerType, setProviderType] = useState('openai');
-  const [modelName, setModelName] = useState('gpt-4o-mini');
-  const [apiKey, setApiKey] = useState('');
-  const [baseUrl, setBaseUrl] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleSave = async () => {
-    if (!modelName.trim()) {
-      setError('모델명을 입력해주세요.');
-      return;
-    }
-    setSaving(true);
-    setError('');
-    try {
-      const res = await fetch('/api/global-ai-settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          providerType,
-          modelName: modelName.trim(),
-          apiKeyEncrypted: apiKey.trim() || undefined,
-          baseUrl: baseUrl.trim() || undefined,
-          isDefault: true,
-        }),
-      });
-      if (!res.ok) throw new Error('저장 실패');
-      onSaved();
-    } catch {
-      setError('설정 저장에 실패했습니다.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="rounded-lg border border-border bg-card p-4 space-y-3">
-      <h3 className="text-sm font-semibold">공용 AI 설정</h3>
-      <p className="text-xs text-muted-foreground">
-        스토리 구상에 사용할 AI를 설정하세요. 환경변수 대신 여기서 직접 지정할 수 있습니다.
-      </p>
-
-      <div className="grid gap-2 sm:grid-cols-2">
-        <div>
-          <label className="text-xs text-muted-foreground">Provider</label>
-          <select
-            className="mt-1 w-full rounded border border-border bg-background px-2 py-1.5 text-sm"
-            onChange={(e) => setProviderType(e.target.value)}
-            value={providerType}
-          >
-            <option value="openai">OpenAI</option>
-            <option value="anthropic">Anthropic</option>
-            <option value="ollama">Ollama</option>
-            <option value="nvidia">NVIDIA</option>
-            <option value="koboldcpp">KoboldCpp</option>
-            <option value="qwen-local">Qwen Local</option>
-          </select>
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground">모델명</label>
-          <input
-            className="mt-1 w-full rounded border border-border bg-background px-2 py-1.5 text-sm"
-            onChange={(e) => setModelName(e.target.value)}
-            placeholder="gpt-4o-mini"
-            type="text"
-            value={modelName}
-          />
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground">API Key (선택)</label>
-          <input
-            className="mt-1 w-full rounded border border-border bg-background px-2 py-1.5 text-sm"
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="sk-..."
-            type="password"
-            value={apiKey}
-          />
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground">Base URL (선택)</label>
-          <input
-            className="mt-1 w-full rounded border border-border bg-background px-2 py-1.5 text-sm"
-            onChange={(e) => setBaseUrl(e.target.value)}
-            placeholder="http://localhost:11434"
-            type="text"
-            value={baseUrl}
-          />
-        </div>
-      </div>
-
-      {error && <p className="text-xs text-red-500">{error}</p>}
-
-      <Button disabled={saving} onClick={handleSave} size="sm">
-        {saving ? '저장 중...' : '설정 저장'}
-      </Button>
-    </div>
-  );
-}
 
 // ─── Character Expanded Detail Fields ───────────────────────────────────────
 function CharacterExpandedDetails({ character }: { character: StoryPlanningCharacter }) {
@@ -342,38 +348,6 @@ function CharacterExpandedDetails({ character }: { character: StoryPlanningChara
   );
 }
 
-// ─── Phase Stepper ──────────────────────────────────────────────────────────
-function PhaseStepper({ currentPhase }: { currentPhase?: StoryPlanningPhase }) {
-  const currentIndex = currentPhase ? PHASE_ORDER.indexOf(currentPhase) : 0;
-
-  return (
-    <div className="rounded-lg border border-border bg-card p-3">
-      <h4 className="text-xs font-semibold text-muted-foreground mb-2">진행 단계</h4>
-      <div className="flex flex-wrap gap-1.5">
-        {PHASE_ORDER.map((phase, i) => {
-          const isComplete = i < currentIndex;
-          const isCurrent = i === currentIndex;
-
-          return (
-            <span
-              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${
-                isComplete
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                  : isCurrent
-                    ? 'bg-primary/15 text-primary ring-1 ring-primary/30'
-                    : 'bg-muted text-muted-foreground'
-              }`}
-              key={phase}
-            >
-              {isComplete ? '✓ ' : isCurrent ? '● ' : ''}{PHASE_LABELS[phase]}
-            </span>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 // ─── Draft Summary Panel ────────────────────────────────────────────────────
 function DraftPanel({
   draft,
@@ -382,6 +356,7 @@ function DraftPanel({
   onDeleteCharacter,
   onAcceptWorld,
   onRejectWorld,
+  onDeleteWorld,
   onUpdateAcceptedCharacter,
   onUpdateAcceptedWorld,
   onUpdatePendingCharacter,
@@ -393,6 +368,7 @@ function DraftPanel({
   onDeleteCharacter: (index: number) => void;
   onAcceptWorld: (index: number) => void;
   onRejectWorld: (index: number) => void;
+  onDeleteWorld: (index: number) => void;
   onUpdateAcceptedCharacter: (index: number, field: keyof StoryPlanningCharacter, value: string) => void;
   onUpdateAcceptedWorld: (index: number, field: keyof StoryPlanningWorldEntry, value: string) => void;
   onUpdatePendingCharacter: (index: number, field: keyof StoryPlanningCharacter, value: string) => void;
@@ -731,15 +707,24 @@ function DraftPanel({
                         </>
                       )}
                     </div>
-                    <button
-                      className="inline-flex h-6 shrink-0 items-center self-start rounded px-2 py-0 text-xs font-medium bg-background text-foreground hover:bg-accent transition-colors"
-                      onClick={() => {
-                        setEditingAcceptedWorldIndex(isEditing ? null : i);
-                      }}
-                      type="button"
-                    >
-                      {isEditing ? '완료' : '수정'}
-                    </button>
+                    <div className="flex shrink-0 items-center gap-1 self-start">
+                      <button
+                        className="inline-flex h-6 items-center rounded px-2 py-0 text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-900/70 transition-colors"
+                        onClick={() => onDeleteWorld(i)}
+                        type="button"
+                      >
+                        삭제
+                      </button>
+                      <button
+                        className="inline-flex h-6 items-center rounded px-2 py-0 text-xs font-medium bg-background text-foreground hover:bg-accent transition-colors"
+                        onClick={() => {
+                          setEditingAcceptedWorldIndex(isEditing ? null : i);
+                        }}
+                        type="button"
+                      >
+                        {isEditing ? '완료' : '수정'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -836,12 +821,14 @@ function DraftPanel({
 function ApplyDraftPanel({
   canApply,
   hasContent,
+  titleMissing,
   isApplying,
   isLoading,
   onApply,
 }: {
   canApply: boolean;
   hasContent: boolean;
+  titleMissing: boolean;
   isApplying: boolean;
   isLoading: boolean;
   onApply: () => void;
@@ -855,9 +842,15 @@ function ApplyDraftPanel({
         </p>
       </div>
 
-      {hasContent && !canApply && (
+      {hasContent && !canApply && titleMissing && (
         <p className="text-xs text-amber-600 dark:text-amber-400">
-          제목이 정리되면 바로 소설 목록에 추가할 수 있습니다.
+          제목이 아직 draft에 반영되지 않았습니다. 채팅에서 제목을 정하거나, “제목 몇 개 추천해줘”처럼 바로 요청해 주세요.
+        </p>
+      )}
+
+      {hasContent && !canApply && !titleMissing && (
+        <p className="text-xs text-amber-600 dark:text-amber-400">
+          제목과 기본 기획 정보가 정리되면 소설 목록에 추가할 수 있습니다.
         </p>
       )}
 
@@ -895,8 +888,6 @@ export function StoryPlanningTab() {
   const [draft, setDraft] = useState<StoryPlanningDraft>({ ...EMPTY_DRAFT });
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [noProvider, setNoProvider] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [error, setError] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -951,8 +942,7 @@ export function StoryPlanningTab() {
 
       if (!res.ok) {
         if (data.error === 'no_provider') {
-          setNoProvider(true);
-          setShowSettings(true);
+          setError('AI 제공자가 설정되지 않았습니다. AI 설정 페이지에서 먼저 설정해주세요.');
           messagesRef.current = currentMessages;
           setMessages(currentMessages);
           saveSession({ messages: currentMessages, draft: currentDraft });
@@ -975,7 +965,6 @@ export function StoryPlanningTab() {
       setMessages(updatedMessages);
       setDraft(updatedDraft);
       saveSession({ messages: updatedMessages, draft: updatedDraft });
-      setNoProvider(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'AI 응답 중 오류가 발생했습니다.');
       messagesRef.current = currentMessages;
@@ -1001,8 +990,8 @@ export function StoryPlanningTab() {
       ? ` 이미 제안되어 검토 중인 항목은 ${pendingLabels.map((label) => `"${label}"`).join(', ')} 이고, 이 항목들과 방금 거절한 항목은 다시 제안하지 마.`
       : ' 방금 거절한 항목은 다시 제안하지 마.';
     const retryPrompt = kind === 'character'
-      ? `방금 제안한 등장인물 "${rejectedLabel}"은 제외하고, 이미 정해진 설정은 유지한 채 다른 등장인물 후보를 다시 제안해줘.${pendingContext}`
-      : `방금 제안한 세계관 항목 "${rejectedLabel}"은 제외하고, 이미 정해진 설정은 유지한 채 다른 세계관 후보를 다시 제안해줘.${pendingContext}`;
+      ? `방금 제안한 등장인물 "${rejectedLabel}"은 제외하고, 그 한 항목만 대체할 새로운 등장인물 후보 1개만 제안해줘. 이미 검토 중인 다른 등장인물 후보들은 그대로 유지하고 다시 쓰거나 수정하지 마.${pendingContext}`
+      : `방금 제안한 세계관 항목 "${rejectedLabel}"은 제외하고, 그 한 항목만 대체할 새로운 세계관 후보 1개만 제안해줘. 이미 검토 중인 다른 세계관 후보들은 그대로 유지하고 다시 쓰거나 수정하지 마.${pendingContext}`;
     const requestMessages: StoryPlanningMessage[] = [
       ...currentMessages,
       { role: 'user', content: retryPrompt },
@@ -1022,41 +1011,43 @@ export function StoryPlanningTab() {
 
       if (!res.ok) {
         if (data.error === 'no_provider') {
-          setNoProvider(true);
-          setShowSettings(true);
+          setError('AI 제공자가 설정되지 않았습니다. AI 설정 페이지에서 먼저 설정해주세요.');
           saveSession({ messages: currentMessages, draft: baseDraft });
           return;
         }
         throw new Error(data.error || '대체 제안 생성 실패');
       }
 
-      const assistantMsg: StoryPlanningMessage = {
-        role: 'assistant',
-        content: data.reply,
-        options: data.options,
-        draftSnapshot: data.draft ?? baseDraft,
-      };
-      const updatedMessages = [...requestMessages, assistantMsg];
       const updatedDraft: StoryPlanningDraft = {
         ...(data.draft ?? baseDraft),
         pendingCharacters: kind === 'character'
-          ? (data.draft?.pendingCharacters ?? baseDraft.pendingCharacters)?.filter(
-              (character) => character.name !== rejectedLabel
+          ? mergeReplacementPendingCharacters(
+              baseDraft.pendingCharacters,
+              data.draft?.pendingCharacters,
+              rejectedLabel
             )
-          : (data.draft?.pendingCharacters ?? baseDraft.pendingCharacters),
+          : baseDraft.pendingCharacters,
         pendingWorldEntries: kind === 'world'
-          ? (data.draft?.pendingWorldEntries ?? baseDraft.pendingWorldEntries)?.filter(
-              (entry) => entry.title !== rejectedLabel
+          ? mergeReplacementPendingWorldEntries(
+              baseDraft.pendingWorldEntries,
+              data.draft?.pendingWorldEntries,
+              rejectedLabel
             )
-          : (data.draft?.pendingWorldEntries ?? baseDraft.pendingWorldEntries),
+          : baseDraft.pendingWorldEntries,
       };
+      const assistantMsg: StoryPlanningMessage = {
+        role: 'assistant',
+        content: buildReplacementAssistantReply(kind, rejectedLabel, baseDraft, updatedDraft),
+        options: buildStoryPlanningOptions(updatedDraft),
+        draftSnapshot: updatedDraft,
+      };
+      const updatedMessages = [...currentMessages, assistantMsg];
 
       messagesRef.current = updatedMessages;
       draftRef.current = updatedDraft;
       setMessages(updatedMessages);
       setDraft(updatedDraft);
       saveSession({ messages: updatedMessages, draft: updatedDraft });
-      setNoProvider(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : '대체 제안 생성 중 오류가 발생했습니다.');
       saveSession({ messages: currentMessages, draft: baseDraft });
@@ -1079,7 +1070,7 @@ export function StoryPlanningTab() {
 
   const handleApply = async () => {
     if (!draft.title?.trim()) {
-      setError('소설 제목이 아직 정해지지 않았습니다. 대화를 통해 제목을 먼저 정해주세요.');
+      setError('소설 제목이 아직 draft에 반영되지 않았습니다. “제목 몇 개 추천해줘” 또는 “제목은 OO로 해줘”처럼 요청해 주세요.');
       return;
     }
 
@@ -1165,6 +1156,23 @@ export function StoryPlanningTab() {
       const newDraft: StoryPlanningDraft = {
         ...prev,
         characters: nextCharacters,
+      };
+
+      draftRef.current = newDraft;
+      saveSession({ messages: messagesRef.current, draft: newDraft });
+      return newDraft;
+    });
+  };
+
+  const handleDeleteWorld = (index: number) => {
+    setDraft((prev) => {
+      const target = prev.worldEntries[index];
+      if (!target) return prev;
+
+      const nextWorldEntries = prev.worldEntries.filter((_, entryIndex) => entryIndex !== index);
+      const newDraft: StoryPlanningDraft = {
+        ...prev,
+        worldEntries: nextWorldEntries,
       };
 
       draftRef.current = newDraft;
@@ -1300,16 +1308,30 @@ export function StoryPlanningTab() {
     });
   };
 
-  const canApply = Boolean(draft.title?.trim());
+  const titleMissing = !draft.title?.trim();
+  const hasCoreStoryData = Boolean(
+    draft.genre?.trim() ||
+      draft.synopsis?.trim() ||
+      draft.premise?.trim() ||
+      draft.characters.length > 0 ||
+      draft.worldEntries.length > 0 ||
+      draft.plotStructure?.trim() ||
+      draft.firstChapterOutline?.trim()
+  );
+  const canApply = Boolean(draft.title?.trim()) && hasCoreStoryData;
   const hasAnyDraft = hasDraftContent(draft);
   const lastMessage = messages.at(-1);
   const lastAssistantDraft =
     lastMessage?.role === 'assistant' ? lastMessage.draftSnapshot : undefined;
   const lastAssistantOptions =
     lastMessage?.role === 'assistant' ? lastMessage.options ?? [] : [];
+  const fallbackAssistantOptions =
+    lastMessage?.role === 'assistant' ? buildStoryPlanningOptions(lastAssistantDraft ?? draft) : [];
+  const visibleAssistantOptions =
+    lastAssistantOptions.length > 0 ? lastAssistantOptions : fallbackAssistantOptions;
 
   // ─── Empty state ────────────────────────────────────────────────────────
-  if (messages.length === 0 && !showSettings) {
+  if (messages.length === 0) {
     return (
       <div className="space-y-6">
         <div className="flex flex-col items-center justify-center py-12">
@@ -1354,21 +1376,12 @@ export function StoryPlanningTab() {
             ))}
           </div>
 
-          <button
-            className="mt-6 text-xs text-muted-foreground underline hover:text-foreground"
-            onClick={() => setShowSettings(true)}
-          >
-            공용 AI 설정 변경
-          </button>
         </div>
 
-        {noProvider && (
-          <GlobalAISettingsInline
-            onSaved={() => {
-              setNoProvider(false);
-              setShowSettings(false);
-            }}
-          />
+        {error && (
+          <div className="rounded-lg border border-border bg-card p-4 text-center">
+            <p className="text-sm text-red-500">{error}</p>
+          </div>
         )}
       </div>
     );
@@ -1377,24 +1390,6 @@ export function StoryPlanningTab() {
   // ─── Chat + Draft view ─────────────────────────────────────────────────
   return (
     <div className="space-y-4">
-      {/* Settings panel (collapsible) */}
-      {showSettings && (
-        <div className="relative">
-          <GlobalAISettingsInline
-            onSaved={() => {
-              setNoProvider(false);
-              setShowSettings(false);
-            }}
-          />
-          <button
-            className="absolute top-2 right-2 text-muted-foreground hover:text-foreground text-xs"
-            onClick={() => setShowSettings(false)}
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_20rem] xl:grid-cols-[1fr_24rem] 2xl:grid-cols-[1fr_28rem] gap-4 xl:gap-6">
         {/* Chat panel */}
         <div className="min-w-0 space-y-4">
@@ -1402,12 +1397,6 @@ export function StoryPlanningTab() {
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">💡 스토리 구상</h2>
             <div className="flex gap-2">
-              <button
-                className="text-xs text-muted-foreground underline hover:text-foreground"
-                onClick={() => setShowSettings((v) => !v)}
-              >
-                AI 설정
-              </button>
               <button
                 className="text-xs text-muted-foreground underline hover:text-foreground"
                 onClick={handleReset}
@@ -1436,9 +1425,9 @@ export function StoryPlanningTab() {
               </div>
             ))}
 
-            {!isLoading && lastAssistantOptions.length > 0 && (
+            {!isLoading && visibleAssistantOptions.length > 0 && (
               <div className="flex flex-wrap gap-1.5 pt-1">
-                {lastAssistantOptions.map((option) => (
+                {visibleAssistantOptions.map((option) => (
                   <button
                     className="rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs text-primary hover:bg-primary/15 transition-colors"
                     key={option}
@@ -1485,20 +1474,15 @@ export function StoryPlanningTab() {
             <p className="text-xs text-red-500">{error}</p>
           )}
 
-          {/* Quick suggestions */}
-          {messages.length > 0 && messages.length < 4 && !isLoading && (
+          {messages.length > 0 && !isLoading && visibleAssistantOptions.length === 0 && (
             <div className="flex flex-wrap gap-1.5">
-              {[
-                '등장인물을 더 구체화해 줘',
-                '세계관 배경을 추가하자',
-                '첫 챕터 개요를 잡아볼까?',
-              ].map((s) => (
+              {buildStoryPlanningOptions(draft).map((suggestion) => (
                 <button
                   className="rounded-full border border-border bg-card px-3 py-1 text-xs transition-colors hover:bg-accent"
-                  key={s}
-                  onClick={() => sendMessage(s)}
+                  key={suggestion}
+                  onClick={() => sendMessage(suggestion)}
                 >
-                  {s}
+                  {suggestion}
                 </button>
               ))}
             </div>
@@ -1508,12 +1492,12 @@ export function StoryPlanningTab() {
         {/* Draft summary panel — sticky */}
         <div className="hidden lg:block">
           <div className="sticky top-20 space-y-4 max-h-[calc(100vh-6rem)] overflow-y-auto">
-            <PhaseStepper currentPhase={draft.currentPhase} />
             <DraftPanel
               draft={draft}
               onAcceptCharacter={handleAcceptCharacter}
               onAcceptWorld={handleAcceptWorld}
               onDeleteCharacter={handleDeleteCharacter}
+              onDeleteWorld={handleDeleteWorld}
               onRejectCharacter={handleRejectCharacter}
               onRejectWorld={handleRejectWorld}
               onUpdateAcceptedCharacter={handleUpdateAcceptedCharacter}
@@ -1528,6 +1512,7 @@ export function StoryPlanningTab() {
               isApplying={isApplying}
               isLoading={isLoading}
               onApply={handleApply}
+              titleMissing={titleMissing}
             />
           </div>
         </div>
@@ -1535,12 +1520,12 @@ export function StoryPlanningTab() {
 
       {/* Mobile draft panel (below chat) */}
       <div className="lg:hidden space-y-4">
-        <PhaseStepper currentPhase={draft.currentPhase} />
         <DraftPanel
           draft={draft}
           onAcceptCharacter={handleAcceptCharacter}
           onAcceptWorld={handleAcceptWorld}
           onDeleteCharacter={handleDeleteCharacter}
+          onDeleteWorld={handleDeleteWorld}
           onRejectCharacter={handleRejectCharacter}
           onRejectWorld={handleRejectWorld}
           onUpdateAcceptedCharacter={handleUpdateAcceptedCharacter}
@@ -1555,6 +1540,7 @@ export function StoryPlanningTab() {
           isApplying={isApplying}
           isLoading={isLoading}
           onApply={handleApply}
+          titleMissing={titleMissing}
         />
       </div>
     </div>
