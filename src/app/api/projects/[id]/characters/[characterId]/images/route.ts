@@ -71,12 +71,12 @@ export async function POST(
   // Preview only: return the built prompt without generating
   if (previewOnly) {
     const provider = await getDefaultImageProvider(db, projectId);
-    const preview = previewPrompt(
+    const preview = previewPrompt({
       character,
       kind,
       additionalPrompt,
-      provider?.defaultNegativePrompt
-    );
+      providerNegativePrompt: provider?.defaultNegativePrompt,
+    });
     return NextResponse.json(preview);
   }
 
