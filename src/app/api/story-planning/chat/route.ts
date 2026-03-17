@@ -1,7 +1,15 @@
 import { generateText } from 'ai';
 import { NextRequest, NextResponse } from 'next/server';
 import { getEnvProviderConfig } from '@/lib/ai/daily-slogan';
+import { decryptApiKey } from '@/lib/ai/encryption';
 import { createProvider } from '@/lib/ai/provider-factory';
+import { getProviderOptions } from '@/lib/ai/provider-options';
+import { getServerModelId, isServerRunning } from '@/lib/ai/qwen-server-manager';
+import {
+  buildStoryPlanningOptions,
+  buildStoryPlanningPhaseFollowUp,
+  buildStoryPlanningPhaseSummary,
+} from '@/lib/ai/story-planning-phase-config';
 import { buildStoryPlanningMessages, getNextPhase as getNextPhaseFromPrompt, isPhaseComplete, parseStoryPlanningResponse } from '@/lib/ai/story-planning-prompt';
 import type { StoryPlanningDraft, StoryPlanningMessage, StoryPlanningPhase } from '@/lib/ai/story-planning-types';
 import { EMPTY_DRAFT, PHASE_LABELS } from '@/lib/ai/story-planning-types';
@@ -75,12 +83,41 @@ function hasPremiseLikeAnswer(userText: string) {
   );
 }
 
+function isSkipSignal(userText: string) {
+  return /^(패스|스킵|넘어가|넘어가자|이것도 패스|이것도 스킵|ㄴㄴ|없어)$/u.test(
+    userText.trim()
+  );
+}
+
+function inferTitleFromUserText(userText: string) {
+  const trimmed = userText.trim();
+
+  const explicitTitleMatch = trimmed.match(/(?:제목(?:은|은요|은 그냥)?\s*)(["'“”‘’]?)(.+?)\1(?:으로 해줘|로 해줘|로 하자|로 할게|로 정해줘|로 정하자|이야|입니다)?$/u);
+  if (explicitTitleMatch?.[2]) {
+    const candidate = explicitTitleMatch[2].trim();
+    if (candidate.length > 1 && !/(추천|몇 개|알아서|정해)/.test(candidate)) {
+      return candidate;
+    }
+  }
+
+  const quotedTitleMatch = trimmed.match(/["“”‘’']([^"“”‘’']{2,40})["“”‘’']/u);
+  if (quotedTitleMatch?.[1] && /제목/.test(trimmed)) {
+    return quotedTitleMatch[1].trim();
+  }
+
+  return undefined;
+}
+
 function inferPhaseFromUserText(
   userText: string,
   draft: StoryPlanningDraft
 ): StoryPlanningDraft['currentPhase'] {
   const normalized = userText.trim();
   const currentPhase = draft.currentPhase ?? 'genre_tone';
+
+  if (isSkipSignal(normalized)) {
+    return getNextPhase(currentPhase);
+  }
 
   if (/(다음|넘어가자|다음 단계|계속)/.test(normalized)) {
     return getNextPhase(currentPhase);
@@ -140,6 +177,11 @@ function inferDraftFromUserText(
 ) {
   const nextDraft: StoryPlanningDraft = { ...draft };
   const stagedPhase = draft.currentPhase ?? 'genre_tone';
+  const inferredTitle = inferTitleFromUserText(userText);
+
+  if (inferredTitle) {
+    nextDraft.title = inferredTitle;
+  }
 
   if (!nextDraft.genre) {
     const genreHints = [
@@ -181,6 +223,12 @@ function inferDraftFromUserText(
   }
 
   const inferredNextPhase = inferPhaseFromUserText(userText, nextDraft);
+
+  if (isSkipSignal(userText.trim())) {
+    nextDraft.currentPhase = inferredNextPhase;
+    return nextDraft;
+  }
+
   if (stagedPhase === 'genre_tone' && inferredNextPhase === 'premise') {
     nextDraft.currentPhase = inferredNextPhase;
     return nextDraft;
@@ -200,97 +248,6 @@ function inferDraftFromUserText(
   return nextDraft;
 }
 
-function quoteValue(value: string | undefined) {
-  return value?.trim() ? `"${value.trim()}"` : undefined;
-}
-
-function buildPhaseSummary(phase: StoryPlanningDraft['currentPhase'], draft: StoryPlanningDraft) {
-  const currentPhase = phase ?? 'genre_tone';
-
-  if (currentPhase === 'genre_tone') {
-    const parts = [quoteValue(draft.genre), quoteValue(draft.tone)].filter(Boolean);
-    return parts.length > 0 ? `장르/톤은 ${parts.join(', ')} 쪽으로 잡혔어요.` : '장르와 분위기 방향을 잡기 시작했어요.';
-  }
-
-  if (currentPhase === 'premise') {
-    const premise = quoteValue(draft.premise) ?? quoteValue(draft.synopsis);
-    return premise ? `핵심 전제는 ${premise}로 정리됐어요.` : '핵심 전제를 정리하고 있어요.';
-  }
-
-  if (currentPhase === 'themes') {
-    return draft.themes && draft.themes.length > 0
-      ? `주제는 ${draft.themes.map((theme) => `"${theme}"`).join(', ')} 쪽으로 모였어요.`
-      : '작품의 주제를 정리하고 있어요.';
-  }
-
-  if (currentPhase === 'characters') {
-    return draft.characters.length > 0
-      ? `등장인물은 ${draft.characters.map((character) => character.name).join(', ')} 중심으로 잡혔어요.`
-      : '등장인물 구성을 정리하고 있어요.';
-  }
-
-  if (currentPhase === 'world') {
-    return draft.worldEntries.length > 0
-      ? `세계관은 ${draft.worldEntries.map((entry) => entry.title).join(', ')} 같은 요소가 잡혔어요.`
-      : '세계관과 배경 규칙을 정리하고 있어요.';
-  }
-
-  if (currentPhase === 'plot') {
-    const plot = quoteValue(draft.plotStructure);
-    return plot ? `플롯 큰 줄기는 ${plot}로 정리됐어요.` : '플롯 흐름을 정리하고 있어요.';
-  }
-
-  if (currentPhase === 'writing_style') {
-    const parts = [quoteValue(draft.pointOfView), quoteValue(draft.writingStyle), quoteValue(draft.formatGoal)].filter(Boolean);
-    return parts.length > 0 ? `시점/문체/형식은 ${parts.join(', ')} 쪽으로 정리됐어요.` : '시점과 문체 방향을 잡고 있어요.';
-  }
-
-  if (currentPhase === 'first_chapter') {
-    const outline = quoteValue(draft.firstChapterOutline);
-    return outline ? `첫 챕터 방향은 ${outline}로 잡혔어요.` : '첫 챕터 구성을 정리하고 있어요.';
-  }
-
-  return '전체 기획이 정리되고 있어요.';
-}
-
-function buildPhaseQuestion(phase: StoryPlanningDraft['currentPhase']) {
-  const currentPhase = phase ?? 'genre_tone';
-
-  if (currentPhase === 'genre_tone') {
-    return '먼저 장르와 전체적인 분위기를 어떻게 가져갈지 정해볼까요?';
-  }
-
-  if (currentPhase === 'premise') {
-    return '이제 이 이야기의 핵심 전제나 중심 갈등을 한 줄로 정리해볼까요?';
-  }
-
-  if (currentPhase === 'themes') {
-    return '이 작품에서 특히 강조하고 싶은 주제나 감정선은 무엇인가요?';
-  }
-
-  if (currentPhase === 'characters') {
-    return '이제 주요 등장인물부터 정해볼까요? 주인공이나 핵심 인물의 역할과 관계를 말해 주세요.';
-  }
-
-  if (currentPhase === 'world') {
-    return '이제 세계관의 규칙이나 주요 장소, 조직 같은 배경 설정을 정해볼까요?';
-  }
-
-  if (currentPhase === 'plot') {
-    return '이제 주요 사건 흐름과 갈등 전개를 큰 줄기로 정해볼까요?';
-  }
-
-  if (currentPhase === 'writing_style') {
-    return '이제 서술 시점, 문체 스타일, 목표 분량 같은 집필 방향을 정해볼까요?';
-  }
-
-  if (currentPhase === 'first_chapter') {
-    return '이제 첫 챕터에서 어떤 장면과 사건으로 시작할지 정해볼까요?';
-  }
-
-  return '전체 기획을 기준으로 빠진 부분을 함께 보완해볼까요?';
-}
-
 function buildFallbackReply(
   previousDraft: StoryPlanningDraft,
   repairedDraft: StoryPlanningDraft,
@@ -300,17 +257,17 @@ function buildFallbackReply(
   const nextPhase = repairedDraft.currentPhase ?? previousPhase;
   const completedPhase = nextPhase !== previousPhase ? previousPhase : nextPhase;
   const phaseLabel = PHASE_LABELS[nextPhase] ?? nextPhase;
-  const summary = buildPhaseSummary(completedPhase, repairedDraft);
+  const summary = buildStoryPlanningPhaseSummary(completedPhase, repairedDraft);
   const acceptedUserText = userText.trim().replace(/\s+/g, ' ');
   const shortAcceptedUserText = acceptedUserText.length > 120
     ? `${acceptedUserText.slice(0, 117)}...`
     : acceptedUserText;
 
   if (nextPhase !== previousPhase) {
-    return `좋아요. 방금 말한 ${quoteValue(shortAcceptedUserText) ?? '내용'}을 반영했어요. ${summary} 이제 ${phaseLabel} 단계로 넘어갈게요. ${buildPhaseQuestion(nextPhase)}`;
+    return `좋아요. 방금 말한 ${shortAcceptedUserText ? `"${shortAcceptedUserText}"` : '내용'}을 반영했어요. ${summary} 이제 ${phaseLabel} 단계로 넘어갈게요. ${buildStoryPlanningPhaseFollowUp(nextPhase, repairedDraft)}`;
   }
 
-  return `좋아요. 방금 말한 ${quoteValue(shortAcceptedUserText) ?? '내용'}을 반영했어요. ${summary} ${buildPhaseQuestion(nextPhase)}`;
+  return `좋아요. 방금 말한 ${shortAcceptedUserText ? `"${shortAcceptedUserText}"` : '내용'}을 반영했어요. ${summary} ${buildStoryPlanningPhaseFollowUp(nextPhase, repairedDraft)}`;
 }
 
 function selectFallbackReply(
@@ -389,10 +346,26 @@ async function resolveProvider(): Promise<ProviderConfig | null> {
   // 1. Global AI settings (projectId IS NULL)
   const globalSetting = await getGlobalDefaultProvider(db);
   if (globalSetting) {
+    if (globalSetting.providerType === 'qwen-local') {
+      const running = await isServerRunning(globalSetting.baseUrl ?? undefined);
+      const runningModelId = running
+        ? await getServerModelId(globalSetting.baseUrl ?? undefined)
+        : null;
+
+      return {
+        provider: 'qwen-local',
+        modelId: runningModelId ?? globalSetting.modelName ?? 'Qwen/Qwen3.5-9B-Base',
+        baseUrl: globalSetting.baseUrl ?? undefined,
+        contextSize: globalSetting.contextSize ?? undefined,
+      };
+    }
+
     return {
       provider: globalSetting.providerType as ProviderConfig['provider'],
       modelId: globalSetting.modelName ?? '',
-      apiKey: globalSetting.apiKeyEncrypted ?? undefined,
+      apiKey: globalSetting.apiKeyEncrypted
+        ? decryptApiKey(globalSetting.apiKeyEncrypted)
+        : undefined,
       baseUrl: globalSetting.baseUrl ?? undefined,
       contextSize: globalSetting.contextSize ?? undefined,
     };
@@ -426,7 +399,17 @@ export async function POST(request: NextRequest) {
     const providerConfig = await resolveProvider();
     if (!providerConfig) {
       return NextResponse.json(
-        { error: 'no_provider', message: 'AI 설정이 필요합니다. 공용 AI 설정을 먼저 구성해주세요.' },
+      { error: 'no_provider', message: 'AI 설정이 필요합니다. 스토리 구상용 AI 설정을 먼저 구성해주세요.' },
+        { status: 422 }
+      );
+    }
+
+    if (!providerConfig.modelId.trim()) {
+      return NextResponse.json(
+        {
+          error: 'invalid_provider_config',
+          message: '스토리 구상용 AI 설정에 모델명이 없습니다. AI 설정을 확인해주세요.',
+        },
         { status: 422 }
       );
     }
@@ -438,6 +421,7 @@ export async function POST(request: NextRequest) {
       model,
       messages: aiMessages,
       maxOutputTokens: 2000,
+      providerOptions: getProviderOptions(providerConfig),
       temperature: 0.7,
     });
 
@@ -508,12 +492,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       reply: repairedReply,
       draft: repairedDraft,
-      options: parsed.options,
+      options: parsed.options && parsed.options.length > 0
+        ? parsed.options
+        : buildStoryPlanningOptions(repairedDraft),
     });
   } catch (error) {
     console.error('[story-planning/chat] Error:', error);
+    const detail = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: 'AI 응답 중 오류가 발생했습니다.' },
+      { error: 'AI 응답 중 오류가 발생했습니다.', detail },
       { status: 500 }
     );
   }
