@@ -160,12 +160,14 @@ function HealthStatusBadge({ health }: { health: HealthStatus }) {
 function OllamaModelSelect({
   projectId,
   baseUrl,
+  isActive,
   value,
   contextSize,
   onChange,
 }: {
   projectId: string;
   baseUrl: string;
+  isActive: boolean;
   value: string;
   contextSize: string;
   onChange: (modelName: string, recommendedContextSize?: number | null) => void;
@@ -203,10 +205,10 @@ function OllamaModelSelect({
 
   // Auto-fetch models when tab is first shown
   useEffect(() => {
-    if (!loaded) {
+    if (isActive && !loaded) {
       fetchModels();
     }
-  }, [loaded]);
+  }, [isActive, loaded]);
 
   useEffect(() => {
     if (!value || contextSize.trim()) {
@@ -286,11 +288,13 @@ function ProviderForm({
   projectId,
   config,
   initial,
+  isActive,
   onSaved,
 }: {
   projectId: string;
   config: (typeof PROVIDER_CONFIGS)[number];
   initial: ProviderFormState;
+  isActive: boolean;
   onSaved: () => void;
 }) {
   const [formState, setFormState] = useState(initial);
@@ -490,6 +494,7 @@ function ProviderForm({
         <OllamaModelSelect
           baseUrl={formState.baseUrl}
           contextSize={formState.contextSize}
+          isActive={isActive}
           onChange={(modelName, recommendedContextSize) =>
             setFormState((s) => ({
               ...s,
@@ -662,6 +667,7 @@ function ProviderForm({
 export function AISettingsPage({ projectId }: { projectId: string }) {
   const [providers, setProviders] = useState<ProviderRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<ProviderType>('openai');
 
   const fetchProviders = async () => {
     try {
@@ -680,6 +686,20 @@ export function AISettingsPage({ projectId }: { projectId: string }) {
   useEffect(() => {
     fetchProviders();
   }, [projectId]);
+
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+
+    const defaultProvider = providers.find((provider) => provider.isDefault === 1);
+    const fallbackProvider = providers[0];
+    const nextTab = (defaultProvider?.providerType ??
+      fallbackProvider?.providerType ??
+      'openai') as ProviderType;
+
+    setActiveTab(nextTab);
+  }, [isLoading, providers]);
 
   const getProviderData = (type: ProviderType): ProviderRow | undefined => providers.find((p) => p.providerType === type);
 
@@ -705,7 +725,7 @@ export function AISettingsPage({ projectId }: { projectId: string }) {
         </div>
       </div>
 
-      <Tabs defaultValue="ollama">
+      <Tabs onValueChange={(value) => setActiveTab(value as ProviderType)} value={activeTab}>
         <TabsList>
           {PROVIDER_CONFIGS.map((config) => {
             const existing = getProviderData(config.type);
@@ -730,6 +750,7 @@ export function AISettingsPage({ projectId }: { projectId: string }) {
                 <ProviderForm
                   config={config}
                   initial={getInitialState(config, existing)}
+                  isActive={activeTab === config.type}
                   onSaved={fetchProviders}
                   projectId={projectId}
                 />
