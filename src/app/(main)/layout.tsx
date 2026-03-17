@@ -24,6 +24,12 @@ export default function MainLayout({
             >
               소설 목록
             </Link>
+            <Link
+              className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+              href="/settings/ai"
+            >
+              AI 설정
+            </Link>
             <ThemeToggle />
           </nav>
         </div>

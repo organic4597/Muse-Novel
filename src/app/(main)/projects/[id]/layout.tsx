@@ -8,7 +8,6 @@ const TABS = [
   { href: '/write', label: '✏️ 집필' },
   { href: '/characters', label: '👥 캐릭터' },
   { href: '/world', label: '🌍 세계관' },
-  { href: '/settings', label: '⚙️ AI 설정' },
 ] as const;
 
 export default function ProjectLayout({

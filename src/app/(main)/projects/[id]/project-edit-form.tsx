@@ -77,12 +77,6 @@ export function ProjectEditForm({ project }: { project: Project }) {
           ← 소설 목록
         </Link>
         <div className="flex items-center gap-2">
-          <Link
-            className="inline-flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            href={`/projects/${project.id}/settings`}
-          >
-            AI 설정
-          </Link>
           <ExportDialog projectId={project.id} projectTitle={project.title} />
           <Link
             className="inline-flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
