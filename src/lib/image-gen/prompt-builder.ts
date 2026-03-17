@@ -34,6 +34,7 @@ export function buildCharacterPrompt(
 
   // Shot preset (split into individual tags)
   allTags.push(...preset.promptPrefix.split(',').map(t => t.trim()));
+  allTags.push(...preset.promptDefaults);
 
   // Character descriptors — only Latin/English parts (CJK filtered out)
   if (character.appearance) {
@@ -70,9 +71,49 @@ export function buildCharacterPrompt(
   return deduplicateTags(allTags).join(', ');
 }
 
-export function buildDefaultNegativePrompt(baseNegative?: string | null): string {
-  const defaults = 'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry, deformed, multiple views, character sheet, comic, collage, reference sheet';
-  
+const GLOBAL_NEGATIVE_DEFAULTS = [
+  'lowres',
+  'worst quality',
+  'low quality',
+  'normal quality',
+  'jpeg artifacts',
+  'blurry',
+  'out of focus',
+  'text',
+  'signature',
+  'watermark',
+  'username',
+  'logo',
+  'multiple views',
+  'character sheet',
+  'reference sheet',
+  'comic panel',
+  'collage',
+  'duplicate character',
+  'duplicate face',
+  'extra arms',
+  'extra hands',
+  'extra fingers',
+  'missing fingers',
+  'fused fingers',
+  'bad hands',
+  'bad anatomy',
+  'deformed body',
+  'poorly drawn face',
+  'poorly drawn eyes',
+  'mutated limbs',
+  'disconnected limbs',
+];
+
+export function buildDefaultNegativePrompt(
+  kind: ImageKind,
+  baseNegative?: string | null
+): string {
+  const defaults = [
+    ...GLOBAL_NEGATIVE_DEFAULTS,
+    ...SHOT_PRESETS[kind].negativePromptDefaults,
+  ].join(', ');
+
   if (baseNegative?.trim()) {
     return `${baseNegative.trim()}, ${defaults}`;
   }

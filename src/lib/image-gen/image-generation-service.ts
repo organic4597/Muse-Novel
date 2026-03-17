@@ -68,7 +68,7 @@ export async function generateCharacterImages(
   }
 
   const prompt = buildCharacterPrompt(character, kind, additionalPrompt, autoTranslatedTags);
-  const negativePrompt = buildDefaultNegativePrompt(provider.defaultNegativePrompt);
+  const negativePrompt = buildDefaultNegativePrompt(kind, provider.defaultNegativePrompt);
 
   const width = provider.defaultWidth ?? preset.width;
   const height = provider.defaultHeight ?? preset.height;
@@ -162,15 +162,23 @@ function mapSamplerToScheduler(sampler?: string | null): string {
 }
 
 /** Build a preview prompt without running generation */
-export function previewPrompt(
-  character: CharacterPromptContext,
-  kind: ImageKind,
-  additionalPrompt?: string,
-  providerNegativePrompt?: string | null,
-  autoTranslatedTags?: string[],
-): { prompt: string; negativePrompt: string } {
+export function previewPrompt(params: {
+  character: CharacterPromptContext;
+  kind: ImageKind;
+  additionalPrompt?: string;
+  providerNegativePrompt?: string | null;
+  autoTranslatedTags?: string[];
+}): { prompt: string; negativePrompt: string } {
+  const {
+    character,
+    kind,
+    additionalPrompt,
+    providerNegativePrompt,
+    autoTranslatedTags,
+  } = params;
+
   return {
     prompt: buildCharacterPrompt(character, kind, additionalPrompt, autoTranslatedTags),
-    negativePrompt: buildDefaultNegativePrompt(providerNegativePrompt),
+    negativePrompt: buildDefaultNegativePrompt(kind, providerNegativePrompt),
   };
 }

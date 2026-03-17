@@ -46,22 +46,105 @@ export interface CharacterPromptContext {
   backstory?: string | null;
 }
 
-/** Preset dimensions per shot type */
-export const SHOT_PRESETS: Record<ImageKind, { width: number; height: number; promptPrefix: string }> = {
+export const SHOT_PRESETS: Record<
+  ImageKind,
+  {
+    width: number;
+    height: number;
+    promptPrefix: string;
+    promptDefaults: string[];
+    negativePromptDefaults: string[];
+  }
+> = {
   profile: {
     width: 512,
     height: 512,
     promptPrefix: 'portrait, face close-up, upper body',
+    promptDefaults: [
+      'portrait focus',
+      'clean face framing',
+      'clear eye contact',
+      'soft portrait lighting',
+      'simple readable background',
+      'single character',
+      'centered composition',
+      'natural facial expression',
+      'detailed face rendering',
+    ],
+    negativePromptDefaults: [
+      'cropped forehead',
+      'cropped chin',
+      'extreme close-up',
+      'face out of frame',
+      'tilted face cut off',
+      'distorted facial symmetry',
+      'cross-eyed',
+      'deformed eyes',
+      'deformed mouth',
+      'bad teeth',
+      'asymmetrical eyes',
+      'duplicate face',
+    ],
   },
   'full-body': {
     width: 512,
     height: 768,
     promptPrefix: 'full body, standing pose',
+    promptDefaults: [
+      'full body character focus',
+      'head-to-toe framing',
+      'balanced pose',
+      'clear silhouette',
+      'grounded stance',
+      'readable outfit details',
+      'clean anatomy presentation',
+      'simple environmental context',
+      'single character',
+    ],
+    negativePromptDefaults: [
+      'body cut off',
+      'feet out of frame',
+      'cropped legs',
+      'cropped hands',
+      'extra limbs',
+      'disconnected limbs',
+      'twisted torso',
+      'broken spine',
+      'bad posture',
+      'unbalanced stance',
+      'floating character',
+      'duplicate body',
+    ],
   },
   illustration: {
     width: 768,
     height: 768,
     promptPrefix: 'illustration, detailed, artistic',
+    promptDefaults: [
+      'scene-driven illustration',
+      'cinematic composition',
+      'clear foreground and background separation',
+      'cohesive environment design',
+      'storytelling atmosphere',
+      'intentional lighting mood',
+      'depth and perspective',
+      'single main subject emphasis',
+      'detailed rendering',
+    ],
+    negativePromptDefaults: [
+      'flat composition',
+      'empty background',
+      'messy perspective',
+      'confusing focal point',
+      'overcrowded frame',
+      'multiple unrelated subjects',
+      'background clutter',
+      'stiff action',
+      'inconsistent lighting',
+      'muddy colors',
+      'visual noise',
+      'unfinished background',
+    ],
   },
 };
 
