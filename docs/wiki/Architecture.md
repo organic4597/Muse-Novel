@@ -6,6 +6,7 @@
 - API: Route Handlers
 - DB: Drizzle ORM + SQLite / Turso
 - AI: provider-factory 기반 다중 provider 추상화
+- 이미지 생성: diffusers subprocess + Automatic1111 API
 - 태그 추천: 별도 Python HTTP 서버
 - 로컬 추론: llama.cpp llama-server (qwen-local provider)
 
@@ -40,6 +41,27 @@
 | `nvidia` | OpenAI compat | API 키 필요 |
 | `koboldcpp` | OpenAI compat | 로컬 |
 | `qwen-local` | OpenAI compat | 로컬 llama-server |
+
+### 이미지 생성 계층
+
+- 프로젝트별 이미지 설정: `ImageSettingsPage`
+- 생성 방식:
+  - `diffusers` — Python subprocess로 직접 생성
+  - `automatic1111` — Stable Diffusion WebUI / Forge API 호출
+- 캐릭터 이미지 생성 흐름:
+
+```
+ImageGenerationDialog
+  └─ /api/projects/[id]/characters/[characterId]/images/generate
+       └─ generateCharacterImages()
+            ├─ prompt-builder
+            ├─ tag-translator
+            ├─ diffusers-client or automatic1111-client
+            └─ public/uploads/characters/.../generated
+```
+
+- profile / full-body / illustration 프리셋별 크기, batch size, prompt defaults, negative defaults 사용
+- 생성 시 VRAM coordinator가 추론 서버와 충돌하지 않도록 inference server를 잠시 중지할 수 있음
 
 ### qwen-local 추론 서버 계층
 

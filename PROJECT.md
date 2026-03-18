@@ -22,7 +22,7 @@ muse-novel은 한국어 소설 창작을 위한 로컬 우선 AI 집필 도구�
 - 일일 창작 슬로건
 - 새 소설 수동 생성
 - 스토리 구상 탭
-- 공용 AI 설정
+- `/settings/ai` 기반 스토리 구상용 AI 설정
 
 ### 스토리 구상 기능
 
@@ -30,6 +30,14 @@ muse-novel은 한국어 소설 창작을 위한 로컬 우선 AI 집필 도구�
 - 구조화 draft 유지
 - localStorage 기반 임시 세션
 - draft 기반 프로젝트/등장인물/세계관/1장 개요 생성
+
+### 이미지 생성 기능
+
+- 캐릭터별 text-to-image 생성
+- diffusers / Automatic1111 지원
+- 한국어 캐릭터 정보의 영어 태그 변환
+- LoRA trigger word / weight 적용
+- profile / full-body / illustration 프리셋
 
 ## 아키텍처
 
@@ -72,12 +80,12 @@ muse-novel은 한국어 소설 창작을 위한 로컬 우선 AI 집필 도구�
 
 ### 공용 AI 설정
 
-- 홈 스토리 구상 탭에서 사용
+- `/settings/ai`의 스토리 구상용 AI 설정에서 사용
 - `ai_provider_settings.project_id IS NULL` 레코드로 관리
 
 ### fallback 순서
 
-1. 공용 AI 설정
+1. 전역 스토리 구상용 AI 설정
 2. 환경 변수 provider
 
 ## 주요 설계 결정
@@ -173,6 +181,14 @@ drizzle/
 - qwen-local(Local) AI provider 추가 — llama.cpp llama-server 기반
 - llama-server 자동 시작/중지 및 검열 해제 (`--jinja` + `--chat-template`)
 - Qwen3 Base의 `<think>…</think>` 응답 블록 자동 제거 (스토리 구상 파싱 안정화)
+- `/settings/ai` 허브에서 전역 AI 설정 / 프로젝트 AI / 이미지 / LoRA 설정 통합
+- 캐릭터 이미지 생성용 prompt / negative prompt 프리셋 강화
+
+## 추후 작업 메모
+
+- KR/EN 전환: next-intl + App Router locale routing 검토
+- image-to-image: init image + strength 기반 variation 생성 추가 필요
+- 이미지 생성 속도 개선: few-step 모델, scheduler 재조정, compile / preview UX 검토
 
 ## 운영 및 개발 메모
 
@@ -184,7 +200,7 @@ drizzle/
 ## 확인 포인트
 
 - 홈 스토리 구상 → 프로젝트 생성 동선
-- 공용 AI 설정 동작
+- 전역 스토리 구상용 AI 설정 동작
 - prompt tag 추천 품질
 - 프로젝트 삭제 시 공유 LoRA 유지
 - 반응형 레이아웃 동작

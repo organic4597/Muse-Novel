@@ -5,6 +5,7 @@
 - 홈 화면에서 소설 목록 확인
 - 새 소설 수동 생성
 - 프로젝트별 설정/문체/AI provider 관리
+- 전역 `/settings/ai` 허브에서 스토리 구상용 AI 설정과 프로젝트별 설정 진입
 
 ## 챕터 작성
 
@@ -23,6 +24,8 @@
 - 프로젝트 컨텍스트 기반 보조 작성
 - 명령형 편집 API
 - 프로젝트별 AI 설정 사용
+- 스토리 구상용 전역 AI 설정 별도 관리
+- OpenAI / Anthropic / Ollama / NVIDIA / KoboldCpp / Local(qwen-local) 지원
 
 ## 스토리 구상 탭
 
@@ -35,6 +38,23 @@
 - 한국어 입력을 영어 태그로 번역
 - 임베딩 기반 태그 추천
 - 상주 Python 서버로 빠른 반복 호출 지원
+
+## 캐릭터 이미지 생성
+
+- 프로젝트별 이미지 생성 방식 설정
+- Diffusers 로컬 생성과 Automatic1111/Forge API 생성 지원
+- 캐릭터 정보와 추가 태그를 기반으로 prompt 자동 구성
+- profile / full-body / illustration 3가지 생성 종류 제공
+- 종류별 기본 prompt / negative prompt 프리셋 적용
+- 생성 전 prompt 미리보기와 생성 후 갤러리 저장 지원
+
+## LoRA / 스타일 학습
+
+- LoRA 레지스트리 관리
+- 프로젝트별 LoRA 학습 실행
+- 학습 로그 확인
+- LoRA 학습 시 추론 엔진 자동 중지 후 재시작
+- 생성 시 LoRA trigger words / weight 적용
 
 ## 테마
 

@@ -10,6 +10,8 @@
 - AI 보조 작성 및 명령형 편집
 - 홈 화면 스토리 구상 탭
 - 전역 AI 설정 페이지와 프로젝트별 AI 설정 분리
+- 프로젝트별 이미지 생성 설정과 캐릭터 이미지 생성
+- LoRA 등록 / 학습 / 로그 확인 / 추론 연동
 - 캐릭터 이미지 프롬프트용 한국어 태그 추천 및 번역
 - 다크 모드 / 시스템 테마 동기화
 - LoRA 관리 및 프로젝트 삭제 시 공유 LoRA 보존
@@ -26,6 +28,9 @@
 - llama-server 자동 시작/중지 및 검열 해제(`--jinja` + `--chat-template`) 적용
 - Qwen3 Base 모델의 `<think>…</think>` 블록 자동 제거로 스토리 구상 파싱 안정화
 - 스토리 구상 우측 패널을 대화 전/후 관계없이 항상 표시하도록 개선
+- `/settings/ai`에서 스토리 구상용 AI 설정 + 프로젝트별 AI / 이미지 / LoRA 설정 통합
+- 전역 AI 설정 연결 테스트 및 Local/NVIDIA provider 흐름 개선
+- 이미지 3종(profile / full-body / illustration)별 기본 프롬프트/네거티브 프리셋 강화
 
 ## 기술 스택
 
@@ -103,6 +108,13 @@ AI는 두 단계로 선택됩니다.
 
 1. 전역 AI 설정 페이지(`/settings/ai`)의 공용 AI 설정
 2. 없으면 환경 변수 기반 기본 provider fallback
+
+이미지 생성은 프로젝트별 이미지 설정을 사용합니다.
+
+- Diffusers 로컬 생성
+- Automatic1111 / Forge API 연동
+- 캐릭터 정보의 한국어 텍스트를 영어 태그로 자동 변환
+- profile / full-body / illustration 프리셋별 기본 prompt / negative prompt 적용
 
 ## 개발 실행
 
@@ -208,6 +220,14 @@ bun run db:studio
 - `POST /api/ai/copilot`
 - `POST /api/ai/command`
 - `POST /api/prompt-tags/recommend`
+
+## 문서
+
+- 위키 홈: `docs/wiki/Home.md`
+- 주요 기능: `docs/wiki/Features.md`
+- 아키텍처: `docs/wiki/Architecture.md`
+- 스토리 구상: `docs/wiki/Story-Planning.md`
+- 로드맵 / 추후 작업: `docs/wiki/Roadmap.md`
 
 ## 디렉토리 개요
 

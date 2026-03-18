@@ -133,6 +133,60 @@ PYTHON_BIN=python3 python3 scripts/tag_recommender_server.py
 
 ---
 
+## 이미지 생성
+
+### 이미지 생성이 너무 느림
+
+현재 구조는 text-to-image 기준으로 diffusers subprocess 또는 Automatic1111 API를 사용합니다. 느릴 때 우선 확인할 항목:
+
+1. 해상도 낮추기 (`512x512`, `512x768`부터)
+2. steps 줄이기 (`24 → 16` 또는 `20 → 15`)
+3. scheduler 변경 (`euler_a`, `euler`, `dpm++_2m` 비교)
+4. batch size 줄이기
+5. LoRA를 많이 겹치지 않기
+
+향후 개선 후보:
+
+- few-step 모델(SDXL Lightning, LCM 계열) 검토
+- DPM 계열 scheduler 기준 기본 프리셋 재조정
+- latent preview / progress UX 개선
+- compile / quantization / hot-swap 최적화
+
+### Diffusers 생성이 실패함
+
+확인 항목:
+
+- Python 환경에 diffusers / torch / accelerate 설치 여부
+- CUDA 사용 가능 여부
+- 모델 첫 다운로드 중인지 여부
+- VRAM 부족 여부
+
+### Automatic1111 연결 테스트 실패
+
+- Base URL 확인 (`http://localhost:7860` 등)
+- WebUI / Forge가 실제로 실행 중인지 확인
+- API 모드가 열려 있는지 확인
+
+### 이미지 생성 중 추론 서버가 멈춤
+
+이미지 생성과 qwen-local 추론은 VRAM을 공유하므로 생성 시 inference server가 잠시 중지될 수 있습니다. 생성 완료 후 자동 재시작이 정상 동작인지 `/api/ai/inference-status` 또는 AI 설정 화면에서 확인합니다.
+
+---
+
+## LoRA 학습
+
+### LoRA 학습 중 생성/추론이 안 됨
+
+정상 동작일 수 있습니다. 현재 구조는 학습 시 GPU 자원을 우선 확보하기 위해 inference/image generation과 충돌을 피하도록 설계되어 있습니다.
+
+### LoRA 로그가 안 보임
+
+- 프로젝트별 AI 설정 허브(`/settings/ai?projectId=<id>`)에서 LoRA 섹션 확인
+- 학습 상태 polling 실패 여부 확인
+- 브라우저 네트워크 탭에서 training-status API 응답 확인
+
+---
+
 ## 일반
 
 ### tsc 오류

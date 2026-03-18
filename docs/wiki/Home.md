@@ -10,6 +10,8 @@ Muse Novel은 한국어 소설 창작을 위한 AI 보조 웹앱입니다. 프�
 - AI 보조 작성 및 편집 명령
 - 스토리 구상 탭을 통한 대화형 기획
 - 전역 AI 설정 페이지 / 프로젝트별 AI 설정 분리
+- 프로젝트별 이미지 생성 설정 / 캐릭터 이미지 생성
+- LoRA 등록, 학습, 로그 확인, 추론 연동
 - 한국어 프롬프트 태그 추천과 번역
 - 다크 모드 지원
 
@@ -19,6 +21,7 @@ Muse Novel은 한국어 소설 창작을 위한 AI 보조 웹앱입니다. 프�
 - [주요 기능](Features)
 - [아키텍처 개요](Architecture)
 - [스토리 구상 기능](Story-Planning)
+- [로드맵 / 추후 작업](Roadmap)
 
 ## 현재 구조
 
@@ -26,6 +29,7 @@ Muse Novel은 한국어 소설 창작을 위한 AI 보조 웹앱입니다. 프�
 - 백엔드: Next.js Route Handlers, Drizzle ORM
 - 데이터베이스: SQLite 기본, Turso 선택 지원
 - AI 계층: Vercel AI SDK 기반 다중 provider 추상화
+- 이미지 생성: diffusers subprocess + Automatic1111 API
 - 태그 추천: Python 상주 서버 + 한국어 번역/임베딩 검색
 
 ## 대상 사용자

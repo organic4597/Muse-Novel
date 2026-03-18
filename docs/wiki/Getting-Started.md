@@ -38,6 +38,26 @@ cp .env.example .env.local
 - `TAG_RECOMMENDER_PORT`
 - `PYTHON_BIN`
 
+### 이미지 생성 관련
+
+프로젝트별 이미지 생성은 DB 설정을 우선 사용하지만, 로컬 실행 환경에서는 아래 항목을 같이 준비하는 편이 좋습니다.
+
+- Python + PyTorch CUDA 환경
+- diffusers / transformers / accelerate
+- 또는 Automatic1111 / Forge 실행용 base URL
+
+권장 추가 패키지 예시:
+
+```bash
+pip install diffusers accelerate safetensors sentencepiece xformers
+```
+
+Automatic1111 / Forge를 사용할 경우 기본 주소 예시:
+
+```bash
+http://localhost:7860
+```
+
 ### qwen-local (Local) 추론 서버
 
 로컬 llama-server를 사용할 경우 추가로 설정합니다.
@@ -114,6 +134,16 @@ tail -f /tmp/qwen-local.log
 bun run build
 bun run start
 ```
+
+## 이미지 생성 빠른 시작
+
+1. `/settings/ai?projectId=<id>`에서 이미지 생성 설정 진입
+2. 생성 방식 선택
+   - `Diffusers (로컬)`
+   - `SD WebUI (API)`
+3. 모델 / 기본 steps / sampler / CFG / 기본 negative prompt 설정
+4. 캐릭터 상세 화면에서 이미지 생성 다이얼로그 열기
+5. profile / full-body / illustration 중 하나를 선택해 미리보기 또는 생성
 
 ## DB 명령
 
