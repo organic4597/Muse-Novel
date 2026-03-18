@@ -118,6 +118,7 @@ export default function WritePage() {
                 content={selectedChapter.contentJson}
                 key={selectedChapter.id}
                 onValueChange={handleContentChange}
+                projectId={params.id}
               />
             </>
           ) : (

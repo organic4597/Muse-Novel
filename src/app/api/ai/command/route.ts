@@ -13,6 +13,7 @@ import { BaseEditorKit } from '@/components/editor/editor-base-kit';
 import type { ChatMessage, ToolName } from '@/components/editor/use-chat';
 import { getEnvProviderConfig } from '@/lib/ai/daily-slogan';
 import { decryptApiKey } from '@/lib/ai/encryption';
+import { buildStoryContext } from '@/lib/ai/build-story-context';
 import { resolveStoredProviderConfig } from '@/lib/ai/provider-config-resolver';
 import { createProvider } from '@/lib/ai/provider-factory';
 import { db } from '@/lib/db';
@@ -24,11 +25,13 @@ import { getChooseToolPrompt, getEditPrompt, getGeneratePrompt } from './prompts
 export async function POST(req: NextRequest) {
   const {
     apiKey: key,
+    chapterId,
     ctx,
     messages: messagesRaw = [],
     model: modelId,
     projectId,
     provider: providerName,
+    rewriteInstruction,
   } = await req.json();
 
   if (!ctx) {
@@ -80,6 +83,10 @@ export async function POST(req: NextRequest) {
 
     const model = createProvider(providerConfig);
 
+    const storyContext = projectId
+      ? await buildStoryContext(db, projectId, chapterId ?? undefined)
+      : '';
+
     const stream = createUIMessageStream<ChatMessage>({
       execute: async ({ writer }) => {
         let toolName = toolNameParam;
@@ -107,6 +114,7 @@ export async function POST(req: NextRequest) {
           experimental_transform: markdownJoinerTransform(),
           model,
           prompt: '',
+          ...(storyContext ? { system: storyContext } : {}),
           prepareStep: async (step) => {
             if (toolName === 'edit') {
               const editPrompt = getEditPrompt(editor, {
@@ -129,6 +137,7 @@ export async function POST(req: NextRequest) {
             if (toolName === 'generate') {
               const generatePrompt = getGeneratePrompt(editor, {
                 messages: messagesRaw,
+                rewriteInstruction,
               });
 
               return {

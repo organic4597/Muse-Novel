@@ -53,6 +53,7 @@ import {
   PopoverAnchor,
   PopoverContent,
 } from '@/components/ui/popover';
+import { getSelectionRewritePromptConfig } from '@/lib/ai/selection-rewrite-prompts';
 import { cn } from '@/lib/utils';
 
 import { AIChatEditor } from './ai-chat-editor';
@@ -181,7 +182,14 @@ export function AIMenu() {
           {mode === 'chat' &&
             isSelecting &&
             content &&
-            toolName === 'generate' && <AIChatEditor content={content} />}
+            toolName === 'generate' &&
+            (status === 'streaming' ? (
+              <div className="max-h-[400px] overflow-y-auto whitespace-pre-wrap break-words p-3 text-sm">
+                {content}
+              </div>
+            ) : (
+              <AIChatEditor content={content} />
+            ))}
 
           {isLoading ? (
             <div className="flex grow select-none items-center gap-2 p-2 text-muted-foreground text-sm">
@@ -202,13 +210,22 @@ export function AIMenu() {
                   e.preventDefault();
                   api.aiChat.hide();
                 }
-                if (isHotkey('enter')(e) && !e.shiftKey && !value) {
+                if (isHotkey('enter')(e) && !e.shiftKey && input.trim().length > 0) {
                   e.preventDefault();
-                  void api.aiChat.submit(input);
+                  void api.aiChat.submit(
+                    input,
+                    isSelecting ? { toolName: 'generate' } : undefined
+                  );
                   setInput('');
                 }
               }}
-              onValueChange={setInput}
+              onValueChange={(nextInput) => {
+                setInput(nextInput);
+
+                if (nextInput.trim().length > 0) {
+                  setValue('');
+                }
+              }}
               placeholder="Ask AI anything..."
               value={input}
             />
@@ -306,8 +323,8 @@ Start writing a new paragraph AFTER <Document> ONLY ONE SENTENCE`
     value: 'fixSpelling',
     onSelect: ({ editor, input }) => {
       void editor.getApi(AIChatPlugin).aiChat.submit(input, {
-        prompt: 'Fix spelling and grammar',
-        toolName: 'edit',
+        prompt: getSelectionRewritePromptConfig('fixSpelling'),
+        toolName: 'generate',
       });
     },
   },
@@ -317,8 +334,8 @@ Start writing a new paragraph AFTER <Document> ONLY ONE SENTENCE`
     value: 'improveWriting',
     onSelect: ({ editor, input }) => {
       void editor.getApi(AIChatPlugin).aiChat.submit(input, {
-        prompt: 'Improve the writing',
-        toolName: 'edit',
+        prompt: getSelectionRewritePromptConfig('improveWriting'),
+        toolName: 'generate',
       });
     },
   },
@@ -339,8 +356,8 @@ Start writing a new paragraph AFTER <Document> ONLY ONE SENTENCE`
     value: 'makeLonger',
     onSelect: ({ editor, input }) => {
       void editor.getApi(AIChatPlugin).aiChat.submit(input, {
-        prompt: 'Make longer',
-        toolName: 'edit',
+        prompt: getSelectionRewritePromptConfig('makeLonger'),
+        toolName: 'generate',
       });
     },
   },
@@ -350,8 +367,8 @@ Start writing a new paragraph AFTER <Document> ONLY ONE SENTENCE`
     value: 'makeShorter',
     onSelect: ({ editor, input }) => {
       void editor.getApi(AIChatPlugin).aiChat.submit(input, {
-        prompt: 'Make shorter',
-        toolName: 'edit',
+        prompt: getSelectionRewritePromptConfig('makeShorter'),
+        toolName: 'generate',
       });
     },
   },
@@ -369,8 +386,8 @@ Start writing a new paragraph AFTER <Document> ONLY ONE SENTENCE`
     value: 'simplifyLanguage',
     onSelect: ({ editor, input }) => {
       void editor.getApi(AIChatPlugin).aiChat.submit(input, {
-        prompt: 'Simplify the language',
-        toolName: 'edit',
+        prompt: getSelectionRewritePromptConfig('simplifyLanguage'),
+        toolName: 'generate',
       });
     },
   },
@@ -492,10 +509,16 @@ export const AIMenuItems = ({
   }, [menuState]);
 
   React.useEffect(() => {
+    if (input.trim().length > 0) {
+      setValue('');
+
+      return;
+    }
+
     if (menuGroups.length > 0 && menuGroups[0].items.length > 0) {
       setValue(menuGroups[0].items[0].value);
     }
-  }, [menuGroups, setValue]);
+  }, [input, menuGroups, setValue]);
 
   return (
     <>

@@ -8,6 +8,7 @@ import { useEditorRef, usePluginOption } from 'platejs/react';
 import * as React from 'react';
 
 import { aiChatPlugin } from '@/components/editor/plugins/ai-kit';
+import { resolveSelectionRewriteInstruction } from '@/lib/ai/selection-rewrite-prompts';
 
 const PROJECT_PATH_REGEX = /\/projects\/([^/]+)/;
 
@@ -38,11 +39,29 @@ export const useChat = () => {
             ? window.location.pathname.match(PROJECT_PATH_REGEX)
             : null;
         const projectId = projectIdMatch?.[1] ?? null;
+        const lastUserMessage = Array.isArray(initBody?.messages)
+          ? initBody.messages.at(-1)
+          : null;
+        const lastUserText = Array.isArray(lastUserMessage?.parts)
+          ? lastUserMessage.parts
+              .filter(
+                (
+                  part
+                ): part is {
+                  text: string;
+                  type: 'text';
+                } => part?.type === 'text' && typeof part.text === 'string'
+              )
+              .map((part) => part.text)
+              .join('')
+          : '';
+        const rewriteInstruction = resolveSelectionRewriteInstruction(lastUserText);
 
         const body = {
           ...initBody,
           ...bodyOptions,
           projectId,
+          rewriteInstruction,
         };
 
         const res = await fetch(input, {

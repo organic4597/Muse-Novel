@@ -31,12 +31,9 @@ function normalizeTagList(value: string) {
 const PHASE_ORDER = [
   'genre_tone',
   'premise',
-  'themes',
   'characters',
   'world',
   'plot',
-  'writing_style',
-  'first_chapter',
   'complete',
 ] as const;
 
@@ -127,20 +124,7 @@ function inferPhaseFromUserText(
     return 'premise';
   }
 
-  if (currentPhase === 'premise') {
-    if (draft.premise || draft.synopsis) {
-      return 'themes';
-    }
-
-    if (
-      /(사고|이세계|떨어|전이|유물|신전|기생|만났|손을 대|바다신전)/.test(normalized) ||
-      hasPremiseLikeAnswer(normalized)
-    ) {
-      return 'themes';
-    }
-  }
-
-  if (currentPhase === 'themes' && draft.themes && draft.themes.length > 0) {
+  if (currentPhase === 'premise' && (draft.premise || draft.synopsis) && draft.themes && draft.themes.length > 0) {
     return 'characters';
   }
 
@@ -160,12 +144,12 @@ function inferPhaseFromUserText(
       return 'plot';
     }
 
-  if (currentPhase === 'plot' && (draft.plotStructure || /(전개|사건|목표|갈등|복수|귀환)/.test(normalized))) {
-    return 'writing_style';
-  }
-
-  if (currentPhase === 'writing_style' && (draft.pointOfView || draft.writingStyle || draft.formatGoal)) {
-    return 'first_chapter';
+  if (
+    currentPhase === 'plot' &&
+    (draft.plotStructure || draft.pointOfView || draft.writingStyle || draft.firstChapterOutline ||
+     /(전개|사건|목표|갈등|복수|귀환|시점|문체|첫챕터)/.test(normalized))
+  ) {
+    return 'complete';
   }
 
   return currentPhase;
@@ -234,7 +218,7 @@ function inferDraftFromUserText(
     return nextDraft;
   }
 
-  if (stagedPhase === 'premise' && inferredNextPhase === 'themes') {
+  if (stagedPhase === 'premise' && inferredNextPhase === 'characters') {
     nextDraft.currentPhase = inferredNextPhase;
     return nextDraft;
   }

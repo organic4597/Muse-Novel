@@ -8,8 +8,13 @@ import {
   buildStructuredPrompt,
   formatTextFromMessages,
   getMarkdownWithSelection,
+  getSurroundingContext,
   isMultiBlocks,
 } from './utils';
+
+function stripSelectionTags(text: string): string {
+  return text.replaceAll('<Selection>', '').replaceAll('</Selection>', '');
+}
 
 export function getChooseToolPrompt({ messages }: { messages: ChatMessage[] }) {
   return buildStructuredPrompt({
@@ -37,13 +42,45 @@ export function getChooseToolPrompt({ messages }: { messages: ChatMessage[] }) {
 
 export function getGeneratePrompt(
   editor: SlateEditor,
-  { messages }: { messages: ChatMessage[] }
+  {
+    messages,
+    rewriteInstruction,
+  }: { messages: ChatMessage[]; rewriteInstruction?: string | null }
 ) {
   if (!isMultiBlocks(editor)) {
     addSelection(editor);
   }
 
   const selectingMarkdown = getMarkdownWithSelection(editor);
+
+  if (rewriteInstruction) {
+    const { before, after } = getSurroundingContext(editor);
+
+    const contextualBackground = [
+      before && `...(preceding context)\n${before}`,
+      stripSelectionTags(selectingMarkdown),
+      after && `${after}\n...(following context)`,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+    return buildStructuredPrompt({
+      backgroundData: contextualBackground,
+      history: formatTextFromMessages(messages),
+      rules: dedent`
+        - Preserve the original language and writing system.
+        - Do not translate unless the user explicitly asked for translation.
+        - Return only the final rewritten text as plain text.
+        - Do not include <Selection> tags, XML tags, markdown fences, labels, bullets, examples, or explanations.
+        - The rewritten text must flow naturally with the surrounding context shown above.
+        - Output only the replacement for the originally selected portion, not the surrounding context.
+      `,
+      task: dedent`
+        Rewrite the user's selected text according to this instruction: ${rewriteInstruction}
+        Output only the clean rewritten replacement text that connects naturally with the surrounding paragraphs.
+      `,
+    });
+  }
 
   return buildStructuredPrompt({
     backgroundData: selectingMarkdown,

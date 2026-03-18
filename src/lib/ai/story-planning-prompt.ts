@@ -12,18 +12,15 @@ const SYSTEM_PROMPT = `당신은 소설 기획 전문가입니다. 사용자와 
 
 ## 단계별 구상 흐름
 
-소설 기획은 아래 9단계 순서로 진행합니다. 현재 단계에 집중하되, 사용자가 다른 주제를 꺼내도 유연하게 대응합니다.
+소설 기획은 아래 5단계 순서로 진행합니다. 현재 단계에 집중하되, 사용자가 다른 주제를 꺼내도 유연하게 대응합니다.
 
 | 단계 | 이름 | 집중 필드 | 목표 |
 |------|------|-----------|------|
 | genre_tone | 장르/분위기 | genre, tone, title(선택) | 이야기의 장르와 전체적인 분위기/톤을 정함 |
-| premise | 전제/시놉시스 | premise, synopsis | 핵심 갈등·설정, 한 줄 요약 |
-| themes | 주제 | themes[] | 작품이 탐구할 주제 1~3개 |
+| premise | 전제/시놉시스/주제 | premise, synopsis, themes[] | 핵심 갈등·설정, 한 줄 요약, 작품이 탐구할 주제 1~3개 |
 | characters | 등장인물 | characters[] | 주요 인물 구성, 역할, 관계 |
 | world | 세계관 | worldEntries[] | 배경, 규칙, 역사, 조직 등 |
-| plot | 플롯/타임라인 | plotStructure | 주요 사건 흐름, 기승전결, 시간축 |
-| writing_style | 시점/문체/분량 | pointOfView, writingStyle, formatGoal | 서술 시점, 문체 스타일, 목표 분량/형식 |
-| first_chapter | 첫 챕터 | firstChapterOutline | 1장의 장면·사건 개요 |
+| plot | 플롯/문체/첫챕터 | plotStructure, pointOfView, writingStyle, formatGoal, firstChapterOutline | 주요 사건 흐름, 서술 시점, 문체, 목표 분량, 1장 개요 |
 | complete | 완성 | (전체 검토) | 최종 점검 및 보완 |
 
 ### 단계 전환 규칙
@@ -140,7 +137,7 @@ JSON 스키마:
     "pointOfView": "서술 시점 (예: 1인칭, 3인칭 제한, 전지적) 또는 null",
     "writingStyle": "문체 스타일 (예: 서술:대사 비율, 문장 길이, 톤) 또는 null",
     "formatGoal": "분량/형식 목표 (예: 장편 300매, 단편 50매, 웹소설 회차형) 또는 null",
-    "currentPhase": "genre_tone | premise | themes | characters | world | plot | writing_style | first_chapter | complete"
+    "currentPhase": "genre_tone | premise | characters | world | plot | complete"
   },
   "options": ["선택지1", "선택지2", "선택지3"]
 }
@@ -168,15 +165,12 @@ JSON 스키마:
 - items가 없는 캐릭터는 items 필드를 생략하거나 빈 배열로 두세요.`;
 
 const PHASE_REQUIRED_FIELDS: Partial<Record<StoryPlanningPhase, (keyof StoryPlanningDraft)[]>> = {
-  genre_tone:    ['genre', 'tone'],
-  premise:       ['premise', 'synopsis'],
-  themes:        ['themes'],
-  characters:    ['characters'],
-  world:         ['worldEntries'],
-  plot:          ['plotStructure'],
-  writing_style: ['pointOfView', 'writingStyle', 'formatGoal'],
-  first_chapter: ['firstChapterOutline'],
-  complete:      [],
+  genre_tone: ['genre', 'tone'],
+  premise:    ['premise', 'synopsis', 'themes'],
+  characters: ['characters'],
+  world:      ['worldEntries'],
+  plot:       ['plotStructure', 'pointOfView', 'writingStyle', 'formatGoal', 'firstChapterOutline'],
+  complete:   [],
 };
 
 const FIELD_LABELS: Partial<Record<keyof StoryPlanningDraft, string>> = {
@@ -219,11 +213,10 @@ function isPhaseComplete(phase: StoryPlanningPhase, draft: StoryPlanningDraft) {
   }
 
   if (phase === 'premise') {
-    return hasMeaningfulValue(draft.premise) || hasMeaningfulValue(draft.synopsis);
-  }
-
-  if (phase === 'themes') {
-    return hasMeaningfulValue(draft.themes);
+    return (
+      (hasMeaningfulValue(draft.premise) || hasMeaningfulValue(draft.synopsis)) &&
+      hasMeaningfulValue(draft.themes)
+    );
   }
 
   if (phase === 'characters') {
@@ -235,19 +228,12 @@ function isPhaseComplete(phase: StoryPlanningPhase, draft: StoryPlanningDraft) {
   }
 
   if (phase === 'plot') {
-    return hasMeaningfulValue(draft.plotStructure);
-  }
-
-  if (phase === 'writing_style') {
     return (
+      hasMeaningfulValue(draft.plotStructure) ||
       hasMeaningfulValue(draft.pointOfView) ||
       hasMeaningfulValue(draft.writingStyle) ||
-      hasMeaningfulValue(draft.formatGoal)
+      hasMeaningfulValue(draft.firstChapterOutline)
     );
-  }
-
-  if (phase === 'first_chapter') {
-    return hasMeaningfulValue(draft.firstChapterOutline);
   }
 
   return true;
@@ -661,8 +647,7 @@ function parseDraftFields(
   };
 
   const VALID_PHASES = new Set<string>([
-    'genre_tone', 'premise', 'themes', 'characters', 'world',
-    'plot', 'writing_style', 'first_chapter', 'complete',
+    'genre_tone', 'premise', 'characters', 'world', 'plot', 'complete',
   ]);
 
   const rawCurrentPhase = typeof rawDraft.currentPhase === 'string'

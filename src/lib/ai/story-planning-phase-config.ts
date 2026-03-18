@@ -25,26 +25,25 @@ const STORY_PLANNING_PHASE_CONFIG: Record<StoryPlanningPhase, StoryPlanningPhase
   premise: {
     summary: (draft) => {
       const premise = quoteValue(draft.premise) ?? quoteValue(draft.synopsis);
-      return premise ? `핵심 전제는 ${premise}로 정리됐어요.` : '핵심 전제를 정리하고 있어요.';
+      const themePart =
+        draft.themes && draft.themes.length > 0
+          ? ` 주제는 ${draft.themes.map((t) => `"${t}"`).join(', ')}.`
+          : '';
+      return premise ? `핵심 전제는 ${premise}로 정리됐어요.${themePart}` : '핵심 전제와 주제를 정리하고 있어요.';
     },
-    question: '이제 이 이야기의 핵심 전제나 중심 갈등을 한 줄로 정리해볼까요?',
-    followUp: '이제 핵심 갈등을 더 날카롭게 만들려면 주인공의 목표와 실패 대가 중 하나를 더 선명하게 잡는 게 좋아요. 어느 쪽부터 정할까요?',
-    options: ['주인공의 목표 정하기', '핵심 갈등 강화하기', '사건 발단 만들기', '로그라인으로 정리하기'],
-    buildContextOptions: (draft) =>
-      draft.premise || draft.synopsis
-        ? ['주인공 목표 더 선명하게 하기', '실패 대가 더 크게 만들기']
-        : [],
-  },
-  themes: {
-    summary: (draft) =>
-      draft.themes && draft.themes.length > 0
-        ? `주제는 ${draft.themes.map((theme) => `"${theme}"`).join(', ')} 쪽으로 모였어요.`
-        : '작품의 주제를 정리하고 있어요.',
-    question: '이 작품에서 특히 강조하고 싶은 주제나 감정선은 무엇인가요?',
-    followUp: '지금 주제를 플롯에 연결하려면 가장 앞에 세울 감정선 하나를 먼저 고르는 게 좋아요. 어떤 감정을 중심축으로 둘까요?',
-    options: ['성장 서사로 가기', '구원과 희생 넣기', '복수와 용서 다루기', '정체성 주제 넣기'],
-    buildContextOptions: (draft) =>
-      draft.themes && draft.themes.length > 0 ? [`${draft.themes[0]} 갈등 더 강화하기`] : [],
+    question: '이 이야기의 핵심 전제나 중심 갈등, 그리고 작품에서 다루고 싶은 주제나 감정선을 함께 이야기해볼까요?',
+    followUp: '전제와 주제가 잡혔으면, 주인공의 목표와 실패 대가 중 하나를 더 선명하게 잡으면 다음 단계로 넘기기 쉬워요. 어느 쪽부터 정할까요?',
+    options: ['주인공의 목표 정하기', '핵심 갈등 강화하기', '주제 감정선 정하기', '로그라인으로 정리하기'],
+    buildContextOptions: (draft) => {
+      const contextual: string[] = [];
+      if (draft.premise || draft.synopsis) {
+        contextual.push('주인공 목표 더 선명하게 하기');
+      }
+      if (draft.themes && draft.themes.length > 0) {
+        contextual.push(`${draft.themes[0]} 갈등 더 강화하기`);
+      }
+      return contextual;
+    },
   },
   characters: {
     summary: (draft) =>
@@ -102,12 +101,16 @@ const STORY_PLANNING_PHASE_CONFIG: Record<StoryPlanningPhase, StoryPlanningPhase
   },
   plot: {
     summary: (draft) => {
-      const plot = quoteValue(draft.plotStructure);
-      return plot ? `플롯 큰 줄기는 ${plot}로 정리됐어요.` : '플롯 흐름을 정리하고 있어요.';
+      const parts = [
+        quoteValue(draft.plotStructure),
+        quoteValue(draft.pointOfView),
+        quoteValue(draft.writingStyle),
+      ].filter(Boolean);
+      return parts.length > 0 ? `플롯/문체 방향은 ${parts.join(', ')}로 정리됐어요.` : '플롯과 문체 방향을 정리하고 있어요.';
     },
-    question: '이제 주요 사건 흐름과 갈등 전개를 큰 줄기로 정해볼까요?',
-    followUp: '플롯은 사건 순서보다 먼저 주인공이 가장 크게 흔들리는 전환점을 잡으면 덜 반복돼요. 그 전환점을 먼저 정해볼까요?',
-    options: ['3막 구조로 정리하기', '중반 반전 넣기', '클라이맥스 설계하기', '사건 타임라인 만들기'],
+    question: '주요 사건 흐름과 갈등 전개를 큰 줄기로 정하고, 서술 시점·문체·첫 챕터 방향도 함께 잡아볼까요?',
+    followUp: '플롯은 주인공이 가장 크게 흔들리는 전환점을 먼저 잡으면 덜 반복돼요. 문체는 시점과 템포 중 하나를 못 박으면 나머지가 따라옵니다. 어디부터 정할까요?',
+    options: ['3막 구조로 정리하기', '중반 반전 넣기', '1인칭으로 쓰기', '3인칭 제한 시점', '첫 챕터 개요 써주기'],
     buildContextOptions: (draft) => {
       const contextual: string[] = [];
       if (draft.characters[0]?.name) {
@@ -118,41 +121,14 @@ const STORY_PLANNING_PHASE_CONFIG: Record<StoryPlanningPhase, StoryPlanningPhase
         contextual.push(`${draft.worldEntries[0].title} 사건과 연결하기`);
       }
 
-      return contextual;
-    },
-  },
-  writing_style: {
-    summary: (draft) => {
-      const parts = [quoteValue(draft.pointOfView), quoteValue(draft.writingStyle), quoteValue(draft.formatGoal)].filter(Boolean);
-      return parts.length > 0 ? `시점/문체/형식은 ${parts.join(', ')} 쪽으로 정리됐어요.` : '시점과 문체 방향을 잡고 있어요.';
-    },
-    question: '이제 서술 시점, 문체 스타일, 목표 분량 같은 집필 방향을 정해볼까요?',
-    followUp: '문체 단계에서는 시점과 템포 중 하나를 먼저 못 박으면 나머지가 따라옵니다. 어떤 쪽부터 정할까요?',
-    options: ['1인칭으로 쓰기', '3인칭 제한 시점', '웹소설 톤으로 가기', '묘사보다 대사 비중 높이기'],
-    buildContextOptions: (draft) => {
-      const contextual: string[] = [];
       if (draft.pointOfView) {
         contextual.push(`${draft.pointOfView} 시점으로 밀어붙이기`);
       }
 
-      if (draft.formatGoal) {
-        contextual.push(`${draft.formatGoal} 분량에 맞추기`);
-      }
-
       return contextual;
     },
   },
-  first_chapter: {
-    summary: (draft) => {
-      const outline = quoteValue(draft.firstChapterOutline);
-      return outline ? `첫 챕터 방향은 ${outline}로 잡혔어요.` : '첫 챕터 구성을 정리하고 있어요.';
-    },
-    question: '이제 첫 챕터에서 어떤 장면과 사건으로 시작할지 정해볼까요?',
-    followUp: '첫 챕터는 시작 장면과 첫 갈등 중 하나를 먼저 고르면 훨씬 또렷해져요. 어디부터 잡을까요?',
-    options: ['첫 장면부터 잡기', '도입 사건 정하기', '첫 챕터 개요 써주기', '첫 문장 톤 정하기'],
-    buildContextOptions: (draft) =>
-      draft.characters[0]?.name ? [`${draft.characters[0].name} 첫 등장 장면 만들기`] : [],
-  },
+
   complete: {
     summary: () => '전체 기획이 정리되고 있어요.',
     question: '전체 기획을 기준으로 빠진 부분을 함께 보완해볼까요?',

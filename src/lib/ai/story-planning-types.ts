@@ -3,35 +3,26 @@
 export type StoryPlanningPhase =
   | 'genre_tone'
   | 'premise'
-  | 'themes'
   | 'characters'
   | 'world'
   | 'plot'
-  | 'writing_style'
-  | 'first_chapter'
   | 'complete';
 
 export const PHASE_LABELS: Record<StoryPlanningPhase, string> = {
   genre_tone: '장르/분위기',
-  premise: '전제/시놉시스',
-  themes: '주제',
+  premise: '전제/시놉시스/주제',
   characters: '등장인물',
   world: '세계관',
-  plot: '플롯/타임라인',
-  writing_style: '시점/문체/분량',
-  first_chapter: '첫 챕터',
+  plot: '플롯/문체/첫챕터',
   complete: '완성',
 };
 
 export const PHASE_ORDER: StoryPlanningPhase[] = [
   'genre_tone',
   'premise',
-  'themes',
   'characters',
   'world',
   'plot',
-  'writing_style',
-  'first_chapter',
   'complete',
 ];
 

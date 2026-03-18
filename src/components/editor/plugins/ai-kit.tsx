@@ -74,7 +74,16 @@ export const aiChatPlugin = AIChatPlugin.extend({
           withAIBatch(
             editor,
             () => {
-              applyAISuggestions(editor, content);
+              if (!content?.trim()) return;
+              if ((editor.getOption(AIChatPlugin, 'chatNodes')?.length ?? 0) === 0) {
+                return;
+              }
+
+              try {
+                applyAISuggestions(editor, content);
+              } catch {
+                return;
+              }
             },
             {
               split: isFirst,

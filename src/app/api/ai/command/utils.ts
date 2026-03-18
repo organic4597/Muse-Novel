@@ -2,7 +2,7 @@ import { getMarkdown } from '@platejs/ai';
 import { serializeMd } from '@platejs/markdown';
 import type { UIMessage } from 'ai';
 import dedent from 'dedent';
-import { RangeApi, type SlateEditor } from 'platejs';
+import { PathApi, RangeApi, type SlateEditor } from 'platejs';
 import type { ChatMessage } from '@/components/editor/use-chat';
 
 /**
@@ -242,3 +242,28 @@ export const isMultiBlocks = (editor: SlateEditor) => {
 /** Get markdown with selection markers */
 export const getMarkdownWithSelection = (editor: SlateEditor) =>
   removeEscapeSelection(editor, getMarkdown(editor, { type: 'block' }));
+
+export const getSurroundingContext = (
+  editor: SlateEditor,
+  surroundingBlocks = 2
+): { after: string; before: string } => {
+  const blocks = editor.api.blocks({ mode: 'highest' });
+
+  if (blocks.length === 0) return { after: '', before: '' };
+
+  const allChildren = editor.children;
+  const firstIndex = blocks[0]![1][0] as number;
+  const lastIndex = blocks.at(-1)![1][0] as number;
+
+  const before = allChildren
+    .slice(Math.max(0, firstIndex - surroundingBlocks), firstIndex)
+    .map((node) => serializeMd(editor, { value: [node] }))
+    .join('\n\n');
+
+  const after = allChildren
+    .slice(lastIndex + 1, lastIndex + 1 + surroundingBlocks)
+    .map((node) => serializeMd(editor, { value: [node] }))
+    .join('\n\n');
+
+  return { after, before };
+};
