@@ -2,6 +2,7 @@
 - [설치 및 실행](Getting-Started)
 - [주요 기능](Features)
 - [아키텍처 개요](Architecture)
+- [기술 분석 문서](Tech-Deep-Dive)
 - [스토리 구상 기능](Story-Planning)
 - [로드맵 / 추후 작업](Roadmap)
 - [트러블슈팅](Troubleshooting)
