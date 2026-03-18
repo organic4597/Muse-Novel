@@ -12,10 +12,13 @@ import type {
   StoryPlanningCharacter,
   StoryPlanningDraft,
   StoryPlanningMessage,
+  StoryPlanningPhase,
   StoryPlanningWorldEntry,
 } from '@/lib/ai/story-planning-types';
 import {
   EMPTY_DRAFT,
+  PHASE_LABELS,
+  PHASE_ORDER,
 } from '@/lib/ai/story-planning-types';
 
 const STORAGE_KEY = 'muse-novel-story-planning';
@@ -344,6 +347,38 @@ function CharacterExpandedDetails({ character }: { character: StoryPlanningChara
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function PhaseStepper({ currentPhase }: { currentPhase?: StoryPlanningPhase }) {
+  const currentIndex = currentPhase ? PHASE_ORDER.indexOf(currentPhase) : 0;
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-3">
+      <h4 className="mb-2 text-xs font-semibold text-muted-foreground">진행 단계</h4>
+      <div className="flex flex-wrap gap-1.5">
+        {PHASE_ORDER.map((phase, index) => {
+          const isComplete = index < currentIndex;
+          const isCurrent = index === currentIndex;
+
+          return (
+            <span
+              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${
+                isComplete
+                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                  : isCurrent
+                    ? 'bg-primary/15 text-primary ring-1 ring-primary/30'
+                    : 'bg-muted text-muted-foreground'
+              }`}
+              key={phase}
+            >
+              {isComplete ? '✓ ' : isCurrent ? '● ' : ''}
+              {PHASE_LABELS[phase]}
+            </span>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1492,6 +1527,7 @@ export function StoryPlanningTab() {
         {/* Draft summary panel — sticky */}
         <div className="hidden lg:block">
           <div className="sticky top-20 space-y-4 max-h-[calc(100vh-6rem)] overflow-y-auto">
+            <PhaseStepper currentPhase={draft.currentPhase} />
             <DraftPanel
               draft={draft}
               onAcceptCharacter={handleAcceptCharacter}
@@ -1520,6 +1556,7 @@ export function StoryPlanningTab() {
 
       {/* Mobile draft panel (below chat) */}
       <div className="lg:hidden space-y-4">
+        <PhaseStepper currentPhase={draft.currentPhase} />
         <DraftPanel
           draft={draft}
           onAcceptCharacter={handleAcceptCharacter}

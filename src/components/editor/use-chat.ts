@@ -9,6 +9,8 @@ import * as React from 'react';
 
 import { aiChatPlugin } from '@/components/editor/plugins/ai-kit';
 
+const PROJECT_PATH_REGEX = /\/projects\/([^/]+)/;
+
 export type ToolName = 'edit' | 'generate';
 
 export type MessageDataPart = {
@@ -31,10 +33,16 @@ export const useChat = () => {
         const bodyOptions = editor.getOptions(aiChatPlugin).chatOptions?.body;
 
         const initBody = JSON.parse(init?.body as string);
+        const projectIdMatch =
+          typeof window !== 'undefined'
+            ? window.location.pathname.match(PROJECT_PATH_REGEX)
+            : null;
+        const projectId = projectIdMatch?.[1] ?? null;
 
         const body = {
           ...initBody,
           ...bodyOptions,
+          projectId,
         };
 
         const res = await fetch(input, {

@@ -8,9 +8,9 @@ import {
   type OverrideEditor,
   type PlateEditor,
   type RenderNodeWrapperProps,
+  useElement,
   useFocused,
   usePluginOption,
-  useSelected,
 } from 'platejs/react';
 import type React from 'react';
 
@@ -199,18 +199,30 @@ function trimContextEcho(context: string, suggestion: string): string {
   }
 
   const maxEmbeddedOverlap = Math.min(normalizedContext.length, 16);
+  const leadingDecorationMatch = trimmed.match(/^["'“”‘’「『([]+/);
+  const leadingDecoration = leadingDecorationMatch?.[0] ?? '';
+  const undecorated = trimmed.slice(leadingDecoration.length);
 
   for (let size = maxEmbeddedOverlap; size >= 3; size--) {
     const suffix = normalizedContext.slice(-size);
-    const position = trimmed.indexOf(suffix);
+    const position = undecorated.indexOf(suffix);
 
-    if (position >= 0 && position <= 8) {
-      trimmed = trimmed.slice(position + size).trimStart();
+    if (position === 0) {
+      trimmed = `${leadingDecoration}${undecorated.slice(size)}`.trimStart();
       break;
     }
   }
 
   return trimmed;
+}
+
+function hasMeaningfulSuggestionText(text: string): boolean {
+  const normalized = sanitizeSuggestionText(text)
+    .replace(/^["'“”‘’「『([]+/, '')
+    .replace(/[.!?…。！？"'”’」』)\]]+$/g, '')
+    .replace(/\s+/g, '');
+
+  return normalized.length >= 3;
 }
 
 function isTooSimilarToContext(context: string, suggestion: string): boolean {
@@ -593,6 +605,7 @@ const runCompletion = async (editor: PlateEditor, temperature = 0.4) => {
       const suggestion = trimContextEcho(localContext, sentenceCandidate);
       const normalizedSuggestion = sanitizeSuggestionText(suggestion);
       if (!normalizedSuggestion.trim()) continue;
+      if (!hasMeaningfulSuggestionText(normalizedSuggestion)) continue;
       if (isTooSimilarToContext(localContext, normalizedSuggestion)) continue;
 
       clearTimeout(timeoutId);
@@ -756,12 +769,13 @@ export const InlineSuggestionKit = [
 ];
 
 export function InlineGhostText() {
+  const element = useElement();
   const focused = useFocused();
-  const selected = useSelected();
+  const isSuggested = usePluginOption(InlineSuggestionPlugin, 'isSuggested', element.id as string);
   const isLoading = usePluginOption(InlineSuggestionPlugin, 'isLoading');
   const text = usePluginOption(InlineSuggestionPlugin, 'suggestionText');
 
-  if (!focused || !selected || (!text && !isLoading)) return null;
+  if (!isSuggested || !focused || (!text && !isLoading)) return null;
 
   return <InlineGhostTextContent />;
 }

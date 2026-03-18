@@ -11,7 +11,12 @@ import { createSlateEditor } from 'platejs';
 import { z } from 'zod';
 import { BaseEditorKit } from '@/components/editor/editor-base-kit';
 import type { ChatMessage, ToolName } from '@/components/editor/use-chat';
+import { getEnvProviderConfig } from '@/lib/ai/daily-slogan';
+import { decryptApiKey } from '@/lib/ai/encryption';
+import { resolveStoredProviderConfig } from '@/lib/ai/provider-config-resolver';
 import { createProvider } from '@/lib/ai/provider-factory';
+import { db } from '@/lib/db';
+import { getDefaultProvider } from '@/lib/db/queries/ai-settings';
 import { markdownJoinerTransform } from '@/lib/markdown-joiner-transform';
 
 import { getChooseToolPrompt, getEditPrompt, getGeneratePrompt } from './prompts';
@@ -22,8 +27,16 @@ export async function POST(req: NextRequest) {
     ctx,
     messages: messagesRaw = [],
     model: modelId,
+    projectId,
     provider: providerName,
   } = await req.json();
+
+  if (!ctx) {
+    return NextResponse.json(
+      { error: 'Missing editor context' },
+      { status: 400 }
+    );
+  }
 
   const { children, selection, toolName: toolNameParam } = ctx;
 
@@ -34,11 +47,38 @@ export async function POST(req: NextRequest) {
   });
 
   try {
-    const model = createProvider({
-      provider: providerName || 'openai',
-      modelId: modelId || 'gpt-4o-mini',
-      apiKey: key,
-    });
+    let providerConfig;
+
+    if (providerName || modelId || key) {
+      providerConfig = {
+        apiKey: key,
+        modelId: modelId || 'gpt-4o-mini',
+        provider: providerName || 'openai',
+      };
+    } else if (projectId) {
+      const providerSettings = await getDefaultProvider(db, projectId);
+
+      if (providerSettings) {
+        providerConfig = resolveStoredProviderConfig(providerSettings, {
+          decryptApiKey,
+        });
+      }
+    }
+
+    if (!providerConfig) {
+      const envConfig = getEnvProviderConfig();
+
+      if (!envConfig) {
+        return NextResponse.json(
+          { error: 'No AI provider configured' },
+          { status: 503 }
+        );
+      }
+
+      providerConfig = envConfig;
+    }
+
+    const model = createProvider(providerConfig);
 
     const stream = createUIMessageStream<ChatMessage>({
       execute: async ({ writer }) => {
