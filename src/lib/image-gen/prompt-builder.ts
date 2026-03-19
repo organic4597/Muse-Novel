@@ -1,20 +1,7 @@
+import { deduplicateTagStrings } from './tag-normalizer';
 import { extractLatinParts } from './tag-translator';
 import type { CharacterPromptContext, ImageKind } from './types';
 import { SHOT_PRESETS } from './types';
-
-/**
- * Deduplicate tags while preserving order.
- * Normalizes by trimming and lowercasing for comparison.
- */
-function deduplicateTags(tags: string[]): string[] {
-  const seen = new Set<string>();
-  return tags.filter(tag => {
-    const key = tag.trim().toLowerCase();
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
 
 /**
  * Build a Stable Diffusion prompt from character fields + shot preset + user instructions.
@@ -68,7 +55,7 @@ export function buildCharacterPrompt(
   // Quality boosters
   allTags.push('masterpiece', 'best quality', 'highly detailed');
 
-  return deduplicateTags(allTags).join(', ');
+  return deduplicateTagStrings(allTags).join(', ');
 }
 
 const GLOBAL_NEGATIVE_DEFAULTS = [

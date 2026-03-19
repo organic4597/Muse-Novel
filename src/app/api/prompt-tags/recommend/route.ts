@@ -1,5 +1,6 @@
 import { db } from '@/lib/db';
 import { getCharacter } from '@/lib/db/queries/characters';
+import { deduplicateRecommendedTags } from '@/lib/image-gen/tag-normalizer';
 import { recommendTags } from '@/lib/tag-recommender-client';
 
 function buildCharacterTexts(character: {
@@ -37,7 +38,9 @@ export async function GET(request: Request) {
     return Response.json({ characterName: character.name, recommendations: [] });
   }
 
-  const tags = await recommendTags(texts, { translate: true });
+  const tags = deduplicateRecommendedTags(
+    await recommendTags(texts, { translate: true })
+  );
 
   return Response.json({
     characterName: character.name,
@@ -58,12 +61,14 @@ export async function POST(request: Request) {
   const wordCount = description.trim().split(/[\s,]+/).filter(Boolean).length;
   const topK = wordCount <= 2 ? 10 : wordCount <= 5 ? 15 : 20;
   const threshold = wordCount <= 2 ? 0.35 : 0.30;
-  const tags = await recommendTags(texts, {
-    topK,
-    threshold,
-    autoSplit: false,
-    translate: true,
-  });
+  const tags = deduplicateRecommendedTags(
+    await recommendTags(texts, {
+      topK,
+      threshold,
+      autoSplit: false,
+      translate: true,
+    })
+  );
 
   return Response.json({ tags });
 }

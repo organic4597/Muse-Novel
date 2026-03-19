@@ -8,6 +8,12 @@ import {
   useRef,
   useState,
 } from 'react';
+import {
+  deduplicateTagObjects,
+  deduplicateTagStrings,
+  normalizeTag,
+  normalizeTagKey,
+} from '@/lib/image-gen/tag-normalizer';
 import { cn } from '@/lib/utils';
 
 interface TagSuggestion {
@@ -139,9 +145,10 @@ export function PromptTagInput({
 
   const addTag = useCallback(
     (tag: string) => {
-      const trimmed = tag.trim().toLowerCase();
+      const trimmed = normalizeTag(tag);
       if (!trimmed) return;
-      if (tags.some((t) => t.toLowerCase() === trimmed)) {
+      const trimmedKey = normalizeTagKey(trimmed);
+      if (tags.some((t) => normalizeTagKey(t) === trimmedKey)) {
         setInputValue('');
         return;
       }
@@ -158,10 +165,10 @@ export function PromptTagInput({
 
   const addMultipleTags = useCallback(
     (newTagList: string[]) => {
-      const existing = new Set(tags.map((t) => t.toLowerCase()));
-      const toAdd = newTagList
-        .map((t) => t.trim().toLowerCase())
-        .filter((t) => t && !existing.has(t));
+      const existing = new Set(tags.map((t) => normalizeTagKey(t)));
+      const toAdd = deduplicateTagStrings(newTagList).filter(
+        (tag) => !existing.has(normalizeTagKey(tag))
+      );
       if (toAdd.length === 0) return;
       onChange(joinTags([...tags, ...toAdd]));
     },
@@ -201,7 +208,7 @@ export function PromptTagInput({
         `/api/prompt-tags/recommend?characterId=${encodeURIComponent(characterId)}`
       );
       const data = await res.json();
-      setRecommendations(data.recommendations ?? []);
+      setRecommendations(deduplicateTagObjects(data.recommendations ?? []));
     } catch {
       setRecommendations([]);
     } finally {
@@ -220,7 +227,7 @@ export function PromptTagInput({
         body: JSON.stringify({ description: descText }),
       });
       const data = await res.json();
-      setDescTags(data.tags ?? []);
+      setDescTags(deduplicateTagObjects(data.tags ?? []));
     } catch {
       setDescTags([]);
     } finally {
@@ -344,7 +351,7 @@ export function PromptTagInput({
               <div className="flex flex-wrap gap-1">
                 {recommendations.map((rec) => {
                   const already = tags.some(
-                    (t) => t.toLowerCase() === rec.tag.toLowerCase()
+                    (t) => normalizeTagKey(t) === normalizeTagKey(rec.tag)
                   );
                   return (
                     <button
@@ -437,7 +444,7 @@ export function PromptTagInput({
               <div className="flex flex-wrap gap-1">
                 {descTags.map((dt) => {
                   const already = tags.some(
-                    (t) => t.toLowerCase() === dt.tag.toLowerCase()
+                    (t) => normalizeTagKey(t) === normalizeTagKey(dt.tag)
                   );
                   return (
                     <button

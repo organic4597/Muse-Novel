@@ -1,4 +1,5 @@
 import { recommendTags } from '@/lib/tag-recommender-client';
+import { deduplicateTagObjects } from './tag-normalizer';
 
 export interface TranslatedTag {
   tag: string;
@@ -36,11 +37,13 @@ export async function translateToTags(
 ): Promise<TranslatedTag[]> {
   try {
     const tags = await recommendTags(texts, { topK, threshold, translate: true });
-    return tags.map(t => ({
-      tag: t.tag,
-      category: t.category,
-      score: t.score,
-    }));
+    return deduplicateTagObjects(
+      tags.map(t => ({
+        tag: t.tag,
+        category: t.category,
+        score: t.score,
+      }))
+    );
   } catch {
     return [];
   }
