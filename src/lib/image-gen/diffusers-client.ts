@@ -3,6 +3,7 @@ import { mkdir, unlink, writeFile } from 'fs/promises';
 import path from 'path';
 
 import { getImageGenGpus } from '../gpu-config';
+import { getDiffusersManager } from './diffusers-process-manager';
 import {
   DEFAULT_DIFFUSERS_MODEL,
   type ImageGenerationResult,
@@ -128,6 +129,66 @@ async function runSingleGpu(
   onProgress?: (event: ProgressEvent) => void,
 ): Promise<ImageGenerationResult> {
   await mkdir(request.outputDir, { recursive: true });
+
+  // --- Fast path: persistent daemon (model already loaded) ---
+  try {
+    const manager = getDiffusersManager();
+    if (manager.isHealthy()) {
+      const daemonResult = await manager.submitJob(
+        {
+          prompt: request.prompt,
+          negativePrompt: request.negativePrompt,
+          width: request.width,
+          height: request.height,
+          steps: request.steps,
+          cfgScale: request.cfgScale,
+          batchSize: request.batchSize,
+          seed: request.seed,
+          outputDir: request.outputDir,
+          modelId: request.modelId || DEFAULT_DIFFUSERS_MODEL,
+          gpu,
+          scheduler: request.scheduler || 'euler_a',
+          loraPath: request.loraPath,
+          loraWeight: request.loraWeight,
+        },
+        onProgress,
+      );
+
+      if (!daemonResult.success) {
+        throw new Error(daemonResult.error || '이미지 생성 데몬이 실패했습니다');
+      }
+
+      onProgress?.({
+        type: 'status',
+        status: 'provider_complete',
+        message: 'Diffusers 이미지 생성 완료 (daemon)',
+        stage: 'diffusers_total',
+        durationMs: daemonResult.timings?.totalMs,
+        timings: daemonResult.timings,
+        gpu,
+      });
+
+      return {
+        images: (daemonResult.images ?? []).map((img) => ({
+          base64: '',
+          seed: img.seed,
+          width: img.width,
+          height: img.height,
+          filePath: img.filename,
+        })),
+        prompt: daemonResult.prompt || request.prompt,
+        negativePrompt: daemonResult.negativePrompt || request.negativePrompt || '',
+      };
+    }
+  } catch (daemonError) {
+    // Daemon unavailable or failed — fall through to one-shot subprocess
+    console.log(
+      '[diffusers-client] Daemon unavailable, falling back to one-shot script:',
+      daemonError instanceof Error ? daemonError.message : String(daemonError),
+    );
+  }
+
+  // --- Fallback: one-shot subprocess (loads model from scratch) ---
   const configPath = path.join(request.outputDir, `.gen-config-${Date.now()}.json`);
 
   const config = {
