@@ -33,7 +33,7 @@ export async function POST(
     );
   }
 
-  if (!baseUrl) {
+  if (providerType === 'automatic1111' && !baseUrl) {
     return NextResponse.json(
       { error: 'baseUrl은 필수입니다.' },
       { status: 400 }
