@@ -613,51 +613,55 @@ export function ImageGenerationDialog({
           )}
 
           {/* Preview / Generate buttons */}
-          <div className="flex gap-2">
-            <Button
-              disabled={isPreviewing || isGenerating}
-              onClick={fetchPreview}
-              type="button"
-              variant="outline"
-            >
-              {isPreviewing ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Eye className="size-4" />
-              )}
-              프롬프트 미리보기
-            </Button>
-            <Button
-              disabled={isGenerating}
-              onClick={handleGenerate}
-              type="button"
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  생성 중...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="size-4" />
-                  이미지 생성
-                </>
-              )}
-            </Button>
-            <Button
-              disabled={isEnqueuing || isGenerating}
-              onClick={handleEnqueue}
-              type="button"
-              variant="outline"
-            >
-              {isEnqueuing ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <ListPlus className="size-4" />
-              )}
-              큐에 추가
-            </Button>
-          </div>
+          {(() => {
+            const hasActiveQueueJobs = queueJobs.some(
+              (j) => j.status === 'pending' || j.status === 'running',
+            );
+            const isBusy = isGenerating || hasActiveQueueJobs;
+
+            return (
+              <div className="flex gap-2">
+                <Button
+                  disabled={isPreviewing || isGenerating}
+                  onClick={fetchPreview}
+                  type="button"
+                  variant="outline"
+                >
+                  {isPreviewing ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Eye className="size-4" />
+                  )}
+                  프롬프트 미리보기
+                </Button>
+                <Button
+                  disabled={isGenerating || isEnqueuing}
+                  onClick={isBusy ? handleEnqueue : handleGenerate}
+                  type="button"
+                  variant={isBusy ? 'outline' : 'default'}
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      생성 중...
+                    </>
+                  ) : isEnqueuing ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : isBusy ? (
+                    <>
+                      <ListPlus className="size-4" />
+                      큐에 추가
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="size-4" />
+                      이미지 생성
+                    </>
+                  )}
+                </Button>
+              </div>
+            );
+          })()}
 
           {queueError && (
             <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3">
