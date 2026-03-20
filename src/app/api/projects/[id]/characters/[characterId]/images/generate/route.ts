@@ -7,13 +7,36 @@ import {
 } from '@/lib/db/queries/image-provider-settings';
 import { generateCharacterImages } from '@/lib/image-gen/image-generation-service';
 import { getLoraFilePath, getLoraRegistry } from '@/lib/image-gen/lora-registry';
-import { DEFAULT_DIFFUSERS_MODEL, type ImageKind } from '@/lib/image-gen/types';
 import {
+  DEFAULT_DIFFUSERS_MODEL,
+  type ImageGenerationTimings,
+  type ImageKind,
+} from '@/lib/image-gen/types';
+import {
+  acquireGpuForImageGen,
   VramCoordinationError,
-  withGpuForImageGen,
 } from '@/lib/image-gen/vram-coordinator';
 
 const VALID_KINDS: ImageKind[] = ['profile', 'full-body', 'illustration'];
+
+function mergeTimings(
+  current: ImageGenerationTimings,
+  next?: ImageGenerationTimings
+): ImageGenerationTimings {
+  if (!next) {
+    return current;
+  }
+
+  return {
+    ...current,
+    ...Object.fromEntries(
+      Object.entries(next).filter((entry): entry is [keyof ImageGenerationTimings, number] => {
+        const [, value] = entry;
+        return typeof value === 'number';
+      })
+    ),
+  };
+}
 
 /**
  * POST: Generate images with Server-Sent Events for progress.
@@ -111,48 +134,62 @@ export async function POST(
 
       // Run the generation pipeline
       (async () => {
-        try {
-          const savedImages = await withGpuForImageGen(async () => {
-            send('status', {
-              status: 'gpu_ready',
-              message: 'GPU 확보 완료. 이미지 생성 준비 중...',
-            });
+        const requestStart = performance.now();
+        let timings: ImageGenerationTimings = {};
+        let releaseGpu: (() => Promise<void>) | null = null;
 
-            return generateCharacterImages({
-              character: { ...character, id: character.id },
-              projectId,
-              kind,
-              additionalPrompt: loraEntry?.triggerWords?.length
-                ? [loraEntry.triggerWords.join(', '), additionalPrompt].filter(Boolean).join(', ')
-                : additionalPrompt,
-              batchSize,
-              provider: {
-                providerType: provider.providerType,
-                baseUrl: provider.baseUrl,
-                modelName: provider.modelName,
-                defaultWidth: provider.defaultWidth,
-                defaultHeight: provider.defaultHeight,
-                defaultSteps: provider.defaultSteps,
-                defaultSampler: provider.defaultSampler,
-                defaultCfgScale: provider.defaultCfgScale,
-                defaultNegativePrompt: provider.defaultNegativePrompt,
-              },
-              onProgress: (event) => {
-                if (event.type === 'progress') {
-                  send('progress', event);
-                } else if (event.type === 'status') {
-                  send('status', event);
-                }
-              },
-              loraPath,
-              loraWeight: resolvedLoraWeight,
-            });
+        try {
+          const gpuAcquireStart = performance.now();
+          releaseGpu = await acquireGpuForImageGen();
+          timings = mergeTimings(timings, {
+            gpuAcquireMs: Math.round(performance.now() - gpuAcquireStart),
+          });
+
+          send('status', {
+            status: 'gpu_ready',
+            message: 'GPU 확보 완료. 이미지 생성 준비 중...',
+            stage: 'gpu_acquire',
+            durationMs: timings.gpuAcquireMs,
+            timings,
+          });
+
+          const savedImages = await generateCharacterImages({
+            character: { ...character, id: character.id },
+            projectId,
+            kind,
+            additionalPrompt: loraEntry?.triggerWords?.length
+              ? [loraEntry.triggerWords.join(', '), additionalPrompt].filter(Boolean).join(', ')
+              : additionalPrompt,
+            batchSize,
+            provider: {
+              providerType: provider.providerType,
+              baseUrl: provider.baseUrl,
+              modelName: provider.modelName,
+              defaultWidth: provider.defaultWidth,
+              defaultHeight: provider.defaultHeight,
+              defaultSteps: provider.defaultSteps,
+              defaultSampler: provider.defaultSampler,
+              defaultCfgScale: provider.defaultCfgScale,
+              defaultNegativePrompt: provider.defaultNegativePrompt,
+            },
+            onProgress: (event) => {
+              timings = mergeTimings(timings, event.timings);
+              if (event.type === 'progress') {
+                send('progress', event);
+              } else if (event.type === 'status') {
+                send('status', event);
+              }
+            },
+            loraPath,
+            loraWeight: resolvedLoraWeight,
           });
 
           // Save to DB
+          const dbSaveStart = performance.now();
           send('status', {
             status: 'saving_db',
             message: '갤러리에 저장 중...',
+            timings,
           });
 
           const dbImages: Awaited<ReturnType<typeof createCharacterImage>>[] = [];
@@ -173,14 +210,44 @@ export async function POST(
             dbImages.push(dbImage);
           }
 
-          send('complete', { images: dbImages });
+          timings = mergeTimings(timings, {
+            dbSaveMs: Math.round(performance.now() - dbSaveStart),
+          });
+
+          if (releaseGpu) {
+            const gpuReleaseStart = performance.now();
+            await releaseGpu();
+            releaseGpu = null;
+            timings = mergeTimings(timings, {
+              gpuReleaseMs: Math.round(performance.now() - gpuReleaseStart),
+            });
+          }
+
+          timings = mergeTimings(timings, {
+            totalMs: Math.round(performance.now() - requestStart),
+          });
+
+          send('complete', { images: dbImages, timings });
         } catch (err) {
+          if (releaseGpu) {
+            const gpuReleaseStart = performance.now();
+            await releaseGpu().catch(() => {});
+            releaseGpu = null;
+            timings = mergeTimings(timings, {
+              gpuReleaseMs: Math.round(performance.now() - gpuReleaseStart),
+            });
+          }
+
+          timings = mergeTimings(timings, {
+            totalMs: Math.round(performance.now() - requestStart),
+          });
+
           if (err instanceof VramCoordinationError) {
-            send('error', { error: err.message });
+            send('error', { error: err.message, timings });
           } else {
             const message =
               err instanceof Error ? err.message : '이미지 생성에 실패했습니다.';
-            send('error', { error: message });
+            send('error', { error: message, timings });
           }
         } finally {
           controller.close();

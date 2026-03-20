@@ -91,9 +91,22 @@ def main():
     def log(msg: str):
         print(f"[image-gen] {msg}", file=sys.stderr, flush=True)
 
+    def emit_status(status: str, message: str, **extra):
+        payload = {
+            "type": "status",
+            "status": status,
+            "message": message,
+            **extra,
+        }
+        print(f"[PROGRESS]{json.dumps(payload)}", file=sys.stderr, flush=True)
+
+    def duration_ms(started_at: float) -> int:
+        return round((time.time() - started_at) * 1000)
+
     log(f"Loading model: {model_id} on GPU {gpu}")
     # Emit loading status
-    print(f'[PROGRESS]{json.dumps({"type": "status", "status": "loading_model", "message": "모델 로딩 중..."})}', file=sys.stderr, flush=True)
+    emit_status("loading_model", "모델 로딩 중...", stage="model_load")
+    total_start = time.time()
     start = time.time()
 
     import torch
@@ -148,19 +161,32 @@ def main():
     # Reduces peak VRAM when batchSize > 1.
     pipe.vae.enable_slicing()
 
+    lora_load_ms = 0
+
     # Load LoRA weights if provided
     if lora_path and os.path.isfile(lora_path):
         log(f"Loading LoRA: {lora_path} (weight={lora_weight})")
-        print(f'[PROGRESS]{json.dumps({"type": "status", "status": "loading_lora", "message": "LoRA 로딩 중..."})}', file=sys.stderr, flush=True)
+        emit_status("loading_lora", "LoRA 로딩 중...", stage="lora_load")
+        lora_start = time.time()
         try:
             pipe.load_lora_weights(lora_path, adapter_name="civitai_lora")
             pipe.set_adapters(["civitai_lora"], adapter_weights=[lora_weight])
+            lora_load_ms = duration_ms(lora_start)
             log(f"LoRA loaded successfully")
         except (ValueError, RuntimeError) as e:
             error_msg = str(e)
             if "not been correctly renamed" in error_msg or "lokr" in error_msg.lower():
-                log(f"WARNING: LoRA uses LoKR/LyCORIS format not supported by current diffusers. Generating without LoRA.")
-                print(f'[PROGRESS]{json.dumps({"type": "status", "status": "loading_lora", "message": "LoKR 포맷 미지원 — LoRA 없이 진행합니다"})}', file=sys.stderr, flush=True)
+                log(
+                    f"WARNING: LoRA uses LoKR/LyCORIS format not supported by current diffusers. Generating without LoRA."
+                )
+                lora_load_ms = duration_ms(lora_start)
+                emit_status(
+                    "loading_lora",
+                    "LoKR 포맷 미지원 — LoRA 없이 진행합니다",
+                    stage="lora_load",
+                    durationMs=lora_load_ms,
+                    timings={"loraLoadMs": lora_load_ms},
+                )
             else:
                 log(f"ERROR: Failed to load LoRA: {error_msg}")
                 raise
@@ -174,8 +200,18 @@ def main():
         log("xformers not available, using default attention")
 
     load_time = time.time() - start
+    model_load_ms = round(load_time * 1000)
     log(f"Model loaded in {load_time:.1f}s")
-    print(f'[PROGRESS]{json.dumps({"type": "status", "status": "generating", "message": f"모델 로딩 완료 ({load_time:.0f}초). 생성 시작..."})}', file=sys.stderr, flush=True)
+    emit_status(
+        "generating",
+        f"모델 로딩 완료 ({load_time:.0f}초). 생성 시작...",
+        stage="model_load",
+        durationMs=model_load_ms,
+        timings={
+            "modelLoadMs": model_load_ms,
+            **({"loraLoadMs": lora_load_ms} if lora_load_ms else {}),
+        },
+    )
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -208,13 +244,15 @@ def main():
         progress = round((step_index + 1) / steps * 100)
         elapsed = time.time() - gen_start
         # JSON progress line on stderr for the Node.js parent to parse
-        progress_data = json.dumps({
-            "type": "progress",
-            "step": step_index + 1,
-            "totalSteps": steps,
-            "progress": progress,
-            "elapsed": round(elapsed, 1),
-        })
+        progress_data = json.dumps(
+            {
+                "type": "progress",
+                "step": step_index + 1,
+                "totalSteps": steps,
+                "progress": progress,
+                "elapsed": round(elapsed, 1),
+            }
+        )
         print(f"[PROGRESS]{progress_data}", file=sys.stderr, flush=True)
         return callback_kwargs
 
@@ -223,23 +261,54 @@ def main():
     result = pipe(**gen_kwargs)
 
     gen_time = time.time() - gen_start
+    generation_ms = round(gen_time * 1000)
     log(f"Generation done in {gen_time:.1f}s")
-    print(f'[PROGRESS]{json.dumps({"type": "status", "status": "saving", "message": "이미지 저장 중..."})}', file=sys.stderr, flush=True)
+    emit_status(
+        "saving",
+        "이미지 저장 중...",
+        stage="generation",
+        durationMs=generation_ms,
+        timings={
+            "modelLoadMs": model_load_ms,
+            **({"loraLoadMs": lora_load_ms} if lora_load_ms else {}),
+            "generationMs": generation_ms,
+        },
+    )
 
     # Save images and build result
     images_out = []
+    save_start = time.time()
     for i, img in enumerate(result.images):
         import uuid
+
         filename = f"{uuid.uuid4()}.png"
         filepath = os.path.join(output_dir, filename)
         img.save(filepath)
-        images_out.append({
-            "filename": filename,
-            "seed": actual_seed + i,
-            "width": width,
-            "height": height,
-        })
+        images_out.append(
+            {
+                "filename": filename,
+                "seed": actual_seed + i,
+                "width": width,
+                "height": height,
+            }
+        )
         log(f"Saved: {filename}")
+
+    image_save_ms = duration_ms(save_start)
+    total_ms = duration_ms(total_start)
+    emit_status(
+        "provider_complete",
+        "이미지 파일 저장 완료",
+        stage="image_save",
+        durationMs=image_save_ms,
+        timings={
+            "modelLoadMs": model_load_ms,
+            **({"loraLoadMs": lora_load_ms} if lora_load_ms else {}),
+            "generationMs": generation_ms,
+            "imageSaveMs": image_save_ms,
+            "totalMs": total_ms,
+        },
+    )
 
     # Explicitly free GPU memory
     del pipe
@@ -256,6 +325,13 @@ def main():
         "modelId": model_id,
         "loadTime": round(load_time, 1),
         "genTime": round(gen_time, 1),
+        "timings": {
+            "modelLoadMs": model_load_ms,
+            **({"loraLoadMs": lora_load_ms} if lora_load_ms else {}),
+            "generationMs": generation_ms,
+            "imageSaveMs": image_save_ms,
+            "totalMs": total_ms,
+        },
     }
     print(json.dumps(output))
 
@@ -265,6 +341,7 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         import traceback
+
         traceback.print_exc(file=sys.stderr)
         error_output = {
             "success": False,

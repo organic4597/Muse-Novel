@@ -10,7 +10,11 @@ import type {
   CharacterPromptContext,
   ImageKind,
 } from './types';
-import { DEFAULT_BATCH_SIZE, DEFAULT_DIFFUSERS_MODEL, SHOT_PRESETS } from './types';
+import {
+  DEFAULT_BATCH_SIZE,
+  DEFAULT_DIFFUSERS_MODEL,
+  SHOT_PRESETS,
+} from './types';
 
 export interface ImageProviderConfig {
   providerType: string;
@@ -63,8 +67,18 @@ export async function generateCharacterImages(
   const koreanTexts = buildKoreanCharacterTexts(character);
   if (koreanTexts) {
     onProgress?.({ type: 'status', status: 'translating', message: '캐릭터 설명을 태그로 변환 중...' });
+    const translationStart = performance.now();
     const translated = await translateToTags(koreanTexts);
+    const translationMs = Math.round(performance.now() - translationStart);
     autoTranslatedTags = translated.map(t => t.tag);
+    onProgress?.({
+      type: 'status',
+      status: 'translating_complete',
+      message: `태그 변환 완료 (${(translationMs / 1000).toFixed(1)}초)`,
+      stage: 'translation',
+      durationMs: translationMs,
+      timings: { translationMs },
+    });
   }
 
   const prompt = buildCharacterPrompt(character, kind, additionalPrompt, autoTranslatedTags);
@@ -119,6 +133,7 @@ export async function generateCharacterImages(
     const client = new Automatic1111Client(provider.baseUrl || 'http://localhost:7860');
     const sampler = provider.defaultSampler ?? 'Euler a';
 
+    const generationStart = performance.now();
     const result = await client.txt2img({
       prompt,
       negativePrompt,
@@ -129,8 +144,19 @@ export async function generateCharacterImages(
       cfgScale,
       batchSize,
     });
+    const generationMs = Math.round(performance.now() - generationStart);
+
+    onProgress?.({
+      type: 'status',
+      status: 'saving',
+      message: '이미지 저장 중...',
+      stage: 'generation',
+      durationMs: generationMs,
+      timings: { generationMs },
+    });
 
     const savedImages: SavedImage[] = [];
+    const imageSaveStart = performance.now();
     for (const img of result.images) {
       const filename = `${crypto.randomUUID()}.png`;
       const buffer = Buffer.from(img.base64, 'base64');
@@ -145,6 +171,21 @@ export async function generateCharacterImages(
         negativePrompt: result.negativePrompt,
       });
     }
+
+    const imageSaveMs = Math.round(performance.now() - imageSaveStart);
+    onProgress?.({
+      type: 'status',
+      status: 'provider_complete',
+      message: 'Automatic1111 이미지 생성 완료',
+      stage: 'image_save',
+      durationMs: imageSaveMs,
+      timings: {
+        generationMs,
+        imageSaveMs,
+        totalMs: generationMs + imageSaveMs,
+      },
+    });
+
     return savedImages;
   }
 

@@ -6,6 +6,7 @@ import { getImageGenGpus } from '../gpu-config';
 import {
   DEFAULT_DIFFUSERS_MODEL,
   type ImageGenerationResult,
+  type ImageGenerationTimings,
 } from './types';
 
 const SCRIPT_PATH = path.join(process.cwd(), 'scripts', 'image_generator.py');
@@ -31,9 +32,22 @@ export interface DiffusersGenerateRequest {
   loraWeight?: number;
 }
 
+type ProgressMetadata = {
+  stage?: string;
+  durationMs?: number;
+  timings?: ImageGenerationTimings;
+  gpu?: string;
+};
+
 export type ProgressEvent =
-  | { type: 'status'; status: string; message: string }
-  | { type: 'progress'; step: number; totalSteps: number; progress: number; elapsed: number };
+  | ({ type: 'status'; status: string; message: string } & ProgressMetadata)
+  | ({
+      type: 'progress';
+      step: number;
+      totalSteps: number;
+      progress: number;
+      elapsed: number;
+    } & ProgressMetadata);
 
 interface ScriptResult {
   success: boolean;
@@ -48,7 +62,36 @@ interface ScriptResult {
   modelId?: string;
   loadTime?: number;
   genTime?: number;
+  timings?: ImageGenerationTimings;
   error?: string;
+}
+
+function summarizeTimings(results: ScriptResult[]): ImageGenerationTimings | undefined {
+  if (results.length === 0) {
+    return undefined;
+  }
+
+  const timingKeys = [
+    'modelLoadMs',
+    'loraLoadMs',
+    'generationMs',
+    'imageSaveMs',
+    'totalMs',
+  ] satisfies Array<keyof ImageGenerationTimings>;
+
+  const timings: ImageGenerationTimings = {};
+
+  for (const key of timingKeys) {
+    const values = results
+      .map((result) => result.timings?.[key])
+      .filter((value): value is number => typeof value === 'number');
+
+    if (values.length > 0) {
+      timings[key] = Math.max(...values);
+    }
+  }
+
+  return Object.keys(timings).length > 0 ? timings : undefined;
 }
 
 function getPythonPath(): string {
@@ -112,6 +155,16 @@ async function runSingleGpu(
     if (!result.success) {
       throw new Error(result.error || '이미지 생성 스크립트가 실패했습니다');
     }
+
+    onProgress?.({
+      type: 'status',
+      status: 'provider_complete',
+      message: 'Diffusers 이미지 생성 완료',
+      stage: 'diffusers_total',
+      durationMs: result.timings?.totalMs,
+      timings: result.timings,
+      gpu,
+    });
 
     return {
       images: (result.images ?? []).map((img) => ({
@@ -227,9 +280,14 @@ async function runMultiGpu(
             } else {
               // Forward status events with GPU label
               onProgress({
-                ...event,
-                message: `[GPU${gpu}] ${event.type === 'status' ? event.message : ''}`,
-              } as ProgressEvent);
+                type: 'status',
+                status: event.status,
+                message: `[GPU${gpu}] ${event.message}`,
+                stage: event.stage,
+                durationMs: event.durationMs,
+                timings: event.timings,
+                gpu,
+              });
             }
           }
         : undefined;
@@ -245,6 +303,16 @@ async function runMultiGpu(
   });
 
   const results = await Promise.all(promises);
+  const summarizedTimings = summarizeTimings(results);
+
+  onProgress?.({
+    type: 'status',
+    status: 'provider_complete',
+    message: 'Diffusers 병렬 이미지 생성 완료',
+    stage: 'diffusers_total',
+    durationMs: summarizedTimings?.totalMs,
+    timings: summarizedTimings,
+  });
 
   // Merge results from all GPUs
   const allImages = results.flatMap((r) =>
@@ -316,7 +384,10 @@ function runPythonScript(
 
       try {
         const lines = stdout.trim().split('\n');
-        const jsonLine = lines[lines.length - 1];
+        const jsonLine = lines.at(-1);
+        if (!jsonLine) {
+          throw new Error('이미지 생성 결과가 비어 있습니다');
+        }
         const result = JSON.parse(jsonLine) as ScriptResult;
         resolve(result);
       } catch {

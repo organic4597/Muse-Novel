@@ -31,6 +31,18 @@ export interface ImageGenerationResult {
   negativePrompt: string;
 }
 
+export interface ImageGenerationTimings {
+  translationMs?: number;
+  gpuAcquireMs?: number;
+  modelLoadMs?: number;
+  loraLoadMs?: number;
+  generationMs?: number;
+  imageSaveMs?: number;
+  dbSaveMs?: number;
+  gpuReleaseMs?: number;
+  totalMs?: number;
+}
+
 /** Default diffusers model */
 export const DEFAULT_DIFFUSERS_MODEL = 'OnomaAIResearch/Illustrious-XL-v1.1';
 
