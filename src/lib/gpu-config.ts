@@ -63,3 +63,14 @@ export function getAllGpus(): string[] {
   }
   return ['0', '1'];
 }
+
+/**
+ * VRAM to reserve for display output (MB).
+ * Passed to Python scripts so torch limits per-process memory usage,
+ * leaving headroom for the GPU driving the monitor.
+ * Set DISPLAY_VRAM_RESERVE_MB=0 to disable.
+ */
+export function getDisplayVramReserveMb(): number {
+  const val = parseInt(process.env.DISPLAY_VRAM_RESERVE_MB?.trim() ?? '', 10);
+  return Number.isNaN(val) ? 512 : val;
+}

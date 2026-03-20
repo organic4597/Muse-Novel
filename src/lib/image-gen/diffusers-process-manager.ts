@@ -14,6 +14,7 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import path from 'node:path';
 import { createInterface, type Interface as ReadlineInterface } from 'node:readline';
 
+import { getDisplayVramReserveMb } from '../gpu-config';
 import type { ImageGenerationTimings } from './types';
 
 // ---------------------------------------------------------------------------
@@ -150,9 +151,12 @@ export class DiffusersProcessManager {
 
     const pythonPath = getPythonPath();
 
+    const reserveMb = getDisplayVramReserveMb();
+    const extraArgs = reserveMb > 0 ? ['--display-vram-reserve-mb', String(reserveMb)] : [];
+
     this.process = spawn(
       pythonPath,
-      [DAEMON_SCRIPT, '--gpu', gpu, '--model', modelId],
+      [DAEMON_SCRIPT, '--gpu', gpu, '--model', modelId, ...extraArgs],
       {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env },

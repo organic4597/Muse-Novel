@@ -390,9 +390,30 @@ def main():
         default="OnomaAIResearch/Illustrious-XL-v1.1",
         help="HuggingFace model ID or local path",
     )
+    parser.add_argument(
+        "--display-vram-reserve-mb",
+        type=int,
+        default=0,
+        help="MB of VRAM to reserve for display output (0 = no limit)",
+    )
     args = parser.parse_args()
 
     os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
+
+    if args.display_vram_reserve_mb and args.display_vram_reserve_mb > 0:
+        import torch
+
+        try:
+            props = torch.cuda.get_device_properties(0)
+            total_bytes = props.total_memory
+            reserve_bytes = args.display_vram_reserve_mb * 1024 * 1024
+            fraction = max(0.5, (total_bytes - reserve_bytes) / total_bytes)
+            torch.cuda.set_per_process_memory_fraction(fraction, 0)
+            log(
+                f"VRAM limit: {fraction:.1%} ({args.display_vram_reserve_mb}MB reserved for display, total {total_bytes // 1024 // 1024}MB)"
+            )
+        except Exception as e:
+            log(f"VRAM limit skipped: {e}")
 
     # --- Warm up: load model immediately ---
     log(f"Loading model: {args.model} on GPU {args.gpu}")

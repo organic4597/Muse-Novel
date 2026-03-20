@@ -103,6 +103,22 @@ def main():
     def duration_ms(started_at: float) -> int:
         return round((time.time() - started_at) * 1000)
 
+    display_vram_reserve_mb = config.get("displayVramReserveMb", 0)
+    if display_vram_reserve_mb and display_vram_reserve_mb > 0:
+        import torch
+
+        try:
+            props = torch.cuda.get_device_properties(0)
+            total_bytes = props.total_memory
+            reserve_bytes = display_vram_reserve_mb * 1024 * 1024
+            fraction = max(0.5, (total_bytes - reserve_bytes) / total_bytes)
+            torch.cuda.set_per_process_memory_fraction(fraction, 0)
+            log(
+                f"VRAM limit: {fraction:.1%} ({display_vram_reserve_mb}MB reserved for display, total {total_bytes // 1024 // 1024}MB)"
+            )
+        except Exception as e:
+            log(f"VRAM limit skipped: {e}")
+
     log(f"Loading model: {model_id} on GPU {gpu}")
     # Emit loading status
     emit_status("loading_model", "모델 로딩 중...", stage="model_load")

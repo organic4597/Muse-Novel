@@ -2,7 +2,7 @@ import { spawn } from 'child_process';
 import { mkdir, unlink, writeFile } from 'fs/promises';
 import path from 'path';
 
-import { getImageGenGpus } from '../gpu-config';
+import { getDisplayVramReserveMb, getImageGenGpus } from '../gpu-config';
 import { getDiffusersManager } from './diffusers-process-manager';
 import {
   DEFAULT_DIFFUSERS_MODEL,
@@ -191,6 +191,7 @@ async function runSingleGpu(
   // --- Fallback: one-shot subprocess (loads model from scratch) ---
   const configPath = path.join(request.outputDir, `.gen-config-${Date.now()}.json`);
 
+  const displayVramReserveMb = getDisplayVramReserveMb();
   const config = {
     prompt: request.prompt,
     negativePrompt: request.negativePrompt ?? '',
@@ -206,6 +207,7 @@ async function runSingleGpu(
     scheduler: request.scheduler || 'euler_a',
     ...(request.loraPath ? { loraPath: request.loraPath } : {}),
     ...(request.loraWeight != null ? { loraWeight: request.loraWeight } : {}),
+    ...(displayVramReserveMb > 0 ? { displayVramReserveMb } : {}),
   };
 
   await writeFile(configPath, JSON.stringify(config), 'utf-8');
@@ -291,6 +293,7 @@ async function runMultiGpu(
       ? request.seed + seedOffset
       : -1;
 
+    const displayVramReserveMb = getDisplayVramReserveMb();
     const config = {
       prompt: request.prompt,
       negativePrompt: request.negativePrompt ?? '',
@@ -306,6 +309,7 @@ async function runMultiGpu(
       scheduler: request.scheduler || 'euler_a',
       ...(request.loraPath ? { loraPath: request.loraPath } : {}),
       ...(request.loraWeight != null ? { loraWeight: request.loraWeight } : {}),
+      ...(displayVramReserveMb > 0 ? { displayVramReserveMb } : {}),
     };
 
     await writeFile(configPath, JSON.stringify(config), 'utf-8');
