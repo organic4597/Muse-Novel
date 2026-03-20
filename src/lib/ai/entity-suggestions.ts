@@ -6,6 +6,7 @@ import { createProvider } from '@/lib/ai/provider-factory';
 import { getProviderOptions } from '@/lib/ai/provider-options';
 import { getQloraBaseModel } from '@/lib/ai/qlora-runtime';
 import { ensureServerForInference } from '@/lib/ai/qwen-server-manager';
+import type { CharacterItem } from '@/lib/ai/story-planning-types';
 import type { ProviderConfig } from '@/lib/ai/types';
 import { db } from '@/lib/db';
 import { getDefaultProvider } from '@/lib/db/queries/ai-settings';
@@ -24,6 +25,7 @@ export type CharacterSuggestion = {
   personality?: string;
   backstory?: string;
   arcDescription?: string;
+  items?: CharacterItem[];
 };
 
 export type WorldEntrySuggestion = {
@@ -73,6 +75,42 @@ function cleanStringArray(value: unknown): string[] | undefined {
 
   const uniqueItems = [...new Set(items)];
   return uniqueItems.length > 0 ? uniqueItems : undefined;
+}
+
+function cleanCharacterItems(value: unknown): CharacterItem[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const normalized = value
+    .map((item) => {
+      if (!item || typeof item !== 'object') {
+        return undefined;
+      }
+
+      const record = item as Record<string, unknown>;
+      const name = cleanString(record.name);
+      if (!name) {
+        return undefined;
+      }
+
+      const description = cleanString(record.description);
+      const status = cleanString(record.status);
+      const nextItem: CharacterItem = { name };
+
+      if (description) {
+        nextItem.description = description;
+      }
+
+      if (status && ['보유', '장착중', '분실', '기타'].includes(status)) {
+        nextItem.status = status;
+      }
+
+      return nextItem;
+    })
+    .filter((item): item is CharacterItem => Boolean(item));
+
+  return normalized.length > 0 ? normalized : undefined;
 }
 
 async function resolveSuggestionProvider(projectId: string): Promise<ProviderConfig> {
@@ -179,6 +217,7 @@ export async function generateCharacterSuggestion({
     '반드시 JSON만 출력하라.',
     '설명 문장, 코드블록, 마크다운을 포함하지 마라.',
     `role 값은 다음 중 하나만 사용하라: ${CHARACTER_ROLE_OPTIONS.join(', ')}.`,
+    'items.status 값은 가능하면 다음 중 하나만 사용하라: 보유, 장착중, 분실, 기타.',
     '모든 필드는 선택 사항이지만, 확신이 없으면 추측을 줄이고 비워둘 수 있다.',
   ].join(' ');
 
@@ -198,7 +237,14 @@ export async function generateCharacterSuggestion({
     '  "appearance": string,',
     '  "personality": string,',
     '  "backstory": string,',
-    '  "arcDescription": string',
+    '  "arcDescription": string,',
+    '  "items": [',
+    '    {',
+    '      "name": string,',
+    '      "description": string,',
+    '      "status": "보유" | "장착중" | "분실" | "기타"',
+    '    }',
+    '  ]',
     '}',
   ].join('\n');
 
@@ -215,6 +261,7 @@ export async function generateCharacterSuggestion({
     personality: cleanString(parsed.personality),
     backstory: cleanString(parsed.backstory),
     arcDescription: cleanString(parsed.arcDescription),
+    items: cleanCharacterItems(parsed.items),
   };
 }
 
