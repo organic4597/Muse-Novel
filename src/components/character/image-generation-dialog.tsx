@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import type { ImageGenerationTimings } from '@/lib/image-gen/types';
 
 type ImageKind = 'profile' | 'full-body' | 'illustration';
 
@@ -86,6 +87,7 @@ export function ImageGenerationDialog({
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [preview, setPreview] = useState<{ prompt: string; negativePrompt: string } | null>(null);
   const [results, setResults] = useState<GeneratedImageRow[]>([]);
+  const [timings, setTimings] = useState<ImageGenerationTimings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<ProgressState>({
     status: '',
@@ -157,6 +159,7 @@ export function ImageGenerationDialog({
     setIsGenerating(true);
     setError(null);
     setResults([]);
+    setTimings(null);
     setProgress({
       status: 'connecting',
       message: '서버에 연결 중...',
@@ -266,6 +269,9 @@ export function ImageGenerationDialog({
         case 'complete': {
           const images = data.images as GeneratedImageRow[];
           setResults(images ?? []);
+          if (data.timings) {
+            setTimings(data.timings as ImageGenerationTimings);
+          }
           setProgress((prev) => ({
             ...prev,
             status: 'complete',
@@ -596,6 +602,36 @@ export function ImageGenerationDialog({
           {results.length > 0 && (
             <div className="space-y-3">
               <h3 className="text-sm font-medium">생성 결과 ({results.length}장)</h3>
+              {timings && (
+                <div className="flex flex-wrap gap-x-3 gap-y-1 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                  {timings.translationMs != null && (
+                    <span>번역 {(timings.translationMs / 1000).toFixed(1)}s</span>
+                  )}
+                  {timings.gpuAcquireMs != null && (
+                    <span>GPU 준비 {(timings.gpuAcquireMs / 1000).toFixed(1)}s</span>
+                  )}
+                  {timings.modelLoadMs != null && (
+                    <span>모델 로드 {(timings.modelLoadMs / 1000).toFixed(1)}s</span>
+                  )}
+                  {timings.loraLoadMs != null && (
+                    <span>LoRA 로드 {(timings.loraLoadMs / 1000).toFixed(1)}s</span>
+                  )}
+                  {timings.generationMs != null && (
+                    <span>이미지 생성 {(timings.generationMs / 1000).toFixed(1)}s</span>
+                  )}
+                  {timings.imageSaveMs != null && (
+                    <span>파일 저장 {(timings.imageSaveMs / 1000).toFixed(1)}s</span>
+                  )}
+                  {timings.dbSaveMs != null && (
+                    <span>DB 저장 {(timings.dbSaveMs / 1000).toFixed(1)}s</span>
+                  )}
+                  {timings.totalMs != null && (
+                    <span className="font-semibold text-foreground">
+                      총합 {(timings.totalMs / 1000).toFixed(1)}s
+                    </span>
+                  )}
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {results.map((img) => (
                   <div
