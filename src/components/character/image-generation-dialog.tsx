@@ -1,6 +1,6 @@
 'use client';
 
-import { Eye, Loader2, Sparkles } from 'lucide-react';
+import { Eye, ListPlus, Loader2, Sparkles, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PromptTagInput } from '@/components/prompt-tag-input';
 import { Button } from '@/components/ui/button';
@@ -60,6 +60,39 @@ type ProgressState = {
   elapsed: number;
 };
 
+type QueueJobStatus = 'pending' | 'running' | 'done' | 'error' | 'cancelled';
+
+type QueueJob = {
+  id: string;
+  projectId: string;
+  characterId: string;
+  characterName: string;
+  kind: string;
+  status: QueueJobStatus;
+  error?: string;
+  enqueuedAt: number;
+  startedAt?: number;
+  completedAt?: number;
+  resultCount?: number;
+  batchSize: number;
+};
+
+const QUEUE_STATUS_LABELS: Record<QueueJobStatus, string> = {
+  pending: '대기',
+  running: '생성 중',
+  done: '완료',
+  error: '오류',
+  cancelled: '취소됨',
+};
+
+const QUEUE_STATUS_COLORS: Record<QueueJobStatus, string> = {
+  pending: 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-400',
+  running: 'bg-blue-500/20 text-blue-700 dark:text-blue-400',
+  done: 'bg-green-500/20 text-green-700 dark:text-green-400',
+  error: 'bg-red-500/20 text-red-700 dark:text-red-400',
+  cancelled: 'bg-neutral-500/20 text-neutral-600 dark:text-neutral-400',
+};
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -99,6 +132,11 @@ export function ImageGenerationDialog({
   });
   const abortRef = useRef<AbortController | null>(null);
 
+  // ── Queue state ───────────────────────────────────────────────────
+  const [queueJobs, setQueueJobs] = useState<QueueJob[]>([]);
+  const [isEnqueuing, setIsEnqueuing] = useState(false);
+  const [queueError, setQueueError] = useState<string | null>(null);
+
   // Fetch LoRA registry on open
   useEffect(() => {
     if (!open) return;
@@ -115,6 +153,81 @@ export function ImageGenerationDialog({
       if (lora) setLoraWeight(lora.recommendedWeight);
     } else {
       setLoraWeight(1.0);
+    }
+  };
+
+  useEffect(() => {
+    if (!open) return;
+
+    const fetchQueue = () => {
+      fetch('/api/image-gen-queue')
+        .then((res) => res.json())
+        .then((data: { jobs: QueueJob[] }) => setQueueJobs(data.jobs))
+        .catch(() => {});
+    };
+
+    fetchQueue();
+    const interval = setInterval(fetchQueue, 10_000);
+    return () => clearInterval(interval);
+  }, [open]);
+
+  const handleEnqueue = async () => {
+    setIsEnqueuing(true);
+    setQueueError(null);
+    try {
+      const res = await fetch('/api/image-gen-queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId,
+          characterId,
+          characterName,
+          kind,
+          additionalPrompt: additionalPrompt.trim() || undefined,
+          batchSize,
+          loraId: selectedLoraId || undefined,
+          loraWeight: selectedLoraId ? loraWeight : undefined,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setQueueError(data.error ?? '큐 추가에 실패했습니다.');
+        return;
+      }
+      const snap = await fetch('/api/image-gen-queue');
+      if (snap.ok) {
+        const data: { jobs: QueueJob[] } = await snap.json();
+        setQueueJobs(data.jobs);
+      }
+    } catch {
+      setQueueError('네트워크 오류가 발생했습니다.');
+    } finally {
+      setIsEnqueuing(false);
+    }
+  };
+
+  const handleCancelJob = async (jobId: string) => {
+    try {
+      const res = await fetch(`/api/image-gen-queue/${jobId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setQueueJobs((prev) =>
+          prev.map((j) => (j.id === jobId ? { ...j, status: 'cancelled' as const } : j))
+        );
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleClearCompleted = async () => {
+    try {
+      const res = await fetch('/api/image-gen-queue?action=clear');
+      if (res.ok) {
+        const data: { jobs: QueueJob[] } = await res.json();
+        setQueueJobs(data.jobs);
+      }
+    } catch {
+      // ignore
     }
   };
 
@@ -530,7 +643,78 @@ export function ImageGenerationDialog({
                 </>
               )}
             </Button>
+            <Button
+              disabled={isEnqueuing || isGenerating}
+              onClick={handleEnqueue}
+              type="button"
+              variant="outline"
+            >
+              {isEnqueuing ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <ListPlus className="size-4" />
+              )}
+              큐에 추가
+            </Button>
           </div>
+
+          {queueError && (
+            <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3">
+              <p className="text-sm text-destructive">{queueError}</p>
+            </div>
+          )}
+
+          {queueJobs.length > 0 && (
+            <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium">작업 큐 ({queueJobs.length})</h3>
+                {queueJobs.some((j) => j.status === 'done' || j.status === 'error' || j.status === 'cancelled') && (
+                  <Button
+                    onClick={handleClearCompleted}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    <Trash2 className="size-3.5" />
+                    완료 항목 정리
+                  </Button>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                {queueJobs.map((job) => (
+                  <div
+                    className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2"
+                    key={job.id}
+                  >
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${QUEUE_STATUS_COLORS[job.status]}`}>
+                        {QUEUE_STATUS_LABELS[job.status]}
+                      </span>
+                      <span className="text-muted-foreground">{job.characterName}</span>
+                      <span className="text-muted-foreground">·</span>
+                      <span className="text-muted-foreground">{KIND_LABELS[job.kind as ImageKind] ?? job.kind}</span>
+                      <span className="text-muted-foreground">·</span>
+                      <span className="text-muted-foreground">{job.batchSize}장</span>
+                      {job.status === 'done' && job.resultCount != null && (
+                        <span className="text-green-600 dark:text-green-400">✓ {job.resultCount}장 생성</span>
+                      )}
+                      {job.status === 'error' && job.error && (
+                        <span className="truncate text-xs text-destructive">{job.error}</span>
+                      )}
+                    </div>
+                    {job.status === 'pending' && (
+                      <button
+                        className="text-muted-foreground hover:text-destructive"
+                        onClick={() => handleCancelJob(job.id)}
+                        type="button"
+                      >
+                        <X className="size-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* === Progress Panel === */}
           {isGenerating && (
