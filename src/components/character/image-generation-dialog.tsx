@@ -1,6 +1,6 @@
 'use client';
 
-import { Eye, ListPlus, Loader2, Sparkles, Trash2, X } from 'lucide-react';
+import { Eye, ListPlus, Loader2, Sparkles, Trash2, X, ZoomIn } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PromptTagInput } from '@/components/prompt-tag-input';
 import { Button } from '@/components/ui/button';
@@ -118,6 +118,7 @@ export function ImageGenerationDialog({
   const [loraWeight, setLoraWeight] = useState<number>(1.0);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
+  const [zoomedImage, setZoomedImage] = useState<GeneratedImageRow | null>(null);
   const [preview, setPreview] = useState<{ prompt: string; negativePrompt: string } | null>(null);
   const [results, setResults] = useState<GeneratedImageRow[]>([]);
   const [timings, setTimings] = useState<ImageGenerationTimings | null>(null);
@@ -837,6 +838,14 @@ export function ImageGenerationDialog({
                       >
                         {img.isPrimary === 1 ? '✓ 대표' : '대표로 지정'}
                       </Button>
+                      <button
+                        aria-label="이미지 확대"
+                        className="rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70"
+                        onClick={() => setZoomedImage(img)}
+                        type="button"
+                      >
+                        <ZoomIn className="size-3.5" />
+                      </button>
                     </div>
                     {img.isPrimary === 1 && (
                       <div className="absolute right-1 top-1 rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground">
@@ -850,6 +859,54 @@ export function ImageGenerationDialog({
           )}
         </div>
       </DialogContent>
+
+      {/* Image Zoom Lightbox */}
+      {zoomedImage && (
+        <Dialog
+          onOpenChange={(open) => !open && setZoomedImage(null)}
+          open={!!zoomedImage}
+        >
+          <DialogContent className="max-h-[95vh] overflow-y-auto sm:max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>
+                이미지 상세
+                {zoomedImage.width && zoomedImage.height && (
+                  <span className="ml-2 text-sm font-normal text-muted-foreground">
+                    {zoomedImage.width}×{zoomedImage.height}
+                  </span>
+                )}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                alt="생성된 이미지 확대"
+                className="w-full rounded-lg"
+                src={zoomedImage.imagePath}
+              />
+              {zoomedImage.prompt && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">프롬프트</p>
+                  <p className="mt-0.5 text-sm">{zoomedImage.prompt}</p>
+                </div>
+              )}
+              {zoomedImage.seed != null && zoomedImage.seed !== -1 && (
+                <p className="text-xs text-muted-foreground">Seed: {zoomedImage.seed}</p>
+              )}
+              <Button
+                onClick={() => {
+                  handleSetPrimary(zoomedImage.id);
+                  setZoomedImage((prev) => prev ? { ...prev, isPrimary: 1 } : null);
+                }}
+                size="sm"
+                variant="outline"
+              >
+                {zoomedImage.isPrimary === 1 ? '✓ 대표' : '대표로 지정'}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </Dialog>
   );
 }
