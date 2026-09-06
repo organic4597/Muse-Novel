@@ -5,6 +5,7 @@ import {
   NodeApi,
   PathApi,
   type PluginConfig,
+  type TRange,
   TextApi,
 } from 'platejs';
 import {
@@ -275,13 +276,16 @@ function getCurrentBlockId(editor: PlateEditor): string | null {
   return typeof id === 'string' ? id : null;
 }
 
-function getCursorAwareContext(editor: PlateEditor): {
+export function getCursorAwareContext(
+  editor: PlateEditor,
+  selection: TRange | null = editor.selection
+): {
   prefix: string;
   suffix: string;
   currentBlockPrefix: string;
   currentBlockSuffix: string;
 } | null {
-  if (!editor.selection || !editor.api.isCollapsed()) return null;
+  if (!selection || selection.anchor.path.join('.') !== selection.focus.path.join('.') || selection.anchor.offset !== selection.focus.offset) return null;
 
   const blockEntry = editor.api.block({ highest: true });
   if (!blockEntry) return null;
@@ -289,7 +293,7 @@ function getCursorAwareContext(editor: PlateEditor): {
   const blockIndex = blockPath[0];
   if (typeof blockIndex !== 'number') return null;
 
-  const focus = editor.selection.focus;
+  const focus = selection.focus;
   const blockStart = editor.api.start(blockPath);
   const blockEnd = editor.api.end(blockPath);
   if (!blockStart || !blockEnd) return null;

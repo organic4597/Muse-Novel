@@ -73,6 +73,8 @@ describe('POST /api/projects/[id]/writing-agent', () => {
         currentContentJson: JSON.stringify([
           { children: [{ text: '이전 원고' }], type: 'p' },
         ]),
+        cursorAfter: '커서 뒤 원고',
+        cursorBefore: '커서 앞 원고',
         instruction: '다음 대치 장면을 써줘',
         review: true,
         targetLength: 1200,
@@ -87,7 +89,12 @@ describe('POST /api/projects/[id]/writing-agent', () => {
     expect(body).toContain('event: done');
     expect(body).toContain('완성 문장');
     expect(runWritingAgent).toHaveBeenCalledWith(
-      expect.objectContaining({ currentProse: '이전 원고', review: true })
+      expect.objectContaining({
+        currentProse: '이전 원고',
+        cursorAfter: '커서 뒤 원고',
+        cursorBefore: '커서 앞 원고',
+        review: true,
+      })
     );
   });
 

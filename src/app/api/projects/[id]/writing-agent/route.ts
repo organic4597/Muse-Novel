@@ -19,6 +19,8 @@ const requestSchema = z.object({
   webSearchMode: z.enum(WEB_SEARCH_MODES).default('auto'),
   chapterId: z.string().uuid().optional(),
   currentContentJson: z.string().max(300_000).optional(),
+  cursorAfter: z.string().max(10_000).default(''),
+  cursorBefore: z.string().max(20_000).default(''),
   instruction: z.string().trim().min(3).max(5000),
   review: z.boolean().default(true),
   targetLength: z.number().int().min(300).max(6000).default(1800),
@@ -92,6 +94,8 @@ export async function POST(
       try {
         const result = await runWritingAgent({
           chapterId: parsed.data.chapterId,
+          cursorAfter: parsed.data.cursorAfter,
+          cursorBefore: parsed.data.cursorBefore,
           currentProse,
           db,
           instruction: parsed.data.instruction,

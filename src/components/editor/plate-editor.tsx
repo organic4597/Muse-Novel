@@ -15,7 +15,10 @@ import {
 import type { EditorTextStats } from '@/components/editor/editor-content-worker-core';
 import { EditorKit } from '@/components/editor/editor-kit';
 import { aiChatPlugin } from '@/components/editor/plugins/ai-kit';
-import { InlineSuggestionPlugin } from '@/components/editor/plugins/inline-suggestion-plugin';
+import {
+  getCursorAwareContext,
+  InlineSuggestionPlugin,
+} from '@/components/editor/plugins/inline-suggestion-plugin';
 import { useEditorContentWorker } from '@/components/editor/use-editor-content-worker';
 import { Editor, EditorContainer } from '@/components/ui/editor';
 
@@ -37,6 +40,7 @@ export interface PlateEditorProps {
 
 export interface PlateEditorHandle {
   flushProcessing: () => Promise<void>;
+  getCursorContext: () => { before: string; after: string };
   insertText: (text: string) => void;
 }
 
@@ -78,6 +82,16 @@ export function PlateEditor({
     ref,
     () => ({
       flushProcessing: flush,
+      getCursorContext: () => {
+        const context = getCursorAwareContext(
+          editor,
+          editor.selection ?? lastSelectionRef.current
+        );
+        return {
+          after: context?.suffix ?? '',
+          before: context?.prefix ?? '',
+        };
+      },
       insertText: (text: string) => {
         const selection = editor.selection ?? lastSelectionRef.current;
         editor.tf.focus(selection ? { at: selection } : undefined);

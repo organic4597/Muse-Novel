@@ -20,6 +20,8 @@ describe('writing agent prompts', () => {
 
     const draft = buildAgentDraftPrompt({
       currentProse: '그는 빈 칼집을 만졌다.',
+      cursorAfter: '장로가 대답을 기다렸다.',
+      cursorBefore: '그는 빈 칼집을 만졌다.',
       instruction: '대치 장면',
       knowledge: '대사의 목적을 유지한다.',
       memory: '검은 분실 상태다.',
@@ -30,6 +32,9 @@ describe('writing agent prompts', () => {
     expect(draft).toContain('약 1500자');
     expect(draft).toContain('새 본문만 출력');
     expect(draft).toContain('검은 분실 상태다.');
+    expect(draft).toContain('cursor_before');
+    expect(draft).toContain('장로가 대답을 기다렸다.');
+    expect(draft).toContain('앞뒤 원문을 반복');
 
     expect(
       buildAgentCritiquePrompt({
@@ -44,12 +49,14 @@ describe('writing agent prompts', () => {
       buildAgentRevisionPrompt({
         critique: '비평',
         currentProse: '앞 문장',
+        cursorAfter: '뒤 문장',
+        cursorBefore: '앞 문장',
         draft: '초안',
         instruction: '요청',
         knowledge: '작법',
         memory: '정전',
         storyContext: '문맥',
       })
-    ).toContain('완성 본문만 출력');
+    ).toContain('앞뒤 문맥 사이에 삽입할 완성 본문만 출력');
   });
 });

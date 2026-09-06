@@ -49,7 +49,8 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 export type WritingIntelligencePanelProps = {
   chapterId: string;
-  getCurrentContentJson: () => string;
+  getCurrentContentJson: () => Promise<string> | string;
+  getCursorContext?: () => { before: string; after: string };
   onApply: (text: string) => void;
   projectId: string;
 };
@@ -98,6 +99,7 @@ export async function consumeSSE(
 export function WritingIntelligencePanel({
   chapterId,
   getCurrentContentJson,
+  getCursorContext,
   onApply,
   projectId,
 }: WritingIntelligencePanelProps) {
@@ -124,6 +126,7 @@ export function WritingIntelligencePanel({
   const [checking, setChecking] = useState(false);
   const [report, setReport] = useState<{ findings: Finding[]; summary: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const targetLengthRef = useRef('1800');
   const pendingOutputRef = useRef('');
   const outputTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -221,6 +224,11 @@ export function WritingIntelligencePanel({
     setStatus('작품 기억을 준비하는 중...');
     let receivedDone = false;
     try {
+      const [currentContentJson, cursorContext] = await Promise.all([
+        getCurrentContentJson(),
+        Promise.resolve(getCursorContext?.() ?? { before: '', after: '' }),
+      ]);
+      const requestedTargetLength = Number.parseInt(targetLengthRef.current, 10);
       const response = await fetch(`/api/projects/${projectId}/writing-agent`, {
         method: 'POST',
         headers: {
@@ -229,11 +237,15 @@ export function WritingIntelligencePanel({
         },
         body: JSON.stringify({
           chapterId,
-          currentContentJson: getCurrentContentJson(),
+          currentContentJson,
+          cursorAfter: cursorContext.after,
+          cursorBefore: cursorContext.before,
           instruction,
           webSearchMode,
           review,
-          targetLength: Number.parseInt(targetLength, 10) || 1800,
+          targetLength: Number.isFinite(requestedTargetLength)
+            ? Math.min(6000, Math.max(300, requestedTargetLength))
+            : 1800,
         }),
         signal: controller.signal,
       });
@@ -337,7 +349,10 @@ export function WritingIntelligencePanel({
             id="writing-agent-length"
             max={6000}
             min={300}
-            onChange={(event) => setTargetLength(event.target.value)}
+            onChange={(event) => {
+              targetLengthRef.current = event.target.value;
+              setTargetLength(event.target.value);
+            }}
             type="number"
             value={targetLength}
           />

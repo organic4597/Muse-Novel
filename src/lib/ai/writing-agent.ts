@@ -32,6 +32,8 @@ export type RunWritingAgentOptions = {
   webSearchMode?: WebSearchMode;
   chapterId?: string;
   currentProse?: string;
+  cursorAfter?: string;
+  cursorBefore?: string;
   db: DB;
   instruction: string;
   onDelta?: (text: string) => void;
@@ -75,6 +77,8 @@ export function buildAgentPlanPrompt({
 
 export function buildAgentDraftPrompt({
   currentProse,
+  cursorAfter = '',
+  cursorBefore = '',
   instruction,
   knowledge,
   memory,
@@ -83,6 +87,8 @@ export function buildAgentDraftPrompt({
   targetLength,
 }: {
   currentProse: string;
+  cursorAfter?: string;
+  cursorBefore?: string;
   instruction: string;
   knowledge: string;
   memory: string;
@@ -93,13 +99,21 @@ export function buildAgentDraftPrompt({
   return [
     '역할: 한국어 장르소설 작가. 계획을 자연스러운 소설 본문으로 구현한다.',
     `목표 분량은 약 ${targetLength}자다. 장면의 필요에 따라 조금 짧거나 길어도 된다.`,
-    '현재 원고의 마지막 문장 뒤에 바로 붙을 새 본문만 출력한다.',
+    cursorBefore || cursorAfter
+      ? '현재 커서 앞 문맥과 뒤 문맥 사이에 삽입할 새 본문만 출력한다. 앞뒤 원문을 반복하거나 다시 출력하지 않는다.'
+      : '현재 원고의 마지막 문장 뒤에 바로 붙을 새 본문만 출력한다.',
     '설명, 제목, 계획, 자기평가, 코드블록을 출력하지 않는다.',
     '기존 시점·시제·호칭·문체를 유지하고 설정을 임의로 추가하지 않는다.',
     formatPromptData('story_context', storyContext),
     formatPromptData('retrieved_canon_memory', memory || '검색 결과 없음'),
     formatPromptData('writing_knowledge', knowledge || '참조 자료 없음'),
     formatPromptData('current_prose_tail', currentProse.slice(-8000) || '본문 없음'),
+    ...(cursorBefore || cursorAfter
+      ? [
+          formatPromptData('cursor_before', cursorBefore || '커서 앞 본문 없음'),
+          formatPromptData('cursor_after', cursorAfter || '커서 뒤 본문 없음'),
+        ]
+      : []),
     formatPromptData('scene_plan', plan),
     formatPromptData('author_request', instruction),
   ].join('\n\n');
@@ -134,6 +148,8 @@ export function buildAgentCritiquePrompt({
 export function buildAgentRevisionPrompt({
   critique,
   currentProse,
+  cursorAfter = '',
+  cursorBefore = '',
   draft,
   instruction,
   knowledge,
@@ -142,6 +158,8 @@ export function buildAgentRevisionPrompt({
 }: {
   critique: string;
   currentProse: string;
+  cursorAfter?: string;
+  cursorBefore?: string;
   draft: string;
   instruction: string;
   knowledge: string;
@@ -151,11 +169,19 @@ export function buildAgentRevisionPrompt({
   return [
     '역할: 한국어 장르소설 책임 작가. 편집 비평을 반영해 초안을 한 번만 정교하게 수정한다.',
     '비평이 잘못되었거나 작품 정전과 충돌하면 해당 지시는 무시한다.',
-    '현재 원고 뒤에 바로 삽입할 완성 본문만 출력한다. 설명, 제목, 비평, 코드블록은 금지한다.',
+    cursorBefore || cursorAfter
+      ? '현재 커서 앞뒤 문맥 사이에 삽입할 완성 본문만 출력한다. 앞뒤 원문을 반복하지 않는다. 설명, 제목, 비평, 코드블록은 금지한다.'
+      : '현재 원고 뒤에 바로 삽입할 완성 본문만 출력한다. 설명, 제목, 비평, 코드블록은 금지한다.',
     formatPromptData('story_context', storyContext),
     formatPromptData('retrieved_canon_memory', memory || '검색 결과 없음'),
     formatPromptData('writing_knowledge', knowledge || '참조 자료 없음'),
     formatPromptData('current_prose_tail', currentProse.slice(-8000) || '본문 없음'),
+    ...(cursorBefore || cursorAfter
+      ? [
+          formatPromptData('cursor_before', cursorBefore || '커서 앞 본문 없음'),
+          formatPromptData('cursor_after', cursorAfter || '커서 뒤 본문 없음'),
+        ]
+      : []),
     formatPromptData('author_request', instruction),
     formatPromptData('draft', draft),
     formatPromptData('editor_critique', critique),
@@ -166,6 +192,8 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
   const {
     chapterId,
     currentProse = '',
+    cursorAfter = '',
+    cursorBefore = '',
     db,
     instruction,
     onDelta,
@@ -217,12 +245,13 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
   onProgress?.({ message: '작품 기억을 동기화하고 관련 설정을 찾는 중...', stage: 'memory' });
   const index = await indexProjectMemory(db, projectId, signal);
   const storyContext = await buildStoryContext(db, projectId, chapterId, {
-    focusText: `${instruction}\n${currentProse.slice(-2000)}`,
+    focusText: `${instruction}\n${cursorBefore.slice(-2000) || currentProse.slice(-2000)}\n${cursorAfter.slice(0, 800)}`,
     maxChars: storyBudget,
   });
   const retrievalQuery = [
     instruction,
-    currentProse.slice(-Math.min(2500, proseTailBudget)),
+    cursorBefore.slice(-Math.min(2500, proseTailBudget)) || currentProse.slice(-Math.min(2500, proseTailBudget)),
+    cursorAfter.slice(0, 800),
     storyContext.slice(-1200),
   ]
     .filter(Boolean)
@@ -284,7 +313,9 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
     await runStage(
       'plan',
       buildAgentPlanPrompt({
-        instruction,
+        instruction: cursorBefore || cursorAfter
+          ? `${instruction}\n\n현재 커서 앞 문맥: ${cursorBefore.slice(-2000) || '(없음)'}\n현재 커서 뒤 문맥: ${cursorAfter.slice(0, 800) || '(없음)'}`
+          : instruction,
         knowledge: researchKnowledge,
         memory,
         storyContext,
@@ -299,6 +330,8 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
       'draft',
       buildAgentDraftPrompt({
         currentProse: currentProseTail,
+        cursorAfter,
+        cursorBefore,
         instruction,
         knowledge: researchKnowledge,
         memory,
@@ -360,6 +393,8 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
         prompt: buildAgentRevisionPrompt({
           critique,
           currentProse: currentProseTail,
+          cursorAfter,
+          cursorBefore,
           draft,
           instruction,
           knowledge: researchKnowledge,

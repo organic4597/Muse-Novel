@@ -337,7 +337,16 @@ export default function WritePage() {
               {isIntelligenceOpen && (
                 <WritingIntelligencePanel
                   chapterId={selectedChapter.id}
-                  getCurrentContentJson={() => latestContentRef.current}
+                  getCurrentContentJson={async () => {
+                    await editorRef.current?.flushProcessing();
+                    return latestContentRef.current;
+                  }}
+                  getCursorContext={() =>
+                    editorRef.current?.getCursorContext() ?? {
+                      after: '',
+                      before: '',
+                    }
+                  }
                   onApply={(text) => editorRef.current?.insertText(text)}
                   projectId={params.id}
                 />
