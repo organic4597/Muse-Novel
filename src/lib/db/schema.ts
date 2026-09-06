@@ -215,6 +215,16 @@ export const worldCategories = sqliteTable(
   (table) => [uniqueIndex('world_categories_project_name_idx').on(table.projectId, table.name)]
 );
 
+export const worldCategoryTraits = sqliteTable(
+  'world_category_traits',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    categoryId: text('category_id').notNull().references(() => worldCategories.id, { onDelete: 'cascade' }),
+    trait: text('trait', { enum: ['organization', 'location', 'item'] }).notNull(),
+  },
+  (table) => [uniqueIndex('world_category_traits_category_trait_idx').on(table.categoryId, table.trait)]
+);
+
 export const worldEntries = sqliteTable(
   'world_entries',
   {
@@ -242,6 +252,88 @@ export const worldEntries = sqliteTable(
     ),
   ]
 );
+
+export const characterAffiliationEvents = sqliteTable(
+  'character_affiliation_events',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    characterId: text('character_id').notNull().references(() => characters.id, { onDelete: 'cascade' }),
+    chapterId: text('chapter_id').references(() => chapters.id, { onDelete: 'set null' }),
+    boundary: text('boundary', { enum: ['initial', 'chapter_start', 'chapter_end', 'unplaced'] }).notNull(),
+    chapterTitleSnapshot: text('chapter_title_snapshot'),
+    reason: text('reason'),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  },
+  (table) => [
+    index('character_affiliation_events_character_idx').on(table.projectId, table.characterId, table.chapterId),
+    uniqueIndex('character_affiliation_events_time_idx').on(table.characterId, table.chapterId, table.boundary),
+  ]
+);
+
+export const characterAffiliationMembers = sqliteTable(
+  'character_affiliation_members',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    eventId: text('event_id').notNull().references(() => characterAffiliationEvents.id, { onDelete: 'cascade' }),
+    organizationEntryId: text('organization_entry_id').references(() => worldEntries.id, { onDelete: 'set null' }),
+    organizationTitleSnapshot: text('organization_title_snapshot').notNull(),
+    position: text('position'),
+    isPrimary: integer('is_primary').notNull().default(0),
+  },
+  (table) => [uniqueIndex('character_affiliation_members_event_org_idx').on(table.eventId, table.organizationEntryId)]
+);
+
+export const characterAffiliationAudits = sqliteTable(
+  'character_affiliation_audits',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    characterId: text('character_id').notNull().references(() => characters.id, { onDelete: 'cascade' }),
+    eventId: text('event_id'),
+    action: text('action', { enum: ['create', 'update', 'delete'] }).notNull(),
+    beforeJson: text('before_json'),
+    afterJson: text('after_json'),
+    reason: text('reason'),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  },
+  (table) => [index('character_affiliation_audits_character_idx').on(table.projectId, table.characterId, table.id)]
+);
+
+export const characterAffiliationVersions = sqliteTable('character_affiliation_versions', {
+  characterId: text('character_id').primaryKey().references(() => characters.id, { onDelete: 'cascade' }),
+  projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  revision: integer('revision').notNull().default(0),
+});
+
+export const chapterEntityReferences = sqliteTable(
+  'chapter_entity_references',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    chapterId: text('chapter_id').notNull().references(() => chapters.id, { onDelete: 'cascade' }),
+    characterId: text('character_id').references(() => characters.id, { onDelete: 'cascade' }),
+    worldEntryId: text('world_entry_id').references(() => worldEntries.id, { onDelete: 'cascade' }),
+    presence: text('presence', { enum: ['appears', 'mentioned'] }).notNull().default('appears'),
+    displayGroupOverride: text('display_group_override', { enum: ['character', 'location', 'item', 'organization', 'other'] }),
+    note: text('note'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  },
+  (table) => [
+    index('chapter_entity_references_chapter_idx').on(table.projectId, table.chapterId, table.sortOrder),
+    uniqueIndex('chapter_entity_references_character_idx').on(table.chapterId, table.characterId),
+    uniqueIndex('chapter_entity_references_world_idx').on(table.chapterId, table.worldEntryId),
+  ]
+);
+
+export const chapterReferenceVersions = sqliteTable('chapter_reference_versions', {
+  chapterId: text('chapter_id').primaryKey().references(() => chapters.id, { onDelete: 'cascade' }),
+  projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  revision: integer('revision').notNull().default(0),
+});
 
 // Drafts stay separate from world_entries until the author explicitly approves.
 export const worldEntrySuggestions = sqliteTable(

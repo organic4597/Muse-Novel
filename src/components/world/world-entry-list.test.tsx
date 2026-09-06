@@ -172,6 +172,19 @@ describe('WorldEntryList local tag filtering', () => {
     }));
   });
 
+  it('stores category traits separately from item tags', async () => {
+    const saved = { id: 'category-1', name: '종파', aliasesJson: null, traits: ['organization'] };
+    const fetchMock = vi.fn().mockResolvedValue(Response.json(saved));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<WorldEntryList categoryRecords={[{ id: 'category-1', name: '종파', aliasesJson: null, traits: [] }]} entries={entries} projectId="project-1" savedCategories={['종파']} />);
+    fireEvent.click(screen.getByRole('button', { name: '종파' }));
+    fireEvent.click(screen.getByRole('button', { name: '카테고리 특성' }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: '단체' }));
+    fireEvent.click(screen.getByRole('button', { name: '특성 저장' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('카테고리 특성을 저장했습니다');
+    expect(fetchMock).toHaveBeenCalledWith('/api/projects/project-1/world-categories/category-1/traits', expect.objectContaining({ method: 'PUT', body: JSON.stringify({ traits: ['organization'] }) }));
+  });
+
   it('이미 받은 태그로 목록을 필터링하며 서버에 요청하지 않는다', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

@@ -1,8 +1,10 @@
 import type { DB } from '@/lib/db';
+import { getChapterReferences } from '@/lib/db/queries/chapter-references';
 import {
   getChapterSummary,
   listChapterSummaries,
 } from '@/lib/db/queries/chapters';
+import { getAffiliationSummariesAt } from '@/lib/db/queries/character-affiliations';
 import { listCharacters } from '@/lib/db/queries/characters';
 import { getProject } from '@/lib/db/queries/projects';
 import { listStoryStateEntries } from '@/lib/db/queries/story-state';
@@ -119,11 +121,23 @@ export async function buildStoryContext(
   }
 
   // ── 등장인물 ────────────────────────────────────────────────────────────────
-  const [characterList, worldEntryList, storyStateList] = await Promise.all([
+  const [characterList, worldEntryList, storyStateList, chapterReferences, timelineChapters] = await Promise.all([
     listCharacters(db, projectId),
     listWorldEntries(db, projectId),
     listStoryStateEntries(db, projectId, { activeOnly: true }),
+    chapterId ? getChapterReferences(db, projectId, chapterId) : null,
+    listChapterSummaries(db, projectId),
   ]);
+  const currentChapterOrder = chapterId ? timelineChapters.find((chapter) => chapter.id === chapterId)?.order : undefined;
+  const chapterOrderById = new Map(timelineChapters.map((chapter) => [chapter.id, chapter.order]));
+  const effectiveStoryStates = currentChapterOrder === undefined ? storyStateList : storyStateList.filter((entry) => {
+    if (!entry.chapterId) return true;
+    const order = chapterOrderById.get(entry.chapterId);
+    return order !== undefined && order !== null && order <= currentChapterOrder;
+  });
+  const affiliationsByCharacter = chapterId
+    ? getAffiliationSummariesAt(db, projectId, characterList.map((character) => character.id), chapterId)
+    : new Map();
 
   if (characterList.length > 0) {
     const sorted = [...characterList].sort((a, b) => {
@@ -144,6 +158,8 @@ export async function buildStoryContext(
       if (c.backstory) {
         details.push(truncate(c.backstory, BACKSTORY_LIMIT));
       }
+      const affiliations = affiliationsByCharacter.get(c.id) ?? [];
+      if (affiliations.length) details.push(`소속: ${affiliations.map((affiliation) => `${affiliation.organizationTitle}${affiliation.position ? ` · ${affiliation.position}` : ''}`).join(', ')}`);
 
       if (details.length > 0) {
         parts.push(`- ${nameRole}: ${details.join(' / ')}`);
@@ -178,8 +194,17 @@ export async function buildStoryContext(
   }
 
   // 작가가 직접 지정한 현재 정전은 일반 자료보다 높은 우선순위로 보존합니다.
-  const stateSection = storyStateList.length > 0
-    ? `## 지속 상태 메모 (현재 정전)\n${[...storyStateList]
+  const referenceSection = chapterReferences?.references.length
+    ? `## 이번 화 등장 항목 (작가 지정)\n${chapterReferences.references.map((entry) => {
+        const presence = entry.presence === 'appears' ? '직접 등장' : '언급만';
+        const affiliation = entry.affiliations?.length
+          ? ` / 소속: ${entry.affiliations.map((item) => `${item.organizationTitle}${item.position ? ` · ${item.position}` : ''}`).join(', ')}`
+          : '';
+        return `- [${entry.group} / ${presence}] ${entry.title}${affiliation}${entry.note ? ` / 메모: ${truncate(entry.note, 200)}` : ''}`;
+      }).join('\n')}`
+    : '';
+  const stateSection = effectiveStoryStates.length > 0
+    ? `## 지속 상태 메모 (현재 회차에 유효)\n${[...effectiveStoryStates]
         .sort((left, right) => {
           const leftRelevant = [left.characterName, left.label]
             .filter(Boolean)
@@ -211,7 +236,8 @@ export async function buildStoryContext(
   const authorNoteSection = blueprint.authorNote
     ? `## 현재 작가 노트\n${blueprint.authorNote}`
     : '';
-  const priorityContext = [stateSection, authorNoteSection]
+  const canonSection = [referenceSection, stateSection].filter(Boolean).join('\n\n');
+  const priorityContext = [canonSection, authorNoteSection]
     .filter(Boolean)
     .join('\n\n');
   const completeContext = [fullContext, priorityContext]
@@ -225,8 +251,8 @@ export async function buildStoryContext(
   }
 
   if (priorityContext.length >= maxChars) {
-    const stateBudget = Math.max(0, maxChars - authorNoteSection.length - 2);
-    return [stateSection.slice(0, stateBudget), authorNoteSection]
+    const canonBudget = Math.max(0, maxChars - authorNoteSection.length - 2);
+    return [canonSection.slice(0, canonBudget), authorNoteSection]
       .filter(Boolean)
       .join('\n\n')
       .slice(0, maxChars);

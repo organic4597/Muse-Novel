@@ -6,7 +6,9 @@ export const WORLD_CATEGORY_OPTIONS = [
 export const WORLD_CATEGORY_GUIDANCE =
   '사용자가 별도 분류를 지정하지 않았다면 영약·무기·장비·유물·재료는 물건으로, 다른 분류에 맞지 않는 설정은 기타로 분류한다. 영약·무기 같은 세부 유형은 tags에 넣는다.';
 
-export type WorldCategoryRecord = { name: string; aliasesJson?: string | null };
+export const WORLD_CATEGORY_TRAITS = ['organization', 'location', 'item'] as const;
+export type WorldCategoryTrait = (typeof WORLD_CATEGORY_TRAITS)[number];
+export type WorldCategoryRecord = { id?: string; name: string; aliasesJson?: string | null; traits?: WorldCategoryTrait[] };
 export const worldCategoryKey = (name: string) => name.normalize('NFKC').trim().toLocaleLowerCase('ko-KR');
 
 export function worldCategoryAliases(category: WorldCategoryRecord): string[] {

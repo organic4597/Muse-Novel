@@ -17,6 +17,7 @@ import {
   useState,
 } from 'react';
 import { EntityRevisionPanel } from '@/components/ai/entity-revision-panel';
+import { CharacterAffiliations } from '@/components/character/character-affiliations';
 import { CharacterForm } from '@/components/character/character-form';
 import { CharacterImageUpload } from '@/components/character/character-image-upload';
 import { AdaptiveDetailDialogContent } from '@/components/ui/adaptive-detail-dialog';
@@ -529,6 +530,8 @@ function CharacterDetailView({
       </DialogHeader>
 
       <EntityRevisionPanel entityId={character.id} key={character.id} kind="character" onSaved={(entry) => onSaved(entry as Character)} projectId={projectId} />
+
+      <CharacterAffiliations characterId={character.id} projectId={projectId} />
 
       <div className="space-y-4">
         {fields.map(

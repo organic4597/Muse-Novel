@@ -177,6 +177,20 @@ describe('project semantic memory', () => {
     expect(afterDelete.removedSources).toBeGreaterThan(0);
   });
 
+  it('filters future chapter and state sources before ranking for a scoped writing request', async () => {
+    const project = await createProject(db, { title: '시간 범위' });
+    const first = await createChapter(db, { projectId: project.id, title: '첫 화', order: 0 });
+    const future = await createChapter(db, { projectId: project.id, title: '미래 화', order: 1 });
+    await updateContent(db, first.id, JSON.stringify([{ type: 'p', children: [{ text: '현재 단서 청동 열쇠' }] }]));
+    await updateContent(db, future.id, JSON.stringify([{ type: 'p', children: [{ text: '미래 비밀 청동 열쇠' }] }]));
+    await createStoryStateEntry(db, { projectId: project.id, chapterId: future.id, category: '비밀', label: '범인의 정체', value: '미래에 공개' });
+    await indexProjectMemory(db, project.id);
+    const result = await retrieveProjectMemory(db, project.id, '청동 열쇠 미래 비밀 범인', { chapterId: first.id, limit: 20 });
+    expect(result.matches.some((match) => match.sourceId === first.id)).toBe(true);
+    expect(result.matches.some((match) => match.sourceId === future.id)).toBe(false);
+    expect(result.matches.some((match) => match.sourceTitle.includes('범인의 정체'))).toBe(false);
+  });
+
   it('indexes active state canon and labels resolved entries as history', async () => {
     const project = await createProject(db, { title: '상태 원장' });
     await createStoryStateEntry(db, {

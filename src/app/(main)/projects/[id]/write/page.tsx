@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { ChapterSidebar } from '@/components/chapter/chapter-sidebar';
 import { AutoSaveIndicator } from '@/components/editor/auto-save-indicator';
+import { ChapterReferenceBar } from '@/components/editor/chapter-reference-bar';
 import type {
   PlateEditorHandle,
   PlateEditorProps,
@@ -260,6 +261,7 @@ export default function WritePage() {
                   />
                 </div>
               </header>
+              <ChapterReferenceBar chapterId={selectedChapter.id} key={`references:${selectedChapter.id}`} projectId={params.id} />
               {isAuthorNoteOpen && (
                 <div className="border-b border-primary/20 bg-primary/4 px-5 py-4 sm:px-7">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-end">

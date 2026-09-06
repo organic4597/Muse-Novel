@@ -87,7 +87,16 @@ vi.mock('@/lib/db/queries/chapters', () => ({
   listChapterSummaries: vi.fn(),
 }));
 
+vi.mock('@/lib/db/queries/chapter-references', () => ({
+  getChapterReferences: vi.fn(),
+}));
+
+vi.mock('@/lib/db/queries/character-affiliations', () => ({
+  getAffiliationSummariesAt: vi.fn(() => new Map()),
+}));
+
 import type { DB } from '@/lib/db';
+import { getChapterReferences } from '@/lib/db/queries/chapter-references';
 import {
   getChapterSummary,
   listChapterSummaries,
@@ -103,9 +112,45 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(listChapterSummaries).mockResolvedValue([]);
   vi.mocked(listStoryStateEntries).mockResolvedValue([]);
+  vi.mocked(getChapterReferences).mockResolvedValue({ chapterId: 'chap-1', revision: 0, references: [], options: { characters: [], worldEntries: [] } });
 });
 
 describe('buildStoryContext', () => {
+  it('현재 회차 등장 구분과 해당 시점 소속을 우선 문맥에 포함한다', async () => {
+    vi.mocked(getProject).mockResolvedValue(mockProject());
+    vi.mocked(listCharacters).mockResolvedValue([mockCharacter()]);
+    vi.mocked(listWorldEntries).mockResolvedValue([]);
+    vi.mocked(getChapterSummary).mockResolvedValue(mockChapter());
+    vi.mocked(listChapterSummaries).mockResolvedValue([mockChapter()]);
+    vi.mocked(getChapterReferences).mockResolvedValue({
+      chapterId: 'chap-1', revision: 1, options: { characters: [], worldEntries: [] },
+      references: [{ id: 'ref-1', projectId: 'proj-1', chapterId: 'chap-1', characterId: 'char-1', worldEntryId: null,
+        title: '이수진', category: null, group: 'character', presence: 'appears', displayGroupOverride: null,
+        note: '성문을 조사한다', sortOrder: 0, createdAt: null, updatedAt: null,
+        affiliations: [{ organizationTitle: '소림사', position: '객원', isPrimary: 1 }],
+      }],
+    } as never);
+    const result = await buildStoryContext(fakeDb, 'proj-1', 'chap-1');
+    expect(result).toContain('이번 화 등장 항목');
+    expect(result).toContain('[character / 직접 등장] 이수진');
+    expect(result).toContain('소림사 · 객원');
+    expect(result).toContain('성문을 조사한다');
+  });
+
+  it('미래 회차 상태 메모를 이전 회차 문맥에서 제외한다', async () => {
+    vi.mocked(getProject).mockResolvedValue(mockProject());
+    vi.mocked(listCharacters).mockResolvedValue([]);
+    vi.mocked(listWorldEntries).mockResolvedValue([]);
+    vi.mocked(getChapterSummary).mockResolvedValue(mockChapter());
+    vi.mocked(listChapterSummaries).mockResolvedValue([mockChapter(), mockChapter({ id: 'chap-2', title: '승진', order: 1 })]);
+    vi.mocked(listStoryStateEntries).mockResolvedValue([
+      { id: 'past', projectId: 'proj-1', chapterId: 'chap-1', chapterTitle: '여행의 시작', characterId: null, characterName: null, category: '목표', label: '여행', value: '시작', previousValue: null, details: null, isActive: 1, isPinned: 0, createdAt: null, updatedAt: null },
+      { id: 'future', projectId: 'proj-1', chapterId: 'chap-2', chapterTitle: '승진', characterId: null, characterName: null, category: '기타', label: '직위', value: '장로', previousValue: null, details: null, isActive: 1, isPinned: 0, createdAt: null, updatedAt: null },
+    ] as never);
+    const result = await buildStoryContext(fakeDb, 'proj-1', 'chap-1');
+    expect(result).toContain('여행: 시작');
+    expect(result).not.toContain('직위: 장로');
+  });
   it('프로젝트 + 등장인물 + 세계관 정보를 포함한 컨텍스트를 생성한다', async () => {
     vi.mocked(getProject).mockResolvedValue(mockProject());
     vi.mocked(listCharacters).mockResolvedValue([mockCharacter()]);

@@ -228,6 +228,7 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
     .filter(Boolean)
     .join('\n');
   const retrieval = await retrieveProjectMemory(db, projectId, retrievalQuery, {
+    chapterId,
     limit: 12,
     perSourceLimit: 2,
     signal,

@@ -1,8 +1,8 @@
 import { and, asc, eq, inArray } from 'drizzle-orm';
 
 import type { DB } from '@/lib/db';
-import { worldCategories, worldEntries, worldEntrySuggestions } from '@/lib/db/schema';
-import { getWorldCategoryOptions, resolveWorldCategoryName, worldCategoryAliases, worldCategoryKey } from '@/lib/world-categories';
+import { worldCategories, worldCategoryTraits, worldEntries, worldEntrySuggestions } from '@/lib/db/schema';
+import { getWorldCategoryOptions, resolveWorldCategoryName, type WorldCategoryTrait, worldCategoryAliases, worldCategoryKey } from '@/lib/world-categories';
 
 export class WorldCategoryRenameError extends Error {}
 export class WorldCategoryDeleteError extends Error {}
@@ -13,10 +13,45 @@ export function resolveStoredWorldCategoryName(db: DB, projectId: string, name: 
   return resolveWorldCategoryName(categories, name);
 }
 
-export async function listWorldCategories(db: DB, projectId: string) {
-  return db.select().from(worldCategories)
+function listWorldCategoriesWithTraits(db: DB, projectId: string) {
+  const categories = db.select().from(worldCategories)
     .where(eq(worldCategories.projectId, projectId))
     .orderBy(asc(worldCategories.name)).all();
+  if (!categories.length) return [];
+  const traits = db.select().from(worldCategoryTraits)
+    .where(inArray(worldCategoryTraits.categoryId, categories.map((category) => category.id))).all();
+  return categories.map((category) => ({ ...category,
+    traits: traits.filter((trait) => trait.categoryId === category.id).map((trait) => trait.trait),
+  }));
+}
+
+export async function listWorldCategories(db: DB, projectId: string) {
+  return listWorldCategoriesWithTraits(db, projectId);
+}
+
+export async function setWorldCategoryTraits(db: DB, projectId: string, categoryId: string, traits: WorldCategoryTrait[]) {
+  return db.transaction((tx: DB) => {
+    const category = tx.select().from(worldCategories)
+      .where(and(eq(worldCategories.projectId, projectId), eq(worldCategories.id, categoryId))).get();
+    if (!category) throw new WorldCategoryRenameError('카테고리를 찾을 수 없습니다.');
+    tx.delete(worldCategoryTraits).where(eq(worldCategoryTraits.categoryId, categoryId)).run();
+    for (const trait of [...new Set(traits)]) tx.insert(worldCategoryTraits).values({ categoryId, trait }).run();
+    return { ...category, traits: [...new Set(traits)] };
+  }, { behavior: 'immediate' });
+}
+
+export function listWorldEntriesByTrait(db: DB, projectId: string, trait: WorldCategoryTrait) {
+  const categories = db.select().from(worldCategories).where(eq(worldCategories.projectId, projectId)).all();
+  if (!categories.length) return [];
+  const categoryIds = db.select({ categoryId: worldCategoryTraits.categoryId }).from(worldCategoryTraits)
+    .where(and(eq(worldCategoryTraits.trait, trait), inArray(worldCategoryTraits.categoryId, categories.map((category) => category.id)))).all()
+    .map((row) => row.categoryId);
+  const names: string[] = categories.filter((category) => categoryIds.includes(category.id))
+    .flatMap((category) => [category.name, ...worldCategoryAliases(category)]);
+  if (!names.length) return [];
+  return db.select().from(worldEntries)
+    .where(and(eq(worldEntries.projectId, projectId), inArray(worldEntries.category, [...new Set(names)])))
+    .orderBy(asc(worldEntries.title)).all();
 }
 
 export async function createWorldCategory(db: DB, projectId: string, name: string) {
@@ -54,7 +89,7 @@ export async function renameWorldCategory(db: DB, projectId: string, oldName: st
     const updatedSuggestions = tx.update(worldEntrySuggestions).set({ category: name })
       .where(and(eq(worldEntrySuggestions.projectId, projectId), inArray(worldEntrySuggestions.category, names))).returning({ id: worldEntrySuggestions.id }).all().length;
     return { name, updatedEntries, updatedSuggestions,
-      categories: tx.select().from(worldCategories).where(eq(worldCategories.projectId, projectId)).orderBy(asc(worldCategories.name)).all() };
+      categories: listWorldCategoriesWithTraits(tx, projectId) };
   }, { behavior: 'immediate' });
 }
 
@@ -92,6 +127,6 @@ export async function deleteWorldCategory(db: DB, projectId: string, name: strin
     if (target) tx.update(worldCategories).set({ aliasesJson: JSON.stringify(aliases) }).where(eq(worldCategories.id, target.id)).run();
     else tx.insert(worldCategories).values({ projectId, name: destination, aliasesJson: JSON.stringify(aliases) }).run();
     return { name, targetName: destination, updatedEntries, updatedSuggestions,
-      categories: tx.select().from(worldCategories).where(eq(worldCategories.projectId, projectId)).orderBy(asc(worldCategories.name)).all() };
+      categories: listWorldCategoriesWithTraits(tx, projectId) };
   }, { behavior: 'immediate' });
 }

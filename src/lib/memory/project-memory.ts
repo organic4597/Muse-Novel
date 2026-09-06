@@ -489,9 +489,23 @@ export async function retrieveProjectMemory(
   db: DB,
   projectId: string,
   query: string,
-  options: { limit?: number; perSourceLimit?: number; signal?: AbortSignal } = {}
+  options: { limit?: number; perSourceLimit?: number; signal?: AbortSignal; chapterId?: string } = {}
 ): Promise<ProjectMemoryRetrievalResult> {
-  const rows = await listSemanticMemoryChunks(db, projectId);
+  let rows = await listSemanticMemoryChunks(db, projectId);
+  if (options.chapterId) {
+    const [chapterRows, stateRows] = await Promise.all([
+      listChapters(db, projectId), listStoryStateEntries(db, projectId),
+    ]);
+    const currentOrder = chapterRows.find((chapter) => chapter.id === options.chapterId)?.order;
+    if (currentOrder !== undefined) {
+      const orderByChapter = new Map(chapterRows.map((chapter) => [chapter.id, chapter.order]));
+      const allowedStates = new Set(stateRows.filter((state) => !state.chapterId ||
+        ((orderByChapter.get(state.chapterId) ?? Number.MAX_SAFE_INTEGER) <= currentOrder)).map((state) => state.id));
+      const allowedChapters = new Set(chapterRows.filter((chapter) => chapter.order <= currentOrder).map((chapter) => chapter.id));
+      rows = rows.filter((row) => row.sourceType === 'chapter' ? allowedChapters.has(row.sourceId)
+        : row.sourceType === 'state' ? allowedStates.has(row.sourceId) : true);
+    }
+  }
   const limit = Math.max(1, Math.min(options.limit ?? 8, 24));
   const config = await resolveEmbeddingServiceConfig(db, projectId);
   let queryVector: number[] | null = null;

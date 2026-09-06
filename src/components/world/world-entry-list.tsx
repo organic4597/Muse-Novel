@@ -24,6 +24,7 @@ import { WorldEntryDetail } from '@/components/world/world-entry-detail';
 import { WorldEntryForm } from '@/components/world/world-entry-form';
 import { WorldSearch } from '@/components/world/world-search';
 import { splitResearchContent } from '@/lib/web-research/content';
+import type { WorldCategoryTrait } from '@/lib/world-categories';
 import { getWorldCategoryOptions, resolveWorldCategoryName, type WorldCategoryRecord } from '@/lib/world-categories';
 
 type WorldEntry = {
@@ -51,6 +52,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 const DEFAULT_CATEGORY_COLOR = 'bg-secondary text-secondary-foreground';
+const CATEGORY_TRAIT_LABELS: Record<WorldCategoryTrait, string> = { organization: '단체', location: '장소·지형', item: '물건' };
 
 export function WorldEntryList({
   projectId,
@@ -80,6 +82,8 @@ export function WorldEntryList({
   const [categoryName, setCategoryName] = useState('');
   const [categoryPending, setCategoryPending] = useState(false);
   const [categoryError, setCategoryError] = useState('');
+  const [traitCategory, setTraitCategory] = useState<WorldCategoryRecord | null>(null);
+  const [traitDraft, setTraitDraft] = useState<WorldCategoryTrait[]>([]);
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [visibleEntryCount, setVisibleEntryCount] = useState(
     DEFAULT_PROGRESSIVE_PAGE_SIZE
@@ -217,6 +221,44 @@ export function WorldEntryList({
     } finally { setCategoryPending(false); }
   };
 
+  const openCategoryTraits = async () => {
+    if (!activeCategory || categoryPending) return;
+    setCategoryPending(true); setCategoryError('');
+    try {
+      let records = localCategoryRecords;
+      let record = records.find((category) => resolveWorldCategoryName(records, activeCategory) === category.name);
+      if (!record?.id) {
+        const create = await fetch(`/api/projects/${projectId}/world-categories`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: activeCategory }),
+        });
+        if (!create.ok) throw new Error('카테고리 특성을 준비하지 못했습니다.');
+        const response = await fetch(`/api/projects/${projectId}/world-categories`);
+        if (!response.ok) throw new Error('카테고리 정보를 불러오지 못했습니다.');
+        records = await response.json() as WorldCategoryRecord[];
+        setLocalCategoryRecords(records);
+        record = records.find((category) => resolveWorldCategoryName(records, activeCategory) === category.name);
+      }
+      if (!record?.id) throw new Error('카테고리 ID를 확인하지 못했습니다.');
+      setTraitCategory(record); setTraitDraft(record.traits ?? []);
+    } catch (error) { setCategoryError(error instanceof Error ? error.message : '카테고리 특성을 불러오지 못했습니다.'); }
+    finally { setCategoryPending(false); }
+  };
+
+  const saveCategoryTraits = async () => {
+    if (!traitCategory?.id || categoryPending) return;
+    setCategoryPending(true); setCategoryError('');
+    try {
+      const response = await fetch(`/api/projects/${projectId}/world-categories/${traitCategory.id}/traits`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ traits: traitDraft }),
+      });
+      const saved = await response.json() as WorldCategoryRecord & { error?: string };
+      if (!response.ok) throw new Error(saved.error ?? '카테고리 특성을 저장하지 못했습니다.');
+      setLocalCategoryRecords((current) => current.map((category) => category.id === saved.id ? saved : category));
+      setCategoryMessage(`“${saved.name}” 카테고리 특성을 저장했습니다.`); setTraitCategory(null);
+    } catch (error) { setCategoryError(error instanceof Error ? error.message : '카테고리 특성을 저장하지 못했습니다.'); }
+    finally { setCategoryPending(false); }
+  };
+
   return (
     <div className="space-y-7">
       <section className="muse-panel flex flex-col justify-between gap-5 px-6 py-7 sm:flex-row sm:items-end sm:px-8">
@@ -330,6 +372,7 @@ export function WorldEntryList({
           {activeCategory && <Button disabled={categoryPending} onClick={() => {
             setRenamingCategory(activeCategory); setCategoryName(activeCategory); setCategoryError(''); setIsCategoryFormOpen(true);
           }} size="sm" type="button" variant="ghost"><Pencil />카테고리 이름 변경</Button>}
+          {activeCategory && <Button disabled={categoryPending} onClick={() => void openCategoryTraits()} size="sm" type="button" variant="ghost">카테고리 특성</Button>}
           {activeCategory && <Button disabled={categoryPending} onClick={() => {
             setDeletingCategory(activeCategory); setDeleteError('');
             const choices = categories.filter((name) => name !== activeCategory);
@@ -387,6 +430,12 @@ export function WorldEntryList({
           {categoryError && <p className="text-sm text-destructive" role="alert">{categoryError}</p>}
         </form>
       )}
+
+      {traitCategory && <section className="muse-panel space-y-3 p-4">
+        <div><h2 className="font-semibold">“{traitCategory.name}” 카테고리 특성</h2><p className="mt-1 text-xs text-muted-foreground">항목 태그와 별개이며 소속 선택과 회차별 표시 그룹에 사용됩니다.</p></div>
+        <div className="flex flex-wrap gap-3">{(Object.keys(CATEGORY_TRAIT_LABELS) as WorldCategoryTrait[]).map((trait) => <label className="flex items-center gap-2 text-sm" key={trait}><input checked={traitDraft.includes(trait)} disabled={categoryPending} onChange={(event) => setTraitDraft((current) => event.target.checked ? [...current, trait] : current.filter((value) => value !== trait))} type="checkbox" />{CATEGORY_TRAIT_LABELS[trait]}</label>)}</div>
+        <div className="flex gap-2"><Button disabled={categoryPending} onClick={() => void saveCategoryTraits()} size="sm" type="button">특성 저장</Button><Button disabled={categoryPending} onClick={() => setTraitCategory(null)} size="sm" type="button" variant="outline">취소</Button></div>
+      </section>}
 
       {categoryMessage && <p className="text-sm text-muted-foreground" role="status">{categoryMessage}</p>}
 
