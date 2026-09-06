@@ -8,10 +8,10 @@ import { clamp, clusterMapPins, fitMap,
 
 type Placement = { kind: MapKind; targetId: string };
 type Operation = { kind: 'pan' | 'box' | 'pins'; start: Point; view: MapView; pins: MapPin[]; selected: string[]; pointerId: number };
-export function MapCanvas({ map, pins, entities, maps, selected, onSelect, onChange, onPlace, onNavigate, placement, disabled = false }: {
+export function MapCanvas({ map, pins, entities, maps, selected, onSelect, onChange, onPlace, onNavigate, onPinOpen, placement, disabled = false, navigationOnly = false }: {
   map: WorldMap; pins: MapPin[]; entities: MapEntity[]; maps: WorldMap[]; selected: string[]; onSelect: (ids: string[]) => void;
   onChange: (pins: MapPin[]) => void; onPlace: (placement: Placement, point: Point) => void; onNavigate: (id: string) => void;
-  placement: Placement | null; disabled?: boolean;
+  onPinOpen?: (pin: MapPin) => void; placement: Placement | null; disabled?: boolean; navigationOnly?: boolean;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const [bounds, setBounds] = useState({ width: 800, height: 560 });
@@ -85,9 +85,9 @@ export function MapCanvas({ map, pins, entities, maps, selected, onSelect, onCha
         <Button onClick={() => updateView(fit)} size="sm" type="button" variant="outline">화면 맞춤</Button>
         <Button aria-label="지도 확대" onClick={() => updateView(zoomMap(viewRef.current, { x: bounds.width / 2, y: bounds.height / 2 }, clamp(view.scale * 1.4, fit.scale, fit.scale * 16)))} size="sm" type="button" variant="outline">＋</Button>
         <Button aria-label="지도 축소" disabled={view.scale <= fit.scale} onClick={() => updateView(zoomMap(viewRef.current, { x: bounds.width / 2, y: bounds.height / 2 }, clamp(view.scale / 1.4, fit.scale, fit.scale * 16)))} size="sm" type="button" variant="outline">−</Button>
-        <Button disabled={!pins.length} onClick={() => onSelect(pins.map((pin) => pin.id))} size="sm" type="button" variant="outline">전체 핀 선택</Button>
-        {placement && <Button disabled={disabled} onClick={() => placeAt(placement, { x: bounds.width / 2, y: bounds.height / 2 })} size="sm" type="button" variant="outline">화면 중앙에 배치</Button>}
-        <span className="text-muted-foreground">{Math.round(view.scale / fit.scale * 100)}% · 휠 확대/축소 · 우클릭 드래그 이동</span>
+        {!navigationOnly && <Button disabled={!pins.length} onClick={() => onSelect(pins.map((pin) => pin.id))} size="sm" type="button" variant="outline">전체 핀 선택</Button>}
+        {!navigationOnly && placement && <Button disabled={disabled} onClick={() => placeAt(placement, { x: bounds.width / 2, y: bounds.height / 2 })} size="sm" type="button" variant="outline">화면 중앙에 배치</Button>}
+        <span className="text-muted-foreground">{Math.round(view.scale / fit.scale * 100)}% · 휠 확대/축소 · {navigationOnly ? '드래그 이동' : '우클릭 드래그 이동'}</span>
       </div>
       <div aria-describedby={`map-help-${map.id}`} aria-label="지도 편집 영역" className="relative h-[min(70dvh,800px)] min-h-96 w-full touch-none select-none overflow-hidden rounded-xl border border-border bg-muted/60" data-testid="map-viewport"
         onContextMenu={(event) => event.preventDefault()} onDoubleClick={(event) => { if (event.target === root.current || (event.target as HTMLElement).tagName === 'IMG') updateView(zoomMap(viewRef.current, point(event.clientX, event.clientY), clamp(view.scale * 1.8, fit.scale, fit.scale * 16))); }}
@@ -101,6 +101,7 @@ export function MapCanvas({ map, pins, entities, maps, selected, onSelect, onCha
         }}
         onPointerCancel={finish}
         onPointerDown={(event) => {
+          if (navigationOnly && (event.button === 0 || event.button === 2)) { begin(event, 'pan'); return; }
           if (event.button === 2) { begin(event, 'pan'); return; }
           if (event.button !== 0 || disabled) return;
           if (placement) { placeAt(placement, point(event.clientX, event.clientY)); return; }
@@ -121,25 +122,26 @@ export function MapCanvas({ map, pins, entities, maps, selected, onSelect, onCha
           const pin = cluster.pins[0];
           return <MapMarker disabled={disabled || interacting} entities={entities} key={cluster.pins.map((item) => item.id).join(':')} map={map} maps={maps}
             members={cluster.pins} onChoose={focusPin} onCluster={() => updateView(zoomMap(viewRef.current, position, clamp(view.scale * 2, fit.scale, fit.scale * 16)))} onDrag={(event) => {
+              if (navigationOnly) { event.stopPropagation(); return; }
               if (event.button !== 0 || disabled) return;
               event.stopPropagation();
               const ids = event.shiftKey ? selected.includes(pin.id) ? selected.filter((id) => id !== pin.id) : [...selected, pin.id] : selected.includes(pin.id) ? selected : [pin.id];
               onSelect(ids); if (ids.includes(pin.id)) begin(event, 'pins', ids);
-            }} onNavigate={onNavigate}
+            }} onNavigate={onNavigate} onOpen={navigationOnly ? onPinOpen : undefined}
             position={position}
             selected={selected.includes(pin.id)} />;
         })}
         {box && <div className="pointer-events-none absolute border-2 border-primary bg-primary/15" style={{ left: Math.min(box.start.x, box.end.x), top: Math.min(box.start.y, box.end.y), width: Math.abs(box.end.x - box.start.x), height: Math.abs(box.end.y - box.start.y) }} />}
         {!pins.length && <p className="pointer-events-none absolute bottom-3 left-3 rounded-lg bg-popover/95 px-3 py-2 text-xs text-popover-foreground">항목을 끌어 놓거나 목록에서 선택한 뒤 지도를 클릭하세요.</p>}
       </div>
-      <p className="text-xs text-muted-foreground" id={`map-help-${map.id}`}>좌클릭 드래그: 영역 선택 · 선택된 핀 드래그: 일괄 이동 · Shift+클릭: 선택 추가</p>
+      <p className="text-xs text-muted-foreground" id={`map-help-${map.id}`}>{navigationOnly ? '좌클릭 또는 우클릭 드래그: 지도 이동 · 핀 클릭: 상세 보기' : '좌클릭 드래그: 영역 선택 · 선택된 핀 드래그: 일괄 이동 · Shift+클릭: 선택 추가'}</p>
     </div>
   );
 }
 
-function MapMarker({ members, position, selected, disabled, entities, maps, map, onChoose, onNavigate, onDrag, onCluster }: {
+function MapMarker({ members, position, selected, disabled, entities, maps, map, onChoose, onNavigate, onOpen, onDrag, onCluster }: {
   members: MapPin[]; position: Point; selected: boolean; disabled: boolean; entities: MapEntity[]; maps: WorldMap[]; map: WorldMap;
-  onChoose: (pin: MapPin) => void; onNavigate: (id: string) => void; onDrag: (event: React.PointerEvent) => void; onCluster: () => void;
+  onChoose: (pin: MapPin) => void; onNavigate: (id: string) => void; onOpen?: (pin: MapPin) => void; onDrag: (event: React.PointerEvent) => void; onCluster: () => void;
 }) {
   const [hover, setHover] = useState(false);
   const pin = members[0]; const cluster = members.length > 1;
@@ -150,7 +152,7 @@ function MapMarker({ members, position, selected, disabled, entities, maps, map,
       <button aria-label={cluster ? `핀 ${members.length}개 묶음` : `${mapPinName(pin, entities, maps)} ${pin.status === 'inactive' ? '비활성' : ''}`}
         aria-pressed={!cluster && selected} className="absolute z-10 outline-none focus-visible:drop-shadow-[0_0_4px_var(--primary)]"
         data-pin-id={cluster ? undefined : pin.id} data-testid={cluster ? 'map-cluster' : 'map-pin'}
-        onClick={(event) => { if (cluster) { event.stopPropagation(); onCluster(); } else if (event.detail === 0) onChoose(pin); }}
+        onClick={(event) => { if (cluster) { event.stopPropagation(); onCluster(); } else if (onOpen) onOpen(pin); else if (event.detail === 0) onChoose(pin); }}
         onPointerDown={cluster ? (event) => { if (event.button === 0) event.stopPropagation(); } : onDrag}
         style={{ left: position.x, top: position.y, transform: 'translate(-50%,-100%)' }} type="button">
         {cluster ? <span className="grid size-9 place-items-center rounded-full border border-white/90 bg-primary font-bold text-primary-foreground opacity-60 shadow-md" style={members.every((pin) => pin.status === 'inactive') ? { backgroundColor: '#737373', color: '#fff' } : undefined}>{members.length}</span>

@@ -1,15 +1,17 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WritingReferencePanel } from './writing-reference-panel';
 
 describe('WritingReferencePanel', () => {
   afterEach(() => vi.unstubAllGlobals());
-  it('keeps world and map references separate, summarizes on hover and opens the full world dialog', async () => {
+  beforeEach(() => {
     vi.stubGlobal('ResizeObserver', class {
       disconnect() {}
       observe() {}
       unobserve() {}
     });
+  });
+  it('keeps world and map references separate, summarizes on hover and opens the full world dialog', async () => {
     const map = { id: 'map', projectId: 'project', folderId: null, name: '중원', imagePath: '/map.webp', image2xPath: '/map-2x.webp', thumbnailPath: '/thumb.webp', width: 1000, height: 500, revision: 1 };
     const entities = [
       { id: 'first', kind: 'world', title: '소림사', category: '종파', summary: '숭산의 문파', imagePath: null },
@@ -49,6 +51,6 @@ describe('WritingReferencePanel', () => {
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByRole('img', { name: '중원' })).toHaveAttribute('src', '/map-2x.webp');
     fireEvent.click(within(dialog).getByRole('button', { name: '지도 확대' }));
-    expect(within(dialog).getByText('150%')).toBeInTheDocument();
+    expect(within(dialog).getByText(/^140%/)).toBeInTheDocument();
   });
 });

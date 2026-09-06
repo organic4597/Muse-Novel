@@ -52,6 +52,25 @@ describe('map canvas draft interaction', () => {
     fireEvent.pointerUp(viewport, { clientX: 350, clientY: 230, pointerId: 2 });
     expect(onChange).not.toHaveBeenCalled();
   });
+  it('uses primary-button dragging for read-only navigation without selecting or moving pins', () => {
+    const onSelect = vi.fn(); const onChange = vi.fn(); const onPinOpen = vi.fn();
+    render(<MapCanvas entities={[entity]} map={map} maps={[map]} navigationOnly onChange={onChange} onNavigate={vi.fn()} onPinOpen={onPinOpen} onPlace={vi.fn()} onSelect={onSelect} pins={[pin('a', 0.2)]} placement={null} selected={[]} />);
+    const viewport = screen.getByTestId('map-viewport');
+    const image = screen.getByRole('img', { name: '대륙' });
+    Object.defineProperty(viewport, 'getBoundingClientRect', { value: () => ({ left: 0, top: 0, width: 800, height: 560 }) });
+    Object.defineProperty(viewport, 'setPointerCapture', { value: vi.fn() });
+    Object.defineProperty(viewport, 'hasPointerCapture', { value: () => false });
+    const before = image.getAttribute('style');
+    fireEvent.pointerDown(viewport, { button: 0, clientX: 200, clientY: 180, pointerId: 7 });
+    act(() => fireEvent.pointerMove(viewport, { clientX: 260, clientY: 220, pointerId: 7 }));
+    fireEvent.pointerUp(viewport, { clientX: 260, clientY: 220, pointerId: 7 });
+    expect(image.getAttribute('style')).not.toBe(before);
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: '전체 핀 선택' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('map-pin'));
+    expect(onPinOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }));
+  });
   it('shows only the selected item summary when an individual pin is not clustered', async () => {
     render(<MapCanvas entities={[entity]} map={map} maps={[map]} onChange={vi.fn()} onNavigate={vi.fn()} onPlace={vi.fn()} onSelect={vi.fn()} pins={[pin('a', 0.2)]} placement={null} selected={[]} />);
     const marker = screen.getByTestId('map-pin');
