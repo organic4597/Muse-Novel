@@ -101,7 +101,8 @@ export default function WritePage() {
   const [isIntelligenceOpen, setIsIntelligenceOpen] = useState(false);
   const [isStoryStateOpen, setIsStoryStateOpen] = useState(false);
   const [ghostTextEnabled, setGhostTextEnabled] = useState(true);
-  const [isReferenceOpen, setIsReferenceOpen] = useState(false);
+  const [isMapReferenceOpen, setIsMapReferenceOpen] = useState(false);
+  const [isWorldReferenceOpen, setIsWorldReferenceOpen] = useState(false);
   const [authorNoteStatus, setAuthorNoteStatus] = useState('');
 
   useEffect(() => {
@@ -215,7 +216,7 @@ export default function WritePage() {
   };
 
   return (
-    <div className="grid min-h-[calc(100vh-12rem)] gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]">
+    <div className="grid min-h-[calc(100vh-12rem)] gap-5 lg:relative lg:left-1/2 lg:w-[calc(100vw-4rem)] lg:max-w-[118rem] lg:-translate-x-1/2 lg:grid-cols-[17rem_minmax(0,1fr)]">
       <aside className="min-w-0">
         <ChapterSidebar
           onSelectChapter={handleSelectChapter}
@@ -239,13 +240,22 @@ export default function WritePage() {
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground">
                   <Button
-                    aria-pressed={isReferenceOpen}
-                    onClick={() => setIsReferenceOpen((open) => !open)}
+                    aria-pressed={isWorldReferenceOpen}
+                    onClick={() => setIsWorldReferenceOpen((open) => !open)}
                     size="sm"
                     type="button"
-                    variant={isReferenceOpen ? 'secondary' : 'outline'}
+                    variant={isWorldReferenceOpen ? 'secondary' : 'outline'}
                   >
-                    <MapIcon />세계관·지도
+                    <BookOpenText />세계관
+                  </Button>
+                  <Button
+                    aria-pressed={isMapReferenceOpen}
+                    onClick={() => setIsMapReferenceOpen((open) => !open)}
+                    size="sm"
+                    type="button"
+                    variant={isMapReferenceOpen ? 'secondary' : 'outline'}
+                  >
+                    <MapIcon />지도
                   </Button>
                   <Button
                     aria-pressed={ghostTextEnabled}
@@ -359,7 +369,7 @@ export default function WritePage() {
                   projectId={params.id}
                 />
               )}
-              <div className={`min-h-0 flex-1 bg-[color-mix(in_oklab,var(--card)_82%,var(--background))] ${isReferenceOpen ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_22rem]' : ''}`}>
+              <div className={`min-h-0 flex-1 bg-[color-mix(in_oklab,var(--card)_82%,var(--background))] ${isWorldReferenceOpen || isMapReferenceOpen ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_20rem]' : ''} ${isWorldReferenceOpen && isMapReferenceOpen ? '2xl:grid-cols-[minmax(0,1fr)_19rem_19rem]' : ''}`}>
                 <div className="min-w-0"><PlateEditor
                     chapterId={selectedChapter.id}
                     content={selectedChapter.contentJson}
@@ -370,7 +380,13 @@ export default function WritePage() {
                     projectId={params.id}
                     ref={editorRef}
                   /></div>
-                {isReferenceOpen && <WritingReferencePanel onClose={() => setIsReferenceOpen(false)} projectId={params.id} />}
+                {(isWorldReferenceOpen || isMapReferenceOpen) && <div className={isWorldReferenceOpen && isMapReferenceOpen ? 'grid min-h-0 grid-rows-2 2xl:contents' : 'contents'}><WritingReferencePanel
+                    onCloseMap={() => setIsMapReferenceOpen(false)}
+                    onCloseWorld={() => setIsWorldReferenceOpen(false)}
+                    projectId={params.id}
+                    showMap={isMapReferenceOpen}
+                    showWorld={isWorldReferenceOpen}
+                  /></div>}
               </div>
               <footer className="flex items-center justify-between gap-4 border-t border-border/50 bg-card/45 px-5 py-2.5 text-[0.66rem] text-muted-foreground sm:px-7">
                 <span className="flex items-center gap-1.5">

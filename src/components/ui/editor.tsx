@@ -79,7 +79,7 @@ const editorVariants = cva(
           'size-full px-16 pt-4 pb-72 text-base sm:px-[max(64px,calc(50%-350px))]',
         demo: 'size-full px-16 pt-4 pb-72 text-[17px] leading-[1.8] sm:px-[max(64px,calc(50%-350px))]',
         writing:
-          'w-full min-h-[calc(100vh-18rem)] px-6 pt-10 pb-72 font-heading text-[17px] leading-[2] tracking-[-0.01em] sm:px-[max(48px,calc(50%-360px))] sm:pt-14 sm:text-[18px]',
+          'w-full min-h-[calc(100vh-18rem)] px-6 pt-10 pb-72 font-heading text-[17px] leading-[2] tracking-[-0.01em] sm:px-[max(24px,calc(50%-480px))] sm:pt-14 sm:text-[18px]',
         fullWidth: 'size-full px-16 pt-4 pb-72 text-base sm:px-24',
         none: '',
         select: 'px-3 py-2 text-base data-readonly:w-fit',

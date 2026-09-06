@@ -27,7 +27,7 @@ import { splitResearchContent } from '@/lib/web-research/content';
 import type { WorldCategoryTrait } from '@/lib/world-categories';
 import { getWorldCategoryOptions, resolveWorldCategoryName, type WorldCategoryRecord } from '@/lib/world-categories';
 
-type WorldEntry = {
+export type WorldEntry = {
   id: string;
   projectId: string;
   tags?: Array<{ id: string; tag: string }>;
@@ -587,7 +587,7 @@ function EntryCard({
   );
 }
 
-function EntryDetailDialog({
+export function EntryDetailDialog({
   categoryOptions,
   projectId,
   entry,
