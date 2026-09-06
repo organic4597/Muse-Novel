@@ -59,11 +59,13 @@ describe('POST /api/projects/[id]/world-entries/assistant', () => {
       { category: '종파', id: 'existing', projectId: 'project-1', title: '소림', content: null },
     ] as never);
     vi.mocked(generateWorldEntryBatch).mockResolvedValue({
+      operation: 'create',
+      editSuggestions: [],
       entries: [
         { category: '종파', content: '기존 항목', title: '소림', tags: [], sourceIds: [] },
         { category: '종파', content: '도가 계열 검법 종파', tags: ['도가', '검법'], title: '무당', sourceIds: [] },
       ],
-      research: { status: 'skipped', queries: [], sources: [] },
+      research: { status: 'skipped' as const, queries: [], sources: [] },
       report: { instruction: '대표 종파 3개', requestedCount: 3, expectedTitles: ['소림', '무당', '화산'], existingTitles: [], pendingTitles: [], generatedCount: 2, missingTitles: ['화산'], warnings: [], diagnostics: [] },
     });
     vi.mocked(createWorldEntry).mockResolvedValue({
@@ -97,5 +99,28 @@ describe('POST /api/projects/[id]/world-entries/assistant', () => {
     expect(createWorldEntry).not.toHaveBeenCalled();
     expect(addTag).not.toHaveBeenCalled();
     expect(saveWorldSuggestions).toHaveBeenCalledWith(expect.anything(), 'project-1', [expect.objectContaining({ title: '무당' })], expect.objectContaining({ report: expect.objectContaining({ generatedCount: 1 }) }));
+  });
+
+  it('returns existing-entry edit proposals instead of silently skipping an update request', async () => {
+    const { generateWorldEntryBatch } = await import('@/lib/ai/entity-suggestions');
+    const { saveWorldSuggestions } = await import('@/lib/db/queries/world-suggestions');
+    const edit = {
+      entryId: 'existing', title: '모용세가', baseVersion: 'a'.repeat(64), note: '근거지를 보강했습니다.',
+      before: { title: '모용세가', category: '세가', content: '기존 설명', researchJson: null },
+      changes: { content: '모용세가는 요동의 교역로를 장악한 가문이다.' },
+      research: { status: 'skipped' as const, queries: [], sources: [] },
+    };
+    vi.mocked(generateWorldEntryBatch).mockResolvedValue({
+      operation: 'update', editSuggestions: [edit], entries: [],
+      research: { status: 'skipped', queries: [], sources: [] },
+      report: { instruction: '모용세가 설명 수정', requestedCount: 1, expectedTitles: ['모용세가'], existingTitles: ['모용세가'], updateTitles: ['모용세가'], pendingTitles: [], generatedCount: 0, missingTitles: [], warnings: [], diagnostics: [] },
+    });
+    vi.mocked(saveWorldSuggestions).mockResolvedValue([]);
+    const { POST } = await import('./route');
+    const response = await POST(createRequest({ instruction: '모용세가 설명을 요동의 가문으로 수정해줘' }), {
+      params: Promise.resolve({ id: 'project-1' }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ operation: 'update', editSuggestions: [edit], suggestions: [], pendingCount: 0 });
   });
 });

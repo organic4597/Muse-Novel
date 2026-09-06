@@ -96,7 +96,11 @@ export function WorldEntryList({
   const mergeEntries = (nextEntries: WorldEntry[]) => {
     setLocalEntries((currentEntries) => {
       const incomingIds = new Set(nextEntries.map((entry) => entry.id));
-      return [...nextEntries, ...currentEntries.filter((entry) => !incomingIds.has(entry.id))];
+      const currentById = new Map(currentEntries.map((entry) => [entry.id, entry]));
+      const merged = nextEntries.map((entry) => ({ ...currentById.get(entry.id), ...entry,
+        tags: entry.tags ?? currentById.get(entry.id)?.tags,
+      } as WorldEntry));
+      return [...merged, ...currentEntries.filter((entry) => !incomingIds.has(entry.id))];
     });
   };
 

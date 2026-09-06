@@ -13,9 +13,13 @@ function details(prompt: string) {
   const targets = JSON.parse(prompt.match(/<targets>\n([\s\S]*?)\n<\/targets>/)?.[1] ?? '[]') as { title: string; group: string }[];
   return { entries: targets.map(({ title }) => ({ title, category: '설정', content: `${title}은 중원 각지에 뿌리를 둔 세력이다. 고유한 전승과 이해관계를 지키며 주변 문파와 협력하거나 충돌한다.`, tags: [], sourceIds: [] })) };
 }
+function reviewedEntries(prompt: string) {
+  return JSON.parse(prompt.match(/<candidate_descriptions>\n([\s\S]*?)\n<\/candidate_descriptions>/)?.[1] ?? '[]') as { title: string; content: string }[];
+}
 function modelResponse(_system: string, prompt: string, options: { stage: string }) {
   if (options.stage.startsWith('roster')) return { groups };
   if (options.stage === 'verify-roster') return { valid: true, expectedCount: 15, issues: [] };
+  if (options.stage === 'review-descriptions') return { reviews: reviewedEntries(prompt).map(({ title }) => ({ title, verdict: 'accept' })) };
   return details(prompt);
 }
 
@@ -36,7 +40,7 @@ describe('generic request interpretation and world generation', () => {
     expect(result.entries).toHaveLength(15);
     expect(result.report.requestedCount).toBe(15);
     expect(result.report.missingTitles).toEqual([]);
-    expect(generate).toHaveBeenCalledTimes(6);
+    expect(generate).toHaveBeenCalledTimes(10);
     const prompt = generate.mock.calls[2][1];
     expect(prompt.indexOf('<project_context>') < prompt.indexOf('<targets>')).toBe(true);
   });
@@ -82,24 +86,64 @@ describe('generic request interpretation and world generation', () => {
     expect(result.report.warnings.join(' ')).toContain('완료된 생성으로 취급하지 않습니다');
     expect(generate.mock.calls.length).toBeLessThanOrEqual(14);
   });
-  it('rejects genre commentary and keeps only an immersive in-world description', async () => {
+  it('uses contextual review feedback to repair only a rejected entry, even without blacklist words', async () => {
     let detailAttempt = 0;
-    const generate = vi.fn(async (_system: string, _prompt: string, options: { stage: string }) => {
+    const generate = vi.fn(async (_system: string, prompt: string, options: { stage: string }) => {
       if (options.stage.startsWith('roster')) return { groups: [{ label: '세가', expectedCount: 1, members: ['모용세가'] }] };
       if (options.stage === 'verify-roster') return { valid: true, expectedCount: 1, issues: [] };
+      if (options.stage === 'review-descriptions') return { reviews: [{ title: '모용세가', verdict: detailAttempt === 1 ? 'revise' : 'accept', evidence: '흥행을 위한 편리한 장치로 소비된다.', reason: '실제 가문의 활동 대신 외부에서 이야기를 소비하는 관점을 설명했다.' }] };
       detailAttempt += 1;
+      if (detailAttempt === 2) {
+        expect(prompt).toContain('흥행을 위한 편리한 장치로 소비된다.');
+        expect(prompt).toContain('실제 가문의 활동 대신');
+      }
       return { entries: [{
         title: '모용세가', category: '세가', tags: ['세가'], sourceIds: [],
         content: detailAttempt === 1
-          ? '무림 소설에서 메이저 세력으로 분류되며, 적게 등장하는 작품에서도 출연이 보장되는 가문이다.'
+          ? '모용세가는 요동의 교역로를 장악한 가문이다. 흥행을 위한 편리한 장치로 소비된다.'
           : '모용세가는 요동의 교역로를 장악한 무림 가문이다. 가문의 비전과 혈통을 엄격히 지키며 북방 세력과의 혼인 동맹으로 영향력을 넓혀 왔다.',
       }] };
     });
     const result = await buildValidatedWorldBatch({ ...base, instruction: '모용세가를 추가해줘', generate });
     expect(result.entries).toHaveLength(1);
     expect(result.entries[0].content).toContain('요동의 교역로');
-    expect(result.entries[0].content).not.toMatch(/소설|작품|메이저|출연/u);
     expect(detailAttempt).toBe(2);
     expect(generate.mock.calls.find(([, , options]) => options.stage.startsWith('details'))?.[0]).toContain('현재 작품 세계에서 사실로 취급');
+  });
+  it('accepts in-world publishing language and retries only the entry the reviewer flagged', async () => {
+    const publisher = '금서방은 소설을 필사해 파는 서점이다. 작가와 독자는 여기서 서로의 신분을 숨긴 채 금서를 거래한다.';
+    const bad = '달의 사원은 눈에 띄는 외관으로 알려져 있다. 긴장감을 높일 때 손쉽게 활용할 수 있는 장치다.';
+    let calls = 0;
+    const generate = vi.fn(async (_system: string, prompt: string, options: { stage: string }) => {
+      if (options.stage.startsWith('roster')) return { groups: [{ label: '장소', expectedCount: 2, members: ['금서방', '달의 사원'] }] };
+      if (options.stage === 'verify-roster') return { valid: true, expectedCount: 2 };
+      if (options.stage === 'review-descriptions') return { reviews: reviewedEntries(prompt).map(({ title, content }) => content === bad
+        ? { title, verdict: 'revise', evidence: '긴장감을 높일 때 손쉽게 활용할 수 있는 장치다.', reason: '창작 조언으로 관점이 전환됐다.' }
+        : { title, verdict: 'accept' }) };
+      calls += 1;
+      if (calls === 2) expect(prompt.match(/<targets>\n([\s\S]*?)\n<\/targets>/)?.[1]).not.toContain('금서방');
+      return { entries: calls === 1
+        ? [{ title: '금서방', category: '장소', content: publisher }, { title: '달의 사원', category: '장소', content: bad }]
+        : [{ title: '달의 사원', category: '장소', content: '달의 사원은 눈에 띄는 외관으로 알려져 있다. 둥근 지붕 아래에는 밤마다 달빛이 모여든다.' }] };
+    });
+    const result = await buildValidatedWorldBatch({ ...base, instruction: '장소 두 개', generate });
+    expect(result.entries.map(({ title }) => title)).toEqual(['금서방', '달의 사원']);
+    expect(result.entries[0].content).toBe(publisher);
+    expect(calls).toBe(2);
+  });
+  it('bounds failed semantic repairs and reports the missing entry', async () => {
+    let detailCalls = 0;
+    const content = '달의 사원은 긴장감을 높일 때 손쉽게 활용할 수 있는 장치다. 설명을 더 붙이면 된다.';
+    const result = await buildValidatedWorldBatch({ ...base, instruction: '달의 사원 추가', generate: async (_system, _prompt, options) => {
+      if (options.stage.startsWith('roster')) return { groups: [{ label: '장소', expectedCount: 1, members: ['달의 사원'] }] };
+      if (options.stage === 'verify-roster') return { valid: true, expectedCount: 1 };
+      if (options.stage === 'review-descriptions') return { reviews: [{ title: '달의 사원', verdict: 'revise', evidence: '설명을 더 붙이면 된다.', reason: '설정 대신 창작 조언을 반환했다.' }] };
+      detailCalls += 1;
+      return { entries: [{ title: '달의 사원', category: '장소', content }] };
+    } });
+    expect(detailCalls).toBe(2);
+    expect(result.entries).toEqual([]);
+    expect(result.report.missingTitles).toEqual(['달의 사원']);
+    expect(result.report.warnings.join(' ')).toContain('서술 관점 검토');
   });
 });

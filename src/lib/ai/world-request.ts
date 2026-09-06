@@ -7,6 +7,7 @@ export type WorldBatchReport = {
   existingTitles: string[];
   pendingTitles: string[];
   generatedCount: number;
+  updateTitles?: string[];
   missingTitles: string[];
   note?: string;
   warnings: string[];

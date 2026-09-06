@@ -64,4 +64,37 @@ describe('WorldBuilderAssistant review flow', () => {
     expect(within(card).getByRole('button', { name: '승인' })).toBeEnabled();
     expect(screen.queryByText('승인됨 · 세계관 반영')).not.toBeInTheDocument();
   });
+
+  it('shows an existing-entry diff and applies it only after explicit approval', async () => {
+    const onEntriesAdded = vi.fn();
+    const edit = {
+      entryId: 'existing', title: '모용세가', baseVersion: 'a'.repeat(64), note: '가문의 근거지를 보강했습니다.',
+      before: { title: '모용세가', category: '세가', content: '기존 설명', researchJson: null },
+      changes: { content: '모용세가는 요동의 교역로를 장악한 가문이다.' },
+      research: { status: 'skipped', queries: [], sources: [] },
+    };
+    const updated = { id: 'existing', projectId: 'project-1', title: '모용세가', category: '세가', content: edit.changes.content, createdAt: null, updatedAt: null };
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (!init?.method) return Response.json({ suggestions: [] });
+      if (url.includes('/entity-edits/world/existing')) return Response.json({ entry: updated });
+      return Response.json({
+        operation: 'update', suggestions: [], editSuggestions: [edit], requestedCount: 1,
+        report: { instruction: '모용세가 수정', requestedCount: 1, expectedTitles: ['모용세가'], existingTitles: ['모용세가'], updateTitles: ['모용세가'], pendingTitles: [], generatedCount: 0, missingTitles: [], warnings: [], diagnostics: [] },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<WorldBuilderAssistant onEntriesAdded={onEntriesAdded} projectId="project-1" />);
+    fireEvent.change(screen.getByLabelText('세계관 어시스턴트 요청'), { target: { value: '모용세가 설명을 수정해줘' } });
+    fireEvent.click(screen.getByRole('button', { name: '후보 생성' }));
+    const card = await screen.findByRole('article', { name: '모용세가 기존 항목 수정 후보' });
+    expect(within(card).getByText('기존 설명')).toBeInTheDocument();
+    expect(within(card).getByText('모용세가는 요동의 교역로를 장악한 가문이다.')).toBeInTheDocument();
+    expect(onEntriesAdded).not.toHaveBeenCalled();
+    fireEvent.click(within(card).getByRole('button', { name: '수정 승인' }));
+    await waitFor(() => expect(onEntriesAdded).toHaveBeenCalledWith([updated]));
+    expect(fetchMock).toHaveBeenCalledWith('/api/projects/project-1/entity-edits/world/existing', expect.objectContaining({
+      body: JSON.stringify({ action: 'apply', baseVersion: edit.baseVersion, changes: edit.changes }),
+    }));
+    expect(screen.getByText('승인됨 · 수정 반영')).toBeInTheDocument();
+  });
 });

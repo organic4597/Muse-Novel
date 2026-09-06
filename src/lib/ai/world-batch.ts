@@ -1,5 +1,6 @@
 import { formatPromptData } from '@/lib/ai/prompt-foundations';
-import { hasOutOfWorldDescription, WORLD_ENTRY_IMMERSIVE_STYLE_PROMPT, WORLD_ROSTER_PROMPT, WORLD_ROSTER_REVIEW_PROMPT } from '@/lib/ai/world-prompts';
+import { reviewWorldEntries } from '@/lib/ai/world-entry-review';
+import { WORLD_ENTRY_IMMERSIVE_STYLE_PROMPT, WORLD_ROSTER_PROMPT, WORLD_ROSTER_REVIEW_PROMPT } from '@/lib/ai/world-prompts';
 import { planWorldRequest, validateWorldRoster, type WorldBatchReport, worldTitleKey } from '@/lib/ai/world-request';
 import { formatWebResearch } from '@/lib/web-research/research';
 import type { WebResearch } from '@/lib/web-research/types';
@@ -19,6 +20,7 @@ export async function buildValidatedWorldBatch(options: {
   taskSummary?: string;
   lookup?: () => Promise<WebResearch>;
   forceLookup?: boolean;
+  allowCreate?: boolean;
   signal?: AbortSignal;
   diagnostics: WorldBatchReport['diagnostics'];
   generate: WorldJsonGenerator;
@@ -73,8 +75,10 @@ export async function buildValidatedWorldBatch(options: {
   const pendingKeys = new Set(options.pending.map((entry) => key(entry.title)));
   const existingTitles = roster.filter((entry) => existingKeys.has(key(entry.title))).map((entry) => entry.title);
   const pendingTitles = roster.filter((entry) => !existingKeys.has(key(entry.title)) && pendingKeys.has(key(entry.title))).map((entry) => entry.title);
-  const targets = roster.filter((entry) => !existingKeys.has(key(entry.title)) && !pendingKeys.has(key(entry.title)));
+  const newTargets = roster.filter((entry) => !existingKeys.has(key(entry.title)) && !pendingKeys.has(key(entry.title)));
+  const targets = options.allowCreate === false ? [] : newTargets;
   const entries: WorldBatchEntry[] = [];
+  const revisionFeedback = new Map<string, { title: string; content: string; reason: string; evidence: string }>();
   const detailSystem = [
     '지정 명단의 개별 세계관 항목만 작성한다. 명칭을 바꾸거나 상위 분류로 대체하지 않는다.',
     WORLD_ENTRY_IMMERSIVE_STYLE_PROMPT,
@@ -87,24 +91,30 @@ export async function buildValidatedWorldBatch(options: {
   const generateDetails = async (names: typeof targets) => {
     signal?.throwIfAborted();
     const raw = await generate(detailSystem, [
-      formatPromptData('project_context', options.context.slice(0, 700)),
+      formatPromptData('project_context', options.context),
       formatPromptData('internal_wiki', options.localReference?.slice(0, 1000)),
       formatPromptData('author_request', instruction.slice(0, 1600)),
       formatWebResearch(research, 2300),
       // Keep changing targets after the shared prefix so inference servers can reuse prompt caches.
       formatPromptData('targets', JSON.stringify(names)),
+      formatPromptData('revision_feedback', JSON.stringify(names.flatMap((entry) => {
+        const feedback = revisionFeedback.get(key(entry.title));
+        return feedback ? [feedback] : [];
+      }))),
+      'revision_feedback가 있으면 기존 설명의 사실을 보존하며 지적된 관점만 보완한다. 근거 없는 설정으로 빈자리를 채우지 않는다.',
       `entries에는 위의 ${names.length}개만 정확히 작성한다.`,
     ].join('\n\n'), { maxOutputTokens: 600 + names.length * 500, stage: `details:${names.map((entry) => entry.title).join(',')}` });
     const values = raw && typeof raw === 'object' ? (raw as { entries?: unknown }).entries : undefined;
     if (!Array.isArray(values)) throw new Error('설명 목록이 없습니다.');
     const allowed = new Map(names.map((entry) => [key(entry.title), entry.title]));
+    const candidates: WorldBatchEntry[] = [];
     for (const value of values) {
       if (!value || typeof value !== 'object' || typeof value.title !== 'string') continue;
       const expected = allowed.get(key(value.title));
-      if (!expected || entries.some((entry) => key(entry.title) === key(expected))) continue;
+      if (!expected || [...entries, ...candidates].some((entry) => key(entry.title) === key(expected))) continue;
       const content = typeof value.content === 'string' ? value.content.replace(/\[웹\d+\]/gu, '').trim() : '';
       const category = typeof value.category === 'string' ? value.category.trim() : '';
-      if (!category || category.length > 100 || content.length < 30 || content.length > 2000 || hasOutOfWorldDescription(content) || /https?:\/\/|웹 참고 자료|^\s*[[{]/u.test(content)) continue;
+      if (!category || category.length > 100 || content.length < 30 || content.length > 2000 || /https?:\/\/|웹 참고 자료|^\s*[[{]/u.test(content)) continue;
       const sourceIds: string[] = (Array.isArray(value.sourceIds) ? value.sourceIds : []).filter((id: unknown): id is string => {
         if (typeof id !== 'string') return false;
         const source = research.sources.find((item) => item.id === id);
@@ -113,7 +123,17 @@ export async function buildValidatedWorldBatch(options: {
         return Boolean(source && subject.length >= 2 && text.includes(subject));
       });
       const tags = (Array.isArray(value.tags) ? value.tags : []).filter((tag: unknown): tag is string => typeof tag === 'string' && tag.trim().length > 0 && tag.length <= 50).slice(0, 5);
-      entries.push({ title: expected, category, content, tags, sourceIds: [...new Set(sourceIds)] });
+      candidates.push({ title: expected, category, content, tags, sourceIds: [...new Set(sourceIds)] });
+    }
+    const reviews = await reviewWorldEntries({ entries: candidates, instruction, context: options.context, generate, signal });
+    for (const candidate of candidates) {
+      const review = reviews.get(key(candidate.title))!;
+      if (review.verdict === 'accept') {
+        entries.push(candidate);
+        revisionFeedback.delete(key(candidate.title));
+      } else {
+        revisionFeedback.set(key(candidate.title), { title: candidate.title, content: candidate.content, reason: review.reason, evidence: review.evidence });
+      }
     }
   };
   // Short, bounded completions plus one smaller retry pass; never parse a truncated JSON tail.
@@ -126,7 +146,13 @@ export async function buildValidatedWorldBatch(options: {
       try { await generateDetails(missing.slice(retry, retry + 2)); } catch (error) { warnings.push(error instanceof Error ? error.message : '누락 보완 실패'); }
     }
   }
-  const missingTitles = targets.filter((target) => !entries.some((entry) => key(entry.title) === key(target.title))).map((entry) => entry.title);
+  const missingTitles = [
+    ...(options.allowCreate === false ? newTargets.map((entry) => entry.title) : []),
+    ...targets.filter((target) => !entries.some((entry) => key(entry.title) === key(target.title))).map((entry) => entry.title),
+  ];
+  for (const title of missingTitles) {
+    if (revisionFeedback.has(key(title))) warnings.push(`${title}: 설명의 서술 관점 검토를 통과하지 못했습니다.`);
+  }
   if (missingTitles.length) warnings.push(`${missingTitles.length}개 항목이 누락되었습니다. 완료된 생성으로 취급하지 않습니다.`);
   return { entries, research, report: {
     instruction, requestedCount: roster.length, expectedTitles: roster.map((entry) => entry.title),

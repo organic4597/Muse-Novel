@@ -5,10 +5,11 @@ import { useEffect, useRef, useState } from 'react';
 import { WebResearchSources, WebSearchControl } from '@/components/ai/web-research-controls';
 import { Button } from '@/components/ui/button';
 import type { WorldBatchReport } from '@/lib/ai/world-request';
+import { displayEntityValue, ENTITY_FIELDS } from '@/lib/entity-revisions';
 import { selectCitedResearch, splitResearchContent } from '@/lib/web-research/content';
 import type { WebResearch, WebSearchMode } from '@/lib/web-research/types';
 import { resolveWorldCategoryName, type WorldCategoryRecord } from '@/lib/world-categories';
-import type { WorldSuggestion } from '@/lib/world-suggestions';
+import type { WorldEditSuggestion, WorldSuggestion } from '@/lib/world-suggestions';
 
 const EXAMPLE_REQUESTS = [
   '중원 무협의 대표 종파 8개를 기본 정보와 함께 추가해줘',
@@ -22,7 +23,11 @@ type AssistantResult = {
   requestedCount: number;
   skippedTitles?: string[];
   report?: WorldBatchReport;
+  operation?: 'create' | 'update' | 'mixed';
+  editSuggestions?: WorldEditSuggestion[];
 };
+
+type ReviewableWorldEdit = WorldEditSuggestion & { status: 'pending' | 'approved' | 'rejected' };
 
 type WorldEntry = {
   id: string;
@@ -50,6 +55,7 @@ export function WorldBuilderAssistant({
   const [error, setError] = useState('');
   const [result, setResult] = useState<AssistantResult | null>(null);
   const [suggestions, setSuggestions] = useState<WorldSuggestion[]>([]);
+  const [editSuggestions, setEditSuggestions] = useState<ReviewableWorldEdit[]>([]);
   const [reviewing, setReviewing] = useState(false);
   const [reviewMessage, setReviewMessage] = useState('');
   const reviewLock = useRef(false);
@@ -96,6 +102,31 @@ export function WorldBuilderAssistant({
     }
   };
 
+  const reviewEdit = async (entry: ReviewableWorldEdit, action: 'approve' | 'reject') => {
+    if (reviewing || entry.status !== 'pending') return;
+    if (action === 'reject') {
+      setEditSuggestions((current) => current.map((item) => item.entryId === entry.entryId ? { ...item, status: 'rejected' } : item));
+      setReviewMessage(`“${entry.title}” 수정안을 반영하지 않았습니다. 기존 설정은 유지됩니다.`);
+      return;
+    }
+    setReviewing(true); setError(''); setReviewMessage('');
+    try {
+      const response = await fetch(`/api/projects/${projectId}/entity-edits/world/${entry.entryId}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'apply', baseVersion: entry.baseVersion, changes: entry.changes }),
+      });
+      const data = await response.json() as { entry?: WorldEntry; error?: string };
+      if (!response.ok || !data.entry) throw new Error(data.error ?? '기존 항목 수정안을 저장하지 못했습니다.');
+      setEditSuggestions((current) => current.map((item) => item.entryId === entry.entryId ? { ...item, status: 'approved' } : item));
+      onEntriesAdded?.([data.entry]);
+      setReviewMessage(`“${entry.title}” 수정안을 승인해 반영했습니다. 수정 전 내용은 이력에 보관했습니다.`);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '기존 항목 수정안을 저장하지 못했습니다.');
+    } finally {
+      setReviewing(false);
+    }
+  };
+
   const batches = new Map<string, WorldSuggestion[]>();
   for (const suggestion of suggestions) {
     const batch = batches.get(suggestion.batchId) ?? [];
@@ -132,6 +163,7 @@ export function WorldBuilderAssistant({
       const assistantResult = data as AssistantResult;
       setResult(assistantResult);
       setSuggestions((current) => [...assistantResult.suggestions, ...current]);
+      setEditSuggestions((assistantResult.editSuggestions ?? []).map((entry) => ({ ...entry, status: 'pending' })));
       setInstruction('');
     } catch (caughtError) {
       setError(
@@ -226,7 +258,7 @@ export function WorldBuilderAssistant({
           <div className="mt-4 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
             <p className="font-medium">
               {result.report
-                ? `요청 ${result.report.requestedCount}개 · 기존 ${result.report.existingTitles.length}개 · 검토 대기 ${result.report.pendingTitles.length}개 · 새 후보 ${result.suggestions.length}개 · 누락 ${result.report.missingTitles.length}개`
+                ? `요청 ${result.report.requestedCount}개 · 기존 ${result.report.existingTitles.length}개 · 수정 후보 ${editSuggestions.length}개 · 검토 대기 ${result.report.pendingTitles.length}개 · 새 후보 ${result.suggestions.length}개 · 누락 ${result.report.missingTitles.length}개`
                 : `${result.suggestions.length}개의 검토 후보를 만들었습니다. 승인할 항목을 선택해주세요.`}
             </p>
             {result.report?.missingTitles.length ? <p className="mt-2 text-amber-700 dark:text-amber-300">아직 완성되지 않았습니다. 누락: {result.report.missingTitles.join(', ')}</p> : null}
@@ -238,9 +270,25 @@ export function WorldBuilderAssistant({
                 기존 항목과 중복되어 제외: {result.skippedTitles?.join(', ')}
               </p>
             )}
+            {result.operation === 'update' && editSuggestions.length === 0 && <p className="mt-2 text-xs text-muted-foreground">기존 항목을 찾았지만 실제로 달라지는 수정안을 만들지 못했습니다. 대상과 바꿀 내용을 더 구체적으로 적어주세요.</p>}
           </div>
         )}
         {reviewMessage && <p className="mt-3 text-sm text-muted-foreground" role="status">{reviewMessage}</p>}
+        {editSuggestions.length > 0 && <section className="mt-4 space-y-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
+          <div><h3 className="font-semibold">기존 항목 수정 후보 {editSuggestions.length}개</h3><p className="mt-1 text-xs text-muted-foreground">변경 전·후를 확인하고 승인한 항목만 수정합니다. 승인 시 이전 내용은 수정 이력에 보관됩니다.</p></div>
+          <div className="space-y-3">
+            {editSuggestions.map((entry) => <article aria-label={`${entry.title} 기존 항목 수정 후보`} className="rounded-xl border border-border bg-background/70 p-3" key={entry.entryId}>
+              <div className="flex flex-wrap items-center gap-2"><h4 className="font-semibold">{entry.title}</h4><span className="rounded-full bg-secondary px-2 py-0.5 text-xs">기존 항목 수정</span>{entry.status !== 'pending' && <span className="text-xs text-muted-foreground">{entry.status === 'approved' ? '승인됨 · 수정 반영' : '거부됨 · 기존 설정 유지'}</span>}</div>
+              {entry.note && <p className="mt-2 text-sm">{entry.note}</p>}
+              <div className="mt-3 space-y-3">{Object.entries(entry.changes).filter(([key]) => key !== 'researchJson').map(([key, value]) => <div key={key}>
+                <h5 className="text-xs font-medium text-muted-foreground">{ENTITY_FIELDS.world[key] ?? key}</h5>
+                <div className="mt-1 grid gap-2 sm:grid-cols-2"><div className="rounded-lg border border-border p-3"><p className="mb-1 text-xs text-muted-foreground">변경 전</p><p className="whitespace-pre-wrap break-words text-sm leading-6">{displayEntityValue(key, entry.before[key])}</p></div><div className="rounded-lg border border-primary/25 bg-primary/5 p-3"><p className="mb-1 text-xs text-muted-foreground">변경 후</p><p className="whitespace-pre-wrap break-words text-sm leading-6">{displayEntityValue(key, value)}</p></div></div>
+              </div>)}</div>
+              <WebResearchSources research={entry.research} />
+              {entry.status === 'pending' && <div className="mt-3 flex gap-2"><Button disabled={reviewing} onClick={() => void reviewEdit(entry, 'approve')} size="sm" type="button"><Check />수정 승인</Button><Button disabled={reviewing} onClick={() => void reviewEdit(entry, 'reject')} size="sm" type="button" variant="outline"><X />수정 거부</Button></div>}
+            </article>)}
+          </div>
+        </section>}
         {Array.from(batches, ([batchId, batch]) => {
           const pendingIds = batch.filter((entry) => entry.status === 'pending').map((entry) => entry.id);
           return (

@@ -84,6 +84,8 @@ export async function POST(
     return NextResponse.json({
       research,
       suggestions: pending,
+      editSuggestions: generation.editSuggestions,
+      operation: generation.operation,
       pendingCount: pending.length,
       requestedCount: report.requestedCount,
       report,
