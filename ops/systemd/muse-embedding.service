@@ -1,0 +1,40 @@
+[Unit]
+Description=Muse Novel Qwen3 0.6B CPU embedding server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=CUDA_VISIBLE_DEVICES=-1
+DynamicUser=true
+LoadCredential=api-key:/etc/muse-novel/embedding-api-key
+ExecStart=/opt/llama.cpp-qwen38/build/bin/llama-server \
+  --model /opt/models/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embedding-0.6B-Q8_0.gguf \
+  --embedding \
+  --pooling last \
+  --device none \
+  --n-gpu-layers 0 \
+  --ctx-size 8192 \
+  --batch-size 2048 \
+  --ubatch-size 512 \
+  --threads 6 \
+  --threads-batch 6 \
+  --host 127.0.0.1 \
+  --port 8081 \
+  --alias Qwen3-Embedding-0.6B \
+  --api-key-file %d/api-key \
+  --metrics
+Restart=on-failure
+RestartSec=3
+TimeoutStartSec=120
+Nice=5
+MemoryMax=3G
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

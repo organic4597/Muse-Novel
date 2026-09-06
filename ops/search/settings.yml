@@ -1,0 +1,27 @@
+# Internal SearXNG API for Muse Novel. Supply SEARXNG_SECRET at deployment.
+use_default_settings:
+  engines:
+    keep_only:
+      - google
+      - wikipedia
+      - naver
+engines:
+  - name: google
+    disabled: false
+  - name: wikipedia
+    disabled: false
+  - name: naver
+    disabled: false
+server:
+  limiter: false
+  public_instance: false
+  image_proxy: false
+search:
+  formats:
+    - json
+    - html
+  default_lang: ko-KR
+  autocomplete: ''
+outgoing:
+  request_timeout: 6.0
+  max_request_timeout: 8.0

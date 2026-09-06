@@ -1,0 +1,62 @@
+[
+  {
+    "id": "bridget-guilty-gear",
+    "name": "Bridget (Guilty Gear)",
+    "filename": "bridget-guilty-gear.safetensors",
+    "format": "lora",
+    "civitaiModelId": 2417347,
+    "civitaiVersionId": 2717836,
+    "civitaiUrl": "https://civitai.com/models/2417347/bridget-guilty-gear",
+    "baseModel": "Illustrious",
+    "type": "character",
+    "triggerWords": [
+      "bridetgg_1",
+      "1boy",
+      "otoko no ko",
+      "blue eyes",
+      "blonde hair",
+      "long hair"
+    ],
+    "recommendedWeight": 1.0,
+    "clipSkip": 1,
+    "description": "길티기어 브리짓 캐릭터 LoRA. 외형1(bridetgg_1)과 외형2(bridetgg_2), 아웃핏 1~3 조합 가능. '1boy,otoko no ko'를 '1girl'로 변경하면 성별 전환 가능.",
+    "tags": ["character", "guilty gear", "game"]
+  },
+  {
+    "id": "serafuku",
+    "name": "학생복/Serafuku",
+    "filename": "serafuku.safetensors",
+    "format": "lora",
+    "civitaiModelId": 498018,
+    "civitaiVersionId": 2714470,
+    "civitaiUrl": "https://civitai.com/models/498018/serafuku",
+    "baseModel": "Illustrious",
+    "type": "clothing",
+    "triggerWords": [
+      "serafuku",
+      "pleated skirt",
+      "sailor collar",
+      "neckerchief"
+    ],
+    "recommendedWeight": 0.8,
+    "clipSkip": 2,
+    "description": "일반적인 세라복(학생복) LoRA v2.0 Illustrious 버전. 특별한 특징 없는 평범한 교복. 'blue serafuku' 등으로 색상 변경 가능.",
+    "tags": ["clothing", "school uniform", "outfit"]
+  },
+  {
+    "id": "tartarus-comic",
+    "name": "Tartarus Comic Style V10",
+    "filename": "tartarus-comic.safetensors",
+    "format": "lora",
+    "civitaiModelId": 1304386,
+    "civitaiVersionId": 2727182,
+    "civitaiUrl": "https://civitai.com/models/1304386/tartarus-comic-style-mix-fluxandchromaandilandnai-or-shrekman-style-mix",
+    "baseModel": "Illustrious",
+    "type": "style",
+    "triggerWords": ["tarv10"],
+    "recommendedWeight": 1.0,
+    "clipSkip": 2,
+    "description": "Darkest Dungeon + Hades + Arcane 스타일을 혼합한 코믹 스타일 LoRA. V10은 Hellfire + Hades 스타일을 강화한 버전.",
+    "tags": ["style", "comic", "darkest dungeon", "hades", "arcane"]
+  }
+]

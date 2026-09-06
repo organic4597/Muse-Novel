@@ -1,0 +1,1 @@
+ALTER TABLE `map_pins` ADD `flag_color` text;

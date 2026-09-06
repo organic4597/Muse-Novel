@@ -1,0 +1,1 @@
+ALTER TABLE `world_categories` ADD `aliases_json` text;

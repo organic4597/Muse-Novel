@@ -1,0 +1,13 @@
+[
+  { "id": "namu", "name": "나무위키", "url": "https://namu.wiki/", "searchSite": "namu.wiki", "kind": "장르 위키", "topics": "무협 판타지 용어 영약 무공 종족 마법 장르 관습", "note": "사용자 편집 자료. 특정 작품의 설정과 보편적인 장르 관습을 구분한다." },
+  { "id": "dc-genre", "name": "디시인사이드 장르소설 갤러리", "url": "https://gall.dcinside.com/mgallery/board/lists/?id=genrenovel", "searchSite": "gall.dcinside.com", "queryHint": "장르소설", "kind": "커뮤니티 경험담", "topics": "웹소설 연재 독자 반응 정보 공략 작법", "note": "정보·공략·자료 정리글을 우선한다. 개인 경험과 의견을 사실로 일반화하지 않는다." },
+  { "id": "arca-genre", "name": "아카라이브 장르소설 채널", "url": "https://arca.live/b/novelchannel", "searchSite": "arca.live/b/novelchannel", "kind": "커뮤니티 경험담", "topics": "장르소설 리뷰 정보 칼럼 추천 설정 공유 독자 반응", "note": "정보·칼럼과 설정 정리글을 우선한다. 리뷰·독자 반응은 개인 의견으로 구분한다." },
+  { "id": "arca-total", "name": "아카라이브 종합소설 채널", "url": "https://arca.live/b/totalnovel", "searchSite": "arca.live/b/totalnovel", "kind": "커뮤니티 경험담", "topics": "창작 설정 아이디어 연재 소설 구성", "note": "창작 설정과 연재 관련 정보글을 우선하고 잡담을 근거로 일반화하지 않는다." },
+  { "id": "arca-writing", "name": "아카라이브 웹소설 연재 채널", "url": "https://arca.live/b/webfiction", "searchSite": "arca.live/b/webfiction", "kind": "커뮤니티 경험담", "topics": "웹소설 작법 공략 연재 창작자 경험 집필 습관", "note": "창작자 정보·공략·연재 경험을 참고하며 성공 사례를 보편적인 법칙으로 단정하지 않는다." },
+  { "id": "world-anvil", "name": "World Anvil", "url": "https://www.worldanvil.com/learn", "searchSite": "worldanvil.com", "kind": "공개 가이드", "topics": "worldbuilding 세계관 설계 시간선 지도 마법 체계 세력 관계", "note": "공개 가이드·튜토리얼을 참고한다. 사용자 개인 세계관이나 유료 콘텐츠에 접근하지 않는다." },
+  { "id": "story-plotter", "name": "Story Plotter", "url": "https://storyplotter.net/", "searchSite": "storyplotter.net", "kind": "플롯 도구", "topics": "플롯 설계 사건 순서 복선 캐릭터 관계 아이디어 정리", "note": "플롯 작성 도구의 공개 설명을 참고한다. 검색 가능한 가이드가 제한적이며 앱 내부 자료를 읽었다고 주장하지 않는다." },
+  { "id": "wikipedia", "name": "위키백과", "url": "https://ko.wikipedia.org/", "searchSite": "wikipedia.org", "kind": "백과 자료", "topics": "중국 역사 왕조 지리 지명 제도 사료 문화", "note": "한·중·영문 자료를 비교한다. 역사적 사실은 시대와 원출처를 확인한다." },
+  { "id": "baidu-baike", "name": "Baidu Baike", "url": "https://baike.baidu.com/", "searchSite": "baike.baidu.com", "kind": "백과 자료", "topics": "中国 历史 地理 史书 중국 인명 지명 관직 왕조", "note": "중국어 원명과 시대를 확인하고 위키백과·사료와 교차 확인한다." },
+  { "id": "chgis", "name": "Harvard CHGIS 역사 지리", "url": "https://chgis.fas.harvard.edu/", "searchSite": "chgis.fas.harvard.edu", "kind": "역사 지리 자료", "topics": "중국 역사 지도 행정구역 옛 지명 시대별 영토", "note": "역사 행정구역·지명의 시대 범위를 확인한다. 현대 지도와 과거 지리를 혼동하지 않는다." },
+  { "id": "ctext", "name": "Chinese Text Project", "url": "https://ctext.org/", "searchSite": "ctext.org", "kind": "고전·사료", "topics": "중국 사서 고전 원문 史記 漢書 역사 문화 제도", "note": "사료의 서술과 후대 해석을 구분한다. 검색 요약만으로 원문을 확인했다고 주장하지 않는다." }
+]

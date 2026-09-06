@@ -1,0 +1,90 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+.vscode/
+.claude/
+doc-to-lora/
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.pnpm-store/*
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+pnpm-debug.log*
+pnpm-error.log*
+.pnpm-debug.log*
+
+# local env files
+.env
+.env.*
+!.env.example
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+CLAUDE.local.md
+.codex
+
+# database
+data/sqlite.db
+data/sqlite.db-wal
+data/sqlite.db-shm
+data/.encryption-key
+data/auth/
+muse-novel.db
+muse-novel.db-wal
+muse-novel.db-shm
+
+# runtime data
+data/embeddings/
+data/loras/*.safetensors
+
+# training artifacts
+checkpoints/
+loras/
+
+# python
+__pycache__/
+scripts/.venv/
+
+# local reports and caches
+playwright-report/
+test-results/
+.ruff_cache/
+.sisyphus/
+*.pid
+
+# START Skiller Generated Files
+/.claude/skills
+/.codex/config.toml
+/.cursor/mcp.json
+/.cursor/rules
+/.mcp.json
+/.skillz
+/AGENTS.md
+/CLAUDE.md
+# END Skiller Generated Files

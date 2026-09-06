@@ -1,0 +1,106 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "extends": ["ultracite/core", "ultracite/react", "ultracite/next"],
+  "formatter": {
+    "enabled": false,
+    "lineEnding": "auto"
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single"
+    }
+  },
+  "files": {
+    "includes": [
+      "**",
+      "!!node_modules",
+      "!!build",
+      "!!.next",
+      "!!loras",
+      "!!data",
+      "!!checkpoints",
+      "!!doc-to-lora",
+      "!!public",
+      "!!playwright-report",
+      "!!drizzle",
+      "!next-env.d.ts"
+    ]
+  },
+  "linter": {
+    "rules": {
+      "correctness": {
+        "useExhaustiveDependencies": "off", // eslint
+        "useHookAtTopLevel": "off", // eslint
+        "noUndeclaredVariables": "off", // ts
+        "noUnusedVariables": "off",
+        "noUnusedImports": "off",
+        "useParseIntRadix": "off",
+        "useImageSize": "off", // className
+        "noNestedComponentDefinitions": "off" // shadcn
+      },
+      "suspicious": {
+        "noConsole": "off",
+        "noEvolvingTypes": "off",
+        "noImplicitAnyLet": "off",
+        "noAlert": "off", // example
+        "noExplicitAny": "off", // ts chill
+        "noArrayIndexKey": "off", // chill
+        "noUnknownAtRules": "off", // allow for Tailwind @ rules
+        "noEmptyBlockStatements": "off", // chill
+        "useAwait": "off", // chill
+        "noDocumentCookie": "off", // shadcn
+        "noBitwiseOperators": "off", // chill
+        "noConfusingVoidType": "off" // false +
+      },
+      "style": {
+        "noNestedTernary": "off", // chill
+        "noNonNullAssertion": "off", // ts chill
+        "useDefaultSwitchClause": "off", // chill
+        "useBlockStatements": "off", // chill
+        "useNodejsImportProtocol": "off",
+        "useConsistentTypeDefinitions": "off",
+        "useNumericSeparators": "off",
+        "useNumberNamespace": "off",
+        "noUnusedTemplateLiteral": "off",
+        "noInferrableTypes": "off",
+        "useTemplate": "off",
+        "useImportType": "off"
+      },
+      "nursery": {
+        "noShadow": "off", // chill
+        "noIncrementDecrement": "off", // chill
+        "useSortedClasses": "off",
+        "noUselessUndefined": "off"
+      },
+      "complexity": {
+        "useSimplifiedLogicExpression": "off", // false +
+        "noExcessiveCognitiveComplexity": "off", // chill
+        "noForEach": "off", // chill
+        "noVoid": "off", // chill,
+        "noBannedTypes": "off", // chill
+        "useLiteralKeys": "off"
+      },
+      "a11y": {
+        "noNoninteractiveElementInteractions": "off", // region role not supported
+        "useKeyWithClickEvents": "off", // shadcn
+        "useSemanticElements": "off", // shadcn
+        "useFocusableInteractive": "off", // shadcn
+        "noSvgWithoutTitle": "off",
+        "noStaticElementInteractions": "off",
+        "useMediaCaption": "off",
+        "useKeyWithMouseEvents": "off",
+        "useAriaPropsSupportedByRole": "off",
+        "noLabelWithoutControl": "off",
+        "useButtonType": "off"
+      },
+      "security": {
+        "noDangerouslySetInnerHtml": "off" // shadcn
+      },
+      "performance": {
+        "noNamespaceImport": "off", // shadcn
+        "noImgElement": "off", // agnostic
+        "useTopLevelRegex": "off"
+      }
+    }
+  }
+}

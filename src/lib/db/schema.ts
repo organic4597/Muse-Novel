@@ -1,0 +1,536 @@
+import {
+  index,
+  integer,
+  real,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
+
+// ─── Projects ────────────────────────────────────────────────────────────────
+
+export const projects = sqliteTable('projects', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  title: text('title').notNull(),
+  genre: text('genre'),
+  synopsis: text('synopsis'),
+  settingsJson: text('settings_json'),
+  writingStyleSample: text('writing_style_sample'),
+  writingStyleDescription: text('writing_style_description'),
+  activeWritingStyleProfileId: text('active_writing_style_profile_id'),
+  activeLoraId: text('active_lora_id'),
+  loraPath: text('lora_path'),
+  loraGeneratedAt: integer('lora_generated_at', { mode: 'timestamp' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(
+    () => new Date()
+  ),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(
+    () => new Date()
+  ),
+});
+
+// ─── Chapters ────────────────────────────────────────────────────────────────
+
+export const chapters = sqliteTable(
+  'chapters',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    title: text('title').notNull(),
+    order: integer('order').notNull(),
+    contentJson: text('content_json'),
+    outline: text('outline'),
+    summary: text('summary'),
+    memo: text('memo'),
+    wordCount: integer('word_count').default(0),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(
+      () => new Date()
+    ),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(
+      () => new Date()
+    ),
+  },
+  (table) => [
+    index('chapters_project_id_order_idx').on(table.projectId, table.order),
+  ]
+);
+
+// ─── Semantic Story Memory ───────────────────────────────────────────────────────
+
+/**
+ * Searchable, source-addressable chunks of project canon. Embeddings are kept
+ * as JSON so the default SQLite deployment needs no vector extension. The
+ * source hash makes indexing incremental and the nullable vector lets keyword
+ * retrieval continue when the optional embedding service is offline.
+ */
+export const semanticMemoryChunks = sqliteTable(
+  'semantic_memory_chunks',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    sourceType: text('source_type').notNull(),
+    sourceId: text('source_id').notNull(),
+    sourceTitle: text('source_title').notNull(),
+    sourceUpdatedAt: integer('source_updated_at', { mode: 'timestamp' }),
+    chunkIndex: integer('chunk_index').notNull(),
+    content: text('content').notNull(),
+    contentHash: text('content_hash').notNull(),
+    embeddingJson: text('embedding_json'),
+    embeddingModel: text('embedding_model'),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(
+      () => new Date()
+    ),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(
+      () => new Date()
+    ),
+  },
+  (table) => [
+    uniqueIndex('semantic_memory_source_chunk_uidx').on(
+      table.projectId,
+      table.sourceType,
+      table.sourceId,
+      table.chunkIndex
+    ),
+    index('semantic_memory_project_source_idx').on(
+      table.projectId,
+      table.sourceType,
+      table.sourceId
+    ),
+  ]
+);
+
+// ─── Characters ──────────────────────────────────────────────────────────────
+
+export const characters = sqliteTable(
+  'characters',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    name: text('name').notNull(),
+    role: text('role'),
+    appearance: text('appearance'),
+    personality: text('personality'),
+    backstory: text('backstory'),
+    arcDescription: text('arc_description'),
+    itemsJson: text('items_json'),
+    imagePath: text('image_path'),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(
+      () => new Date()
+    ),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(
+      () => new Date()
+    ),
+  },
+  (table) => [index('characters_project_id_idx').on(table.projectId)]
+);
+
+// ─── Persistent Story State Notes ───────────────────────────────────────────
+
+export const storyStateEntries = sqliteTable(
+  'story_state_entries',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    characterId: text('character_id').references(() => characters.id, {
+      onDelete: 'set null',
+    }),
+    chapterId: text('chapter_id').references(() => chapters.id, {
+      onDelete: 'set null',
+    }),
+    category: text('category').notNull(),
+    label: text('label').notNull(),
+    value: text('value').notNull(),
+    previousValue: text('previous_value'),
+    details: text('details'),
+    isActive: integer('is_active').notNull().default(1),
+    isPinned: integer('is_pinned').notNull().default(0),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(
+      () => new Date()
+    ),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(
+      () => new Date()
+    ),
+  },
+  (table) => [
+    index('story_state_project_active_pinned_idx').on(
+      table.projectId,
+      table.isActive,
+      table.isPinned
+    ),
+    index('story_state_character_category_idx').on(
+      table.characterId,
+      table.category
+    ),
+    index('story_state_chapter_id_idx').on(table.chapterId),
+  ]
+);
+
+// ─── Character Relationships ─────────────────────────────────────────────────
+
+export const characterRelationships = sqliteTable('character_relationships', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  characterAId: text('character_a_id')
+    .notNull()
+    .references(() => characters.id),
+  characterBId: text('character_b_id')
+    .notNull()
+    .references(() => characters.id),
+  relationshipType: text('relationship_type').notNull(),
+  description: text('description'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(
+    () => new Date()
+  ),
+});
+
+// ─── World Entries ───────────────────────────────────────────────────────────
+
+export const worldCategories = sqliteTable(
+  'world_categories',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    aliasesJson: text('aliases_json'),
+  },
+  (table) => [uniqueIndex('world_categories_project_name_idx').on(table.projectId, table.name)]
+);
+
+export const worldEntries = sqliteTable(
+  'world_entries',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    category: text('category').notNull(),
+    title: text('title').notNull(),
+    content: text('content'),
+    researchJson: text('research_json'),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(
+      () => new Date()
+    ),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(
+      () => new Date()
+    ),
+  },
+  (table) => [
+    index('world_entries_project_id_category_idx').on(
+      table.projectId,
+      table.category
+    ),
+  ]
+);
+
+// Drafts stay separate from world_entries until the author explicitly approves.
+export const worldEntrySuggestions = sqliteTable(
+  'world_entry_suggestions',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    batchId: text('batch_id').notNull(),
+    category: text('category').notNull(),
+    title: text('title').notNull(),
+    content: text('content'),
+    tagsJson: text('tags_json').notNull().default('[]'),
+    researchJson: text('research_json'),
+    sourceIdsJson: text('source_ids_json'),
+    reportJson: text('report_json'),
+    status: text('status', { enum: ['pending', 'approved', 'rejected'] }).notNull().default('pending'),
+    approvedEntryId: text('approved_entry_id').references(() => worldEntries.id, { onDelete: 'set null' }),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+    reviewedAt: integer('reviewed_at', { mode: 'timestamp' }),
+  },
+  (table) => [index('world_suggestions_project_status_idx').on(table.projectId, table.status, table.createdAt)]
+);
+
+// ─── World Entry Links ───────────────────────────────────────────────────────
+
+export const worldEntryLinks = sqliteTable(
+  'world_entry_links',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    sourceId: text('source_id')
+      .notNull()
+      .references(() => worldEntries.id),
+    targetId: text('target_id')
+      .notNull()
+      .references(() => worldEntries.id),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(
+      () => new Date()
+    ),
+  },
+  (table) => [
+    index('world_entry_links_source_id_idx').on(table.sourceId),
+    index('world_entry_links_target_id_idx').on(table.targetId),
+  ]
+);
+
+// ─── World Entry Tags ────────────────────────────────────────────────────────
+
+export const worldEntryTags = sqliteTable(
+  'world_entry_tags',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    entryId: text('entry_id')
+      .notNull()
+      .references(() => worldEntries.id),
+    tag: text('tag').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(
+      () => new Date()
+    ),
+  },
+  (table) => [
+    index('world_entry_tags_entry_id_idx').on(table.entryId),
+    index('world_entry_tags_tag_entry_id_idx').on(table.tag, table.entryId),
+  ]
+);
+
+// ─── AI Provider Settings ────────────────────────────────────────────────────
+
+export const aiProviderSettings = sqliteTable(
+  'ai_provider_settings',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    projectId: text('project_id').references(() => projects.id),
+    providerType: text('provider_type').notNull(),
+    apiKeyEncrypted: text('api_key_encrypted'),
+    modelName: text('model_name'),
+    baseUrl: text('base_url'),
+    contextSize: integer('context_size'),
+    isDefault: integer('is_default').default(0),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(
+      () => new Date()
+    ),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(
+      () => new Date()
+    ),
+  },
+  (table) => [
+    index('ai_provider_settings_project_id_is_default_idx').on(
+      table.projectId,
+      table.isDefault
+    ),
+  ]
+);
+
+// ─── Character Emotions ─────────────────────────────────────────────────────
+
+export const characterEmotions = sqliteTable(
+  'character_emotions',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    characterId: text('character_id')
+      .notNull()
+      .references(() => characters.id),
+    chapterId: text('chapter_id')
+      .notNull()
+      .references(() => chapters.id),
+    emotion: text('emotion').notNull(),
+    note: text('note'),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(
+      () => new Date()
+    ),
+  },
+  (table) => [
+    index('character_emotions_character_id_chapter_id_idx').on(
+      table.characterId,
+      table.chapterId
+    ),
+  ]
+);
+
+// ─── Writing Style Profiles ─────────────────────────────────────────────────
+
+export const writingStyleProfiles = sqliteTable('writing_style_profiles', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  projectId: text('project_id').references(() => projects.id),
+  name: text('name').notNull(),
+  filePath: text('file_path'),
+  description: text('description'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(
+    () => new Date()
+  ),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(
+    () => new Date()
+  ),
+});
+
+// ─── Character Images (Gallery) ──────────────────────────────────────────────
+
+export const characterImages = sqliteTable('character_images', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  characterId: text('character_id')
+    .notNull()
+    .references(() => characters.id),
+  projectId: text('project_id')
+    .notNull()
+    .references(() => projects.id),
+  imagePath: text('image_path').notNull(),
+  kind: text('kind').notNull().default('profile'), // profile | full-body | illustration
+  prompt: text('prompt'),
+  negativePrompt: text('negative_prompt'),
+  providerType: text('provider_type'),
+  modelName: text('model_name'),
+  width: integer('width'),
+  height: integer('height'),
+  seed: integer('seed'),
+  isPrimary: integer('is_primary').default(0),
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(
+    () => new Date()
+  ),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(
+    () => new Date()
+  ),
+});
+
+// ─── Image Provider Settings ─────────────────────────────────────────────────
+
+export const imageProviderSettings = sqliteTable('image_provider_settings', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  projectId: text('project_id').references(() => projects.id),
+  providerType: text('provider_type').notNull().default('diffusers'),
+  baseUrl: text('base_url'),
+  modelName: text('model_name'),
+  isDefault: integer('is_default').default(0),
+  defaultWidth: integer('default_width').default(512),
+  defaultHeight: integer('default_height').default(512),
+  defaultSteps: integer('default_steps').default(20),
+  defaultSampler: text('default_sampler').default('Euler a'),
+  defaultCfgScale: integer('default_cfg_scale').default(7),
+  defaultNegativePrompt: text('default_negative_prompt'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(
+    () => new Date()
+  ),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(
+    () => new Date()
+  ),
+});
+
+// ─── External GPU / Python Service Endpoints ───────────────────────────────
+
+export const externalServiceSettings = sqliteTable('external_service_settings', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  projectId: text('project_id').references(() => projects.id, {
+    onDelete: 'cascade',
+  }),
+  serviceType: text('service_type').notNull(),
+  baseUrl: text('base_url').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(
+    () => new Date()
+  ),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(
+    () => new Date()
+  ),
+});
+
+// ─── LoRA Adapters ─────────────────────────────────────────────────────────
+
+export const loras = sqliteTable('loras', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  projectId: text('project_id').references(() => projects.id, {
+    onDelete: 'set null',
+  }),
+  name: text('name').notNull(),
+  filePath: text('file_path').notNull(),
+  sourceDescription: text('source_description'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(
+    () => new Date()
+  ),
+});
+
+// Text/settings snapshots only; media, tags and relationship tables are not restored.
+export const entityRevisions = sqliteTable('entity_revisions', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  kind: text('kind', { enum: ['character', 'world'] }).notNull(),
+  entityId: text('entity_id').notNull(),
+  characterId: text('character_id').references(() => characters.id, { onDelete: 'cascade' }),
+  worldEntryId: text('world_entry_id').references(() => worldEntries.id, { onDelete: 'cascade' }),
+  snapshotJson: text('snapshot_json').notNull(),
+  reason: text('reason').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().$defaultFn(() => new Date()),
+}, (table) => [index('entity_revisions_lookup_idx').on(table.projectId, table.kind, table.entityId, table.id)]);
+
+export const mapFolders = sqliteTable('map_folders', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  order: integer('order').notNull().default(0),
+}, (table) => [uniqueIndex('map_folders_project_name_idx').on(table.projectId, table.name)]);
+
+export const mapPaletteColors = sqliteTable('map_palette_colors', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  color: text('color').notNull(),
+  order: integer('order').notNull(),
+}, (table) => [uniqueIndex('map_palette_project_color_idx').on(table.projectId, table.color)]);
+
+export const worldMaps = sqliteTable('world_maps', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  folderId: text('folder_id').references(() => mapFolders.id, { onDelete: 'set null' }),
+  name: text('name').notNull(),
+  imagePath: text('image_path').notNull(),
+  image2xPath: text('image_2x_path').notNull(),
+  thumbnailPath: text('thumbnail_path').notNull(),
+  width: integer('width').notNull(),
+  height: integer('height').notNull(),
+  revision: integer('revision').notNull().default(1),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull().$defaultFn(() => new Date()),
+}, (table) => [index('world_maps_project_idx').on(table.projectId)]);
+
+export const mapPins = sqliteTable('map_pins', {
+  id: text('id').primaryKey(),
+  mapId: text('map_id').notNull().references(() => worldMaps.id, { onDelete: 'cascade' }),
+  kind: text('kind', { enum: ['world', 'character', 'terrain'] }).notNull(),
+  status: text('status', { enum: ['active', 'inactive'] }).notNull().default('active'),
+  flagColor: text('flag_color'),
+  worldEntryId: text('world_entry_id').references(() => worldEntries.id, { onDelete: 'cascade' }),
+  characterId: text('character_id').references(() => characters.id, { onDelete: 'cascade' }),
+  linkedMapId: text('linked_map_id').references(() => worldMaps.id, { onDelete: 'set null' }),
+  label: text('label').notNull(),
+  x: real('x').notNull(), y: real('y').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull().$defaultFn(() => new Date()),
+}, (table) => [index('map_pins_map_idx').on(table.mapId)]);

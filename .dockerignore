@@ -1,0 +1,16 @@
+.git
+.github
+.next
+data
+node_modules
+test-results
+playwright-report
+coverage
+docs
+e2e
+playwright.config.ts
+**/*.test.ts
+**/*.test.tsx
+*.log
+.env*
+!.env.example
