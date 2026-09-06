@@ -6,6 +6,7 @@ import {
   ClipboardList,
   Feather,
   LoaderCircle,
+  Map as MapIcon,
   NotebookPen,
   Sparkles,
 } from 'lucide-react';
@@ -22,6 +23,7 @@ import type {
 } from '@/components/editor/plate-editor';
 import type { StoryStatePanelProps } from '@/components/editor/story-state-panel';
 import type { WritingIntelligencePanelProps } from '@/components/editor/writing-intelligence-panel';
+import type { WritingReferencePanelProps } from '@/components/editor/writing-reference-panel';
 import { Button } from '@/components/ui/button';
 import { useAutoSave } from '@/hooks/use-auto-save';
 import {
@@ -55,6 +57,11 @@ const StoryStatePanel = dynamic<StoryStatePanelProps>(
     import('@/components/editor/story-state-panel').then(
       (module) => module.StoryStatePanel
     ),
+  { ssr: false }
+);
+
+const WritingReferencePanel = dynamic<WritingReferencePanelProps>(
+  () => import('@/components/editor/writing-reference-panel').then((module) => module.WritingReferencePanel),
   { ssr: false }
 );
 
@@ -93,6 +100,8 @@ export default function WritePage() {
   const [isAuthorNoteOpen, setIsAuthorNoteOpen] = useState(false);
   const [isIntelligenceOpen, setIsIntelligenceOpen] = useState(false);
   const [isStoryStateOpen, setIsStoryStateOpen] = useState(false);
+  const [ghostTextEnabled, setGhostTextEnabled] = useState(true);
+  const [isReferenceOpen, setIsReferenceOpen] = useState(false);
   const [authorNoteStatus, setAuthorNoteStatus] = useState('');
 
   useEffect(() => {
@@ -113,6 +122,11 @@ export default function WritePage() {
       });
 
     return () => controller.abort();
+  }, [params.id]);
+
+  useEffect(() => {
+    try { setGhostTextEnabled(localStorage.getItem(`muse-ghost-text:${params.id}`) !== 'off'); }
+    catch { setGhostTextEnabled(true); }
   }, [params.id]);
 
   const autoSave = useAutoSave({
@@ -225,6 +239,28 @@ export default function WritePage() {
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground">
                   <Button
+                    aria-pressed={isReferenceOpen}
+                    onClick={() => setIsReferenceOpen((open) => !open)}
+                    size="sm"
+                    type="button"
+                    variant={isReferenceOpen ? 'secondary' : 'outline'}
+                  >
+                    <MapIcon />세계관·지도
+                  </Button>
+                  <Button
+                    aria-pressed={ghostTextEnabled}
+                    onClick={() => setGhostTextEnabled((enabled) => {
+                      const next = !enabled;
+                      try { localStorage.setItem(`muse-ghost-text:${params.id}`, next ? 'on' : 'off'); } catch { /* Preference persistence is optional. */ }
+                      return next;
+                    })}
+                    size="sm"
+                    type="button"
+                    variant={ghostTextEnabled ? 'secondary' : 'outline'}
+                  >
+                    <Sparkles />Ghost Text {ghostTextEnabled ? '켜짐' : '꺼짐'}
+                  </Button>
+                  <Button
                     onClick={() => setIsIntelligenceOpen((open) => !open)}
                     size="sm"
                     type="button"
@@ -314,16 +350,18 @@ export default function WritePage() {
                   projectId={params.id}
                 />
               )}
-              <div className="min-h-0 flex-1 bg-[color-mix(in_oklab,var(--card)_82%,var(--background))]">
-                <PlateEditor
-                  chapterId={selectedChapter.id}
-                  content={selectedChapter.contentJson}
-                  key={selectedChapter.id}
-                  onStatsChange={setTextStats}
-                  onValueChange={handleContentChange}
-                  projectId={params.id}
-                  ref={editorRef}
-                />
+              <div className={`min-h-0 flex-1 bg-[color-mix(in_oklab,var(--card)_82%,var(--background))] ${isReferenceOpen ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_22rem]' : ''}`}>
+                <div className="min-w-0"><PlateEditor
+                    chapterId={selectedChapter.id}
+                    content={selectedChapter.contentJson}
+                    ghostTextEnabled={ghostTextEnabled}
+                    key={selectedChapter.id}
+                    onStatsChange={setTextStats}
+                    onValueChange={handleContentChange}
+                    projectId={params.id}
+                    ref={editorRef}
+                  /></div>
+                {isReferenceOpen && <WritingReferencePanel onClose={() => setIsReferenceOpen(false)} projectId={params.id} />}
               </div>
               <footer className="flex items-center justify-between gap-4 border-t border-border/50 bg-card/45 px-5 py-2.5 text-[0.66rem] text-muted-foreground sm:px-7">
                 <span className="flex items-center gap-1.5">

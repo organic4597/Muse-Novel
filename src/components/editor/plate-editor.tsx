@@ -1,6 +1,6 @@
 'use client';
 
-import { normalizeNodeId, type Value } from 'platejs';
+import { normalizeNodeId, type TRange, type Value } from 'platejs';
 import { Plate, usePlateEditor } from 'platejs/react';
 import {
   type ClipboardEvent,
@@ -9,6 +9,7 @@ import {
   useEffect,
   useImperativeHandle,
   useMemo,
+  useRef,
 } from 'react';
 
 import type { EditorTextStats } from '@/components/editor/editor-content-worker-core';
@@ -30,6 +31,7 @@ export interface PlateEditorProps {
   content?: string | null;
   onStatsChange?: (stats: EditorTextStats) => void;
   onValueChange?: (content: string) => void;
+  ghostTextEnabled?: boolean;
   ref?: Ref<PlateEditorHandle>;
 }
 
@@ -44,11 +46,12 @@ export function PlateEditor({
   content,
   onStatsChange,
   onValueChange,
+  ghostTextEnabled = true,
   ref,
 }: PlateEditorProps) {
   const initialEditorValue = useMemo(
     () => normalizeNodeId(parseEditorContent(content)),
-    [chapterId, content]
+    [chapterId]
   );
 
   const editor = usePlateEditor(
@@ -56,8 +59,9 @@ export function PlateEditor({
       plugins: EditorKit,
       value: initialEditorValue,
     },
-    [chapterId, content]
+    [chapterId]
   );
+  const lastSelectionRef = useRef<TRange | null>(null);
 
   const { flush, processValue } = useEditorContentWorker({
     onResult: (result, emitChange) => {
@@ -75,7 +79,8 @@ export function PlateEditor({
     () => ({
       flushProcessing: flush,
       insertText: (text: string) => {
-        editor.tf.focus();
+        const selection = editor.selection ?? lastSelectionRef.current;
+        editor.tf.focus(selection ? { at: selection } : undefined);
         if (editor.api.isExpanded()) {
           editor.tf.collapse({ edge: 'end' });
         }
@@ -102,6 +107,8 @@ export function PlateEditor({
 
   useEffect(() => {
     editor.setOption(InlineSuggestionPlugin, 'chapterId', chapterId ?? null);
+    editor.setOption(InlineSuggestionPlugin, 'enabled', ghostTextEnabled);
+    if (!ghostTextEnabled) editor.getApi(InlineSuggestionPlugin).inlineSuggestion.clearSuggestion();
 
     const chatOptions = editor.getOptions(aiChatPlugin).chatOptions ?? {};
     editor.setOption(aiChatPlugin, 'chatOptions', {
@@ -112,7 +119,7 @@ export function PlateEditor({
         ...(chapterId ? { chapterId } : {}),
       },
     });
-  }, [chapterId, editor, projectId]);
+  }, [chapterId, editor, ghostTextEnabled, projectId]);
 
   const handlePaste = useCallback(
     (event: ClipboardEvent<HTMLDivElement>) => {
@@ -138,6 +145,7 @@ export function PlateEditor({
   return (
     <Plate
       editor={editor}
+      onSelectionChange={({ selection }) => { if (selection) lastSelectionRef.current = selection; }}
       onValueChange={({ value }) => processValue(value)}
     >
       <EditorContainer variant="writing">

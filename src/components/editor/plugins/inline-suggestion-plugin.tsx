@@ -29,6 +29,7 @@ export type InlineSuggestionConfig = PluginConfig<
     isAccepting: boolean;
     isLoading: boolean;
     chapterId: string | null;
+    enabled: boolean;
   },
   {
     inlineSuggestion: {
@@ -518,7 +519,8 @@ const runCompletion = async (
       key: 'inlineSuggestion',
     });
 
-  const { chapterId } = getOptions();
+  const { chapterId, enabled } = getOptions();
+  if (!enabled) return;
   const currentBlockId = getCurrentBlockId(editor);
   if (!currentBlockId) return;
 
@@ -652,10 +654,11 @@ export const InlineSuggestionPlugin =
       const { getOptions } = getEditorPlugin<InlineSuggestionConfig>(editor, {
         key: 'inlineSuggestion',
       });
-      const { isLoading, suggestionPoint, suggestionText } = getOptions();
+      const { enabled, isLoading, suggestionPoint, suggestionText } = getOptions();
       const [node, path] = entry;
 
       if (
+        !enabled ||
         (!suggestionText && !isLoading) ||
         !suggestionPoint ||
         !TextApi.isText(node) ||
@@ -682,6 +685,7 @@ export const InlineSuggestionPlugin =
     options: {
       abortController: null,
       chapterId: null,
+      enabled: true,
       isAccepting: false,
       isLoading: false,
       suggestionNodeId: null,
@@ -693,7 +697,11 @@ export const InlineSuggestionPlugin =
         api.inlineSuggestion.clearSuggestion();
       },
       onChange: ({ api, editor, getOptions }) => {
-        const { suggestionPoint, suggestionText, isLoading } = getOptions();
+        const { enabled, suggestionPoint, suggestionText, isLoading } = getOptions();
+        if (!enabled) {
+          if (suggestionText || isLoading) api.inlineSuggestion.clearSuggestion();
+          return;
+        }
         if (suggestionText) {
           const focus = editor.selection?.focus;
           if (
@@ -711,7 +719,8 @@ export const InlineSuggestionPlugin =
         triggerCompletion(editor);
       },
       onKeyDown: ({ editor, event, getOptions }) => {
-        const { suggestionText } = getOptions();
+        const { enabled, suggestionText } = getOptions();
+        if (!enabled) return;
 
         if (
           event.code === 'Space' &&
@@ -783,6 +792,7 @@ export const InlineSuggestionPlugin =
         editor.api.redecorate();
       },
       setSuggestion: (text: string, nodeId?: string) => {
+        if (!getOptions().enabled) return;
         setOptions({
           isLoading: false,
           suggestionNodeId: nodeId ?? null,
