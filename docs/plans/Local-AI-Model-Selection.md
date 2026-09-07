@@ -1,56 +1,143 @@
-# 로컬 AI 모델 구성 검토 (2026-09-07)
+# Muse Novel 로컬 AI 통합 적용 계획
 
-이 문서는 설치 완료 기록이 아니라 공식 모델 자료와 현재 코드·장비 점검을 바탕으로 한 선정안이다. 한국어 소설 품질과 실제 지연 시간은 아직 비교 실험하지 않았다.
+기준일: 2026-09-07
 
-## 선정안
+이 문서는 현재 Muse Novel 코드와 Windows/WSL 장비 상태, 공개 모델 자료를 기준으로 작성한 구현 계획이다. 모델 설치 완료 기록이나 품질 보증서가 아니다.
 
-| 역할 | 우선 후보 | 실행 제안 |
+## 결정
+
+기본 검증 모델은 `kakaocorp/kanana-2-30b-a3b-instruct-2601`로 정한다. 하나의 non-thinking Instruct 모델을 스토리 구상, 검색어 계획, World assistant, 집필 에이전트, Ghost Text에 공용으로 사용한다. 사용자가 장문 생성과 직접 집필을 교대로 수행한다는 전제이므로 한 서비스와 한 모델 슬롯으로 시작한다.
+
+| 프로필 | 목적 | 초기 구성 |
 | --- | --- | --- |
-| 스토리 구상·장문 집필 | Qwen3.5-9B | GGUF Q5_K_M, 16K 컨텍스트부터 시작, RTX 4070 SUPER 단독 |
-| Ghost Text | Qwen3-4B-Instruct-2507 | GGUF Q5_K_M, 4K~8K 컨텍스트, RTX 3060 단독 |
-| Ghost Text 속도 대안 | Qwen3.5-2B | 4B의 응답 지연이 목표를 넘으면 동일 원고로 비교 |
-| 이미지 생성 | 기존 Muse Novel API 호환 서버 필요 | 이미지 모델 선정 후 GPU 점유량에 따라 한 텍스트 모델과 교대 |
+| Kanana Unified | 한국어 스토리 작업과 Ghost Text 공용 | 30B-A3B Instruct, Q4_K_M, 16K context, 두 GPU 분산 |
+| Kanana Fast | Ghost 지연 비교 및 저사양 대안 | Kanana-2-3B-Instruct, 품질 우선 양자화, 한 GPU |
+| SuperQwen Full | 검열 완화가 필요한 창작과 기존 품질 비교 | 현재 SuperQwen3.8 27B abliterated 서비스 보존 |
+| Image | 캐릭터·지형 이미지 생성 | Muse Novel 호환 API 모델 선정 후 별도 등록 |
 
-9B Q5 모델은 가중치 외 실행 버퍼·KV 캐시·드라이버 여유까지 포함해 약 8~10GB, 4B Q5는 약 4~6GB를 초기 용량 예산으로 잡는다. 이는 계획용 추정치이며 파일 크기나 실측 보장이 아니다. 실제 GGUF, 컨텍스트, 캐시 형식, 배치 크기에 따라 달라진다. 두 GPU의 메모리는 하나의 연속된 24GB 메모리가 아니다.
+Kanana Unified가 안정적으로 올라가면 32K context를 별도 시험한다. Ghost Text에는 실제로 필요한 앞뒤 문맥만 보내므로 16K로도 충분한지 먼저 검증한다. MTP draft 모델, mmproj, 비전 인코더는 초기 서비스에 추가하지 않는다.
 
-스토리 9B는 멀티모달 모델이지만 텍스트 작업에는 이미지 인코더와 mmproj를 추가 로드하지 않는다. 초기에는 MTP·draft 모델도 사용하지 않고 단일 추론 구성의 품질과 지연을 먼저 확인한다. 스토리 요청은 non-thinking부터 시작하고 복잡한 기획에 한해 thinking 사용을 따로 평가한다.
+## 선정 근거
 
-## 선정 근거와 대안
+[Kanana-2-30B-A3B-Instruct-2601 공식 모델 카드](https://huggingface.co/kakaocorp/kanana-2-30b-a3b-instruct-2601)는 전체 30B, 활성 3B의 MLA·MoE 구조와 32K context를 명시한다. 공식 비교에서 KMMLU 68.26, HAERAE 75.57, IFBench 48.30을 기록했다. 한국어 지식과 지시 준수가 필요한 Muse Novel에 적합하지만 한국어 소설 자동완성 전용 평가는 아니므로 실제 원고 평가가 필요하다.
 
-[Qwen3.5-9B 공식 모델 카드](https://huggingface.co/Qwen/Qwen3.5-9B)는 9B 모델의 다국어·지시 수행·장문 처리 평가와 serving 설정을 제공한다. 현재 27B급 모델보다 작은 가중치로 한 장의 12GB GPU에 배치할 후보로 선정했다. 공식 일반 벤치마크를 한국어 소설의 필력이나 현재 SuperQwen과의 동등성으로 해석하지 않는다. 장기 설정은 외부 기억 검색과 장면별 문맥 구성으로 보완한다.
+[Kanana-2-3B-Instruct 공식 모델 카드](https://huggingface.co/kakaocorp/kanana-2-3b-instruct)는 2026-07-27 공개된 한국어 중심 소형 모델이다. 같은 카드의 직접 비교에서 Qwen3.5-2B보다 KoMT-Bench, IFBench, KMMLU, HAERAE, KoSimpleQA가 높다. 30B MoE의 최초 응답 시간이 목표를 넘을 때 속도 대안으로 사용한다.
 
-[Qwen3-4B-Instruct-2507 공식 모델 카드](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507)는 non-thinking 전용 동작과 창작 글쓰기 평가를 명시한다. 짧은 한국어 문장 제안에서 불필요한 추론 출력을 줄일 후보로 채택했다. 소설 특화 또는 native FIM 모델이라는 의미는 아니다.
+[Qwen3.5-35B-A3B 공식 모델 카드](https://huggingface.co/Qwen/Qwen3.5-35B-A3B)는 전체 35B, 활성 3B, Apache-2.0, 강한 범용·다국어 성능을 제공한다. Kanana의 라이선스 또는 실행 호환성이 맞지 않을 때 2순위 품질 후보로 둔다. Ghost Text에서는 thinking을 반드시 비활성화해야 한다.
 
-[Qwen3.5-2B](https://huggingface.co/Qwen/Qwen3.5-2B)는 기본 non-thinking 동작을 지원하는 더 작은 비교 후보다. [Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B)는 새로운 hybrid attention 구조의 대안이며 기본 thinking을 비활성화하고 비교해야 한다. 최신 일반 평가 점수만으로 4B-Instruct-2507보다 한국어 자동완성이 낫다고 확정할 수 없다.
+이들 공식 평가는 서로 다른 평가 환경을 포함하므로 점수만으로 Ghost 품질 순위를 확정하지 않는다. 커서 앞뒤 연결, 한국어 문체, 첫 토큰 지연과 실제 수락률을 최종 기준으로 삼는다.
 
-[Continue 자동완성 권장 모델](https://docs.continue.dev/ide-extensions/autocomplete/model-setup)에는 Qwen2.5-Coder 1.5B/7B 등이 포함된다. 이 선택은 코드 자동완성 용도다. Muse Novel에서는 한국어 서술·대화·문체 유지가 핵심이므로 코드 FIM 모델을 바로 기본값으로 채택하지 않는다.
+## 검열 완화 모델 판단
 
-[Qwen3-30B-A3B](https://huggingface.co/Qwen/Qwen3-30B-A3B)는 활성 파라미터가 3.3B지만 전체는 30.5B다. MoE 활성 크기만으로 3B급 VRAM을 기대할 수 없으므로 두 모델의 동시 상주를 위한 첫 후보에서 제외했다.
+현재 공개 검색에서 Kanana-2-30B-A3B 또는 Kanana-2-3B를 기반으로 하며 제작 과정, 파일, 라이선스와 사용 사례가 충분히 확인되는 abliterated·uncensored 파생 모델은 찾지 못했다. 이름만 비슷한 비공식 변형을 기본 설치 대상으로 삼지 않는다.
 
-[EXAONE 3.5 2.4B](https://huggingface.co/LGAI-EXAONE/EXAONE-3.5-2.4B-Instruct)는 한국어 비교 후보이나 모델 카드에 NC 라이선스를 명시하고 있어 공개 프로젝트의 기본 배포 후보로 우선 선정하지 않았다.
+Kanana Base 또는 Mid 체크포인트는 검열 완화 Instruct 모델이 아니다. 대화 지시, JSON 출력, 도구 호출과 안전한 중단 조건이 약해질 수 있어 스토리 에이전트와 Ghost를 하나로 처리하는 모델로 사용하지 않는다.
 
-## 현재 장비에서 확인한 제한
+검열 완화가 필요한 창작에는 이미 설치된 SuperQwen3.8-27B-abliterated를 비교 프로필로 보존한다. Kanana 자체의 거절률이 실제 문학 요청에서 문제가 되는지 먼저 측정한다. 자체 ablation 또는 비공식 파생 모델 도입은 한국어 문체·지시 준수 저하와 Kanana License의 파생물 조건을 검토한 뒤 별도 실험으로만 진행한다.
 
-현재 두 장의 12GB GPU는 SuperQwen 실행 중 각각 약 11.5GB를 사용했다. 102400 컨텍스트, MTP 보조 모델 및 mmproj가 설정되어 있다. 현재 그대로 다른 GPU 모델을 추가하기에는 여유가 부족하다. 컨텍스트 축소와 보조 모델 제거로 얼마나 확보되는지는 재시작 실험 없이 단정할 수 없다.
+## 현재 Ghost Text 동작과 문제점
 
-9B + 4B 구성을 기본 검증 대상으로 하고, 기존 SuperQwen 모델 파일·서비스는 대형 모델 비교용으로 보존한다. 소형 구성과 SuperQwen을 동시에 켜는 것은 계획에 포함하지 않는다. 이미지 모델까지 세 종류가 항상 상주 가능하다고 가정하지 않는다.
+현재 클라이언트는 900ms 입력 정지 후 단어·문장 경계에서 요청한다. 커서 앞 최대 6,000자와 뒤 최대 1,500자, 작품 설정과 활성 문체 프로필을 서버에서 조합한다. 자동 요청은 최대 80토큰, 명시적 재생성은 최대 120토큰을 요청하고 결과를 최대 180자로 정리한다. 커서가 바뀐 오래된 응답은 폐기하고 같은 문맥은 짧게 캐시한다.
 
-## Muse Novel 쪽에 필요한 연결 작업
+개선이 필요한 항목은 다음과 같다.
 
-현재 `/api/ai/copilot`는 프로젝트 기본 제공자 또는 전역 기본 제공자를 사용한다. Ghost Text 전용 endpoint를 띄우는 것만으로 자동 분리되지 않는다. 다음 구현에서는 story/ghost 역할별 API 설정을 분리해야 한다.
+1. Ghost가 프로젝트·전역 기본 제공자를 그대로 사용한다. 전용 제공자 선택과 공용 제공자 선택을 명시적으로 지원해야 한다.
+2. `qwen-local` 분기는 `/v1/completions`에 수동 프롬프트를 보낸다. Kanana Instruct는 `/v1/chat/completions`와 모델의 chat template를 사용해야 한다.
+3. 모델이 지원하는 native FIM을 확인하지 않은 상태에서 일반 `<CURSOR>` 문자열을 사용한다. Instruct 모델에는 앞뒤 문맥을 분리한 system/user 메시지 방식으로 고정한다.
+4. 같은 llama-server의 긴 생성이 슬롯을 점유하면 자동 Ghost는 빈 결과를 반환한다. 공용 모델 모드에서는 이를 정상적인 busy 상태로 UI와 진단 화면에 표시한다.
+5. 매 요청마다 전달하는 작품 설정과 문체 정보가 Ghost에 필요한 범위를 넘을 수 있다. 고정 prefix 캐시가 재사용되도록 메시지 순서와 cache key를 정리한다.
+6. 30초 클라이언트 timeout은 자동완성 UX 기준으로 너무 길다. 모델 벤치마크 후 자동 요청은 3초 안팎, 명시적 재생성은 더 긴 별도 제한으로 나눈다.
+7. 생성 성공 여부만 기록하고 사용자 수락률과 첫 응답 지연을 측정하지 않는다. 개인 원문을 저장하지 않는 익명 성능 지표가 필요하다.
 
-- WSL: 역할별 llama-server 서비스와 독립 포트. 추론만 제공한다.
-- 웹 서버: 작품 문맥·문체 규칙·커서 앞뒤 텍스트를 조합하고 요청을 보낸다.
-- Ghost 요청: `/v1/chat/completions`에 모델의 정식 chat template를 사용하고 앞뒤 사이에 삽입할 짧은 본문만 요구한다. 범용 모델에 FIM 특수 토큰을 임의로 붙이지 않는다.
-- 기존 `/v1/completions` 경로는 모델에 맞는 프롬프트 형식을 검증한 경우에 유지한다.
-- Ghost 큐는 스토리 긴 요청과 분리한다. 오래된 커서의 결과는 버리고, 새 입력이 들어오면 이전 요청을 취소한다.
-- 작법·세계관 검색은 웹 서버가 담당한다. 매 입력마다 웹 검색·다단계 에이전트 루프를 수행하지 않는다.
-- 출력은 32~80토큰부터 비교하고, 화면에는 완결된 짧은 구절이나 한 문장을 제안한다.
+## 목표 구조
 
-현재 llama.cpp 설치본에는 chat template 추가 인자와 reasoning budget 옵션이 있다. 구체적인 실행 인자와 캐시 지원은 실제 설치한 GGUF로 확인한다. [llama.cpp 서버 문서](https://github.com/ggml-org/llama.cpp/tree/master/tools/server)
+```text
+Windows 통합 실행 메뉴
+  ├─ Kanana Unified       ─┐
+  ├─ Kanana Fast          ─┼─ WSL llama.cpp API만 제공
+  ├─ SuperQwen Full       ─┤
+  └─ Image                ─┘
 
-## 설치 후 평가 기준
+Muse Novel 웹 서버
+  ├─ 역할별 제공자 선택과 상태 확인
+  ├─ 검색·기억·에이전트 루프
+  ├─ Ghost 문맥·문체 조립과 결과 검증
+  └─ DB·파일 저장
+```
 
-사용자가 사용을 허용한 원고로 문장 끝·대사 중간·문단 중간·고유명사·문체 전환을 포함한 30개 이상의 고정 입력을 준비한다. Ghost는 앞뒤 원문 중복, 호칭·시제 충돌, 불필요한 해설, 사용자가 수락할 만한 제안 비율을 비교한다. Story는 장면 계획의 인과·설정 준수·긴 요청의 누락을 비교한다.
+LLM 서버는 모델 추론만 담당한다. SearXNG 검색, 작품 기억 검색, 프롬프트 구성, 재시도, 승인·거부와 데이터 변경은 Muse Novel 서버에서 실행한다.
 
-초기 지연 목표는 warm 상태의 Ghost 완성 제안 p50 1초 내외, p95 2초 내외로 잡되 실측 보장으로 표시하지 않는다. 문맥이 달라지는 cold prompt, 동시 스토리 실행, 첫 로딩은 별도로 측정한다. 품질이 충분하지 않으면 2B 축소를 먼저 적용하지 않고 문맥·프롬프트와 4B 대안을 비교한다.
+## 구현 단계
+
+### 1. 역할별 제공자 설정
+
+- 프로젝트 AI 설정에 `storyProviderId`와 선택적 `ghostProviderId`를 추가한다.
+- Ghost 제공자를 지정하지 않으면 스토리 제공자를 사용한다. Kanana Unified는 두 역할이 같은 provider를 가리킨다.
+- 설정 화면에서 Story와 Ghost의 URL, 모델 ID, health, 예상 역할을 구분해서 보여준다.
+- 기존 데이터는 현재 기본 제공자를 Story와 Ghost의 공용 기본값으로 마이그레이션한다.
+
+### 2. Ghost 호출 경로 정리
+
+- 로컬 Instruct 모델도 `/v1/chat/completions`를 사용한다.
+- system 메시지에는 출력 계약과 문체 규칙, user 메시지에는 prefix·cursor·suffix를 분리한다.
+- Kanana chat template가 실제 적용되는지 `/apply-template` 또는 짧은 API 시험으로 확인한다.
+- 자동 요청은 한 문장 이내, 명시적 요청은 최대 두 문장으로 제한한다.
+- 프롬프트 캐시 재사용률을 높이고 취소된 요청 결과는 저장하지 않는다.
+
+### 3. 실행 메뉴를 역할이 아닌 프로필 중심으로 변경
+
+- 현재 `story/image/ghost` 고정 구조를 `profiles[]`와 `capabilities[]` 구조로 바꾼다.
+- Kanana Unified에는 `story`, `ghost` capability를 함께 부여한다.
+- GPU를 공유하는 프로필에는 같은 exclusive group을 지정해 시작 전 현재 모델을 안전하게 중지한다.
+- 상태, health, 로그, GPU 메모리, Muse Novel에 입력할 endpoint를 한 화면에 표시한다.
+- 메뉴 종료와 모델 중지를 구분한다.
+
+### 4. WSL 서비스 구성
+
+- 기존 `llama-qwen38.service`는 그대로 보존한다.
+- `llama-kanana2-unified.service`와 선택적 `llama-kanana2-fast.service`를 별도 작성한다.
+- 최초 Unified 설정은 Q4_K_M, context 16384, KV cache q4, parallel 1, 두 GPU layer split으로 시작한다.
+- 모델 alias, `/health`, `/models`, chat template와 한국어 출력 시험을 통과해야 메뉴에 READY로 표시한다.
+- 서비스 간 포트 충돌과 동시에 두 대형 모델이 올라가는 상황을 방지한다.
+
+### 5. 고정 평가 세트
+
+사용자가 평가에 사용하도록 허용한 원고로 최소 30개 Ghost 입력과 10개 스토리 요청을 만든다. 원문 자체는 로그나 측정 DB에 저장하지 않는다.
+
+Ghost 평가지표:
+
+- warm 상태 첫 응답 시간 p50·p95
+- 전체 요청 완료 시간
+- 앞 문장 반복과 뒤 문장 복사 비율
+- 시점·시제·호칭 충돌
+- 금지된 메타 설명 출력
+- Tab 전체 수락과 부분 수락 비율
+- 빈 제안과 timeout 비율
+
+스토리 평가지표:
+
+- 검색 필요성 판단과 JSON 형식 성공률
+- 요청 항목 누락률
+- 기존 설정과의 충돌
+- 장면 인과와 인물 동기 유지
+- 긴 출력 중단·잘림 비율
+
+### 6. 비교 및 채택
+
+1. 현재 SuperQwen Full을 기준선으로 측정한다.
+2. Kanana Unified를 같은 입력으로 측정한다.
+3. Unified의 자동 Ghost p95가 목표를 넘으면 Kanana Fast를 측정한다.
+4. Kanana가 반복적으로 문학 요청을 거절할 때만 검열 완화 대안을 별도 평가한다.
+5. 품질·지연·안정성 결과와 라이선스 검토가 끝난 모델만 기본 프로필로 지정한다.
+
+초기 UX 목표는 warm 자동 Ghost p50 1초 내외, p95 2초 안팎이다. 이는 목표값이며 모델 설치 전 성능 보장이 아니다. 품질이 유의미하게 좋아진다면 명시적 재생성에는 더 긴 지연을 허용한다.
+
+## 완료 조건
+
+- 한 모델을 Story와 Ghost 공용 또는 각각 다른 provider로 선택할 수 있다.
+- 장문 요청 중 Ghost가 생략되면 사용자가 busy 상태를 확인할 수 있다.
+- 모델 교체 후 Muse Novel 재시작 없이 health와 모델 ID를 다시 확인할 수 있다.
+- 원고 중간 커서에서 앞뒤 문맥을 반복하지 않는 제안을 만든다.
+- 30개 Ghost 평가와 10개 스토리 평가 결과가 모델별로 저장된다.
+- 검열 완화 여부는 모델 이름이 아니라 실제 문학 요청 거절률로 비교한다.
+- 이미지 생성 모델은 텍스트 모델과 독립된 프로필로 실행·중지할 수 있다.
