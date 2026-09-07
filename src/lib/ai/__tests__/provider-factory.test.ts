@@ -176,6 +176,24 @@ describe('createProvider', () => {
     });
   });
 
+  it('enables JSON Schema output for the local llama.cpp provider', async () => {
+    const { createProvider } = await import('../provider-factory');
+    const { createOpenAICompatible } = await import('@ai-sdk/openai-compatible');
+
+    createProvider({
+      provider: 'qwen-local',
+      modelId: 'Kanana-Ghost',
+      baseUrl: 'http://127.0.0.1:8080',
+    });
+
+    expect(createOpenAICompatible).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'qwen-local',
+        supportsStructuredOutputs: true,
+      })
+    );
+  });
+
   it('throws descriptive error for unsupported provider', async () => {
     const { createProvider } = await import('../provider-factory');
 

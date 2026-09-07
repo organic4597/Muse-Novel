@@ -102,6 +102,7 @@ export function createProvider(config: ProviderConfig): LanguageModel {
         name: 'qwen-local',
         baseURL: withV1Path(config.baseUrl || 'http://127.0.0.1:8321'),
         apiKey: config.apiKey || 'no-key',
+        supportsStructuredOutputs: true,
         transformRequestBody: transformQwenRequestBody,
       });
       return qwenLocal.chatModel(config.modelId || 'Qwen/Qwen3.5-9B-Base');
