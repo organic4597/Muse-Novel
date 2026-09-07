@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  applyManuscriptCriticTone,
   buildManuscriptCriticPrompt,
+  buildManuscriptCriticTonePrompt,
   filterManuscriptCriticContext,
   parseManuscriptCriticReport,
   validateManuscriptCriticSuggestions,
@@ -168,5 +170,47 @@ describe('manuscript critic', () => {
     expect(context).not.toContain('매 화 코미디');
     expect(context).not.toContain('## 등장인물');
     expect(context).not.toContain('줄거리:');
+  });
+
+  it('polishes commentary without changing approved replacement data', () => {
+    const report = {
+      reviewedChars: 100,
+      sceneNotes: [
+        {
+          category: 'pacing' as const,
+          issue: '장면 속도 저하.',
+          recommendation: '문장 병합 필요.',
+        },
+      ],
+      suggestions: [
+        {
+          category: 'rhythm' as const,
+          confidence: 0.9,
+          original: '원래 문장입니다.',
+          reason: '호흡 불균형.',
+          replacement: '다듬은 문장입니다.',
+          scope: 'sentence' as const,
+        },
+      ],
+      summary: '리듬 개선 필요.',
+      truncated: false,
+    };
+    const polished = applyManuscriptCriticTone(report, {
+      reasons: ['문장 호흡을 정리하면 행동이 더 선명하게 읽힙니다.'],
+      sceneNotes: [
+        {
+          issue: '설명이 이어져 장면이 다소 느리게 읽힙니다.',
+          recommendation: '두 문장을 합쳐 행동에 초점을 맞추는 편이 좋습니다.',
+        },
+      ],
+      summary: '장면의 방향은 분명하지만 문장 호흡을 조금 더 정리할 수 있습니다.',
+    });
+
+    expect(polished.summary).toContain('정리할 수 있습니다');
+    expect(polished.suggestions[0].replacement).toBe('다듬은 문장입니다.');
+    expect(polished.suggestions[0].reason).toContain('선명하게 읽힙니다');
+    expect(buildManuscriptCriticTonePrompt(report)).toContain(
+      '부드러운 존댓말 완결문장'
+    );
   });
 });

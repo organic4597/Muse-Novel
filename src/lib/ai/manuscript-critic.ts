@@ -87,6 +87,19 @@ const manuscriptCriticGenerationSchema = z.object({
   summary: z.string().max(500),
 });
 
+const manuscriptCriticToneSchema = z.object({
+  reasons: z.array(z.string().max(300)).max(4),
+  sceneNotes: z.array(
+    z.object({
+      issue: z.string().max(300),
+      recommendation: z.string().max(400),
+    })
+  ).max(3),
+  summary: z.string().max(500),
+});
+
+type ManuscriptCriticTone = z.infer<typeof manuscriptCriticToneSchema>;
+
 export type ManuscriptCriticSuggestion = z.infer<
   typeof manuscriptCriticSuggestionSchema
 >;
@@ -335,6 +348,51 @@ export function filterManuscriptCriticContext(context: string) {
     .slice(0, 3200);
 }
 
+export function buildManuscriptCriticTonePrompt(report: {
+  sceneNotes: ManuscriptCriticSceneNote[];
+  suggestions: ManuscriptCriticSuggestion[];
+  summary: string;
+}) {
+  const commentary = {
+    reasons: report.suggestions.map((suggestion) => suggestion.reason),
+    sceneNotes: report.sceneNotes.map((note) => ({
+      issue: note.issue,
+      recommendation: note.recommendation,
+    })),
+    summary: report.summary,
+  };
+  return [
+    '역할: 소설 편집자의 검토 메모를 작가가 편하게 읽을 수 있는 자연스러운 한국어로 다듬는다.',
+    '사실, 평가 강도, 항목 순서와 개수는 바꾸지 않는다. 새로운 문제나 해결책을 추가하지 않는다.',
+    '모든 문장은 전문 편집자가 작가에게 설명하듯 부드러운 존댓말 완결문장으로 쓴다.',
+    '명사와 키워드를 쉼표로 나열하지 않는다. 같은 표현을 되풀이하지 않고 한 문장에는 한 가지 핵심만 담는다.',
+    '“부재”, “결여”, “조정 필요”, “강화해야 함”처럼 메모식으로 끝내지 말고 무엇이 어떻게 읽히는지 설명한다.',
+    '좋은 예: “설명이 연달아 이어져 인물의 움직임이 다소 늦게 느껴집니다. 두 문장을 합치면 시선이 행동에 자연스럽게 머뭅니다.”',
+    'JSON의 summary, sceneNotes, reasons만 같은 구조와 순서로 반환한다.',
+    formatPromptData('editorial_commentary', JSON.stringify(commentary)),
+  ].join('\n\n');
+}
+
+export function applyManuscriptCriticTone(
+  report: ManuscriptCriticReport,
+  tone: ManuscriptCriticTone
+) {
+  return {
+    ...report,
+    summary: tone.summary.trim() || report.summary,
+    sceneNotes: report.sceneNotes.map((note, index) => ({
+      ...note,
+      issue: tone.sceneNotes[index]?.issue.trim() || note.issue,
+      recommendation:
+        tone.sceneNotes[index]?.recommendation.trim() || note.recommendation,
+    })),
+    suggestions: report.suggestions.map((suggestion, index) => ({
+      ...suggestion,
+      reason: tone.reasons[index]?.trim() || suggestion.reason,
+    })),
+  };
+}
+
 export function buildManuscriptCriticPrompt({
   intensity = 'bold',
   prose,
@@ -458,7 +516,7 @@ export async function analyzeManuscript({
       })
   );
   const parsed = parseManuscriptCriticValue(result.output);
-  return {
+  const report = {
     ...parsed,
     sceneNotes: deduplicateSceneNotes(parsed.sceneNotes),
     suggestions: validateManuscriptCriticSuggestions(
@@ -469,4 +527,37 @@ export async function analyzeManuscript({
     reviewedChars: prose.length,
     truncated,
   };
+
+  try {
+    const toneResult = await runAIRequest(
+      providerConfig,
+      {
+        priority: 'standard',
+        projectId,
+        requestId: requestId ? `${requestId}:manuscript-critic-tone` : undefined,
+        signal,
+      },
+      (abortSignal) =>
+        generateText({
+          abortSignal,
+          frequencyPenalty: 0.18,
+          maxOutputTokens: 900,
+          model,
+          output: Output.object({
+            description: '자연스러운 한국어 편집 의견',
+            name: 'manuscript_critic_tone',
+            schema: manuscriptCriticToneSchema,
+          }),
+          prompt: buildManuscriptCriticTonePrompt(report),
+          providerOptions: getProviderOptions(providerConfig, {
+            disableReasoning: providerConfig.provider === 'qwen-local',
+          }),
+          temperature: 0.22,
+        })
+    );
+    return applyManuscriptCriticTone(report, toneResult.output);
+  } catch (error) {
+    console.warn('[manuscript-critic] tone polishing skipped', error);
+    return report;
+  }
 }
