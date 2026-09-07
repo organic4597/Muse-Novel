@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildManuscriptCriticPrompt,
+  filterManuscriptCriticContext,
   parseManuscriptCriticReport,
   validateManuscriptCriticSuggestions,
 } from './manuscript-critic';
@@ -135,5 +136,36 @@ describe('manuscript critic', () => {
     ]);
 
     expect(suggestions).toHaveLength(1);
+  });
+
+  it('keeps local chapter constraints but removes global plot pressure', () => {
+    const context = filterManuscriptCriticContext(`## 소설 정보
+제목: 흑묘연화록
+장르: 무협
+줄거리: 토끼가 무림을 모험한다.
+
+## 집필 기준
+핵심 재미/감정 약속: 매 화 코미디
+톤: 유머
+서술 시점: 3인칭 제한
+서술 시제: 과거형
+문체 규칙: 긴박한 장면에서는 코미디를 넣지 않음.
+
+## 현재 챕터
+제목: 제 1장
+개요: 무림인 시점으로 산을 수색한다.
+
+## 등장인물
+- 검은 토끼: 주인공
+
+## 현재 작가 노트
+토끼는 아직 등장하지 않는다.`);
+
+    expect(context).toContain('개요: 무림인 시점');
+    expect(context).toContain('긴박한 장면에서는 코미디를 넣지 않음');
+    expect(context).toContain('토끼는 아직 등장하지 않는다');
+    expect(context).not.toContain('매 화 코미디');
+    expect(context).not.toContain('## 등장인물');
+    expect(context).not.toContain('줄거리:');
   });
 });
