@@ -5,6 +5,7 @@ import {
   getAutomaticRequestDelay,
   getNextCandidateIndex,
   InlineSuggestionKit,
+  shouldRenderInlineSuggestion,
 } from '../plugins/inline-suggestion-plugin';
 
 // ─── InlineSuggestionPlugin Configuration Tests ──────────────────────────────
@@ -33,6 +34,12 @@ describe('InlineSuggestionPlugin configuration', () => {
     expect(getAutomaticRequestDelay(10_000, 0, 350)).toBe(350);
     expect(getAutomaticRequestDelay(10_000, 9000, 350)).toBe(1000);
     expect(getAutomaticRequestDelay(10_000, 9900, 700)).toBe(1900);
+  });
+
+  it('does not decorate editor text while a suggestion is still loading', () => {
+    const point = { offset: 4, path: [0, 0] };
+    expect(shouldRenderInlineSuggestion(true, null, point)).toBe(false);
+    expect(shouldRenderInlineSuggestion(true, '완성 문장', point)).toBe(true);
   });
 });
 

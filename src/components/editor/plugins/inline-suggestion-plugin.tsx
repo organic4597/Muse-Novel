@@ -549,6 +549,14 @@ export function getAutomaticRequestDelay(
   return Math.max(debounceMs, cooldownRemaining);
 }
 
+export function shouldRenderInlineSuggestion(
+  enabled: boolean,
+  suggestionText: string | null,
+  suggestionPoint: { offset: number; path: number[] } | null
+) {
+  return enabled && Boolean(suggestionText) && Boolean(suggestionPoint);
+}
+
 function getClientCacheKey(
   chapterId: string | null,
   prefix: string,
@@ -645,15 +653,7 @@ const runCompletion = async (
     abortController,
     isLoading: true,
     requestStatus: 'loading',
-    suggestionNodeId: currentBlockId,
-    suggestionPoint: editor.selection
-      ? {
-          offset: editor.selection.focus.offset,
-          path: [...editor.selection.focus.path],
-        }
-      : null,
   });
-  editor.api.redecorate();
 
   try {
     const requestStartedAt = Date.now();
@@ -756,7 +756,6 @@ const runCompletion = async (
     clearTimeout(timeoutId);
     if (requestId === activeRequestId) {
       setOptions({ abortController: null, isLoading: false });
-      editor.api.redecorate();
     }
   }
 };
@@ -784,14 +783,13 @@ export const InlineSuggestionPlugin =
       const { getOptions } = getEditorPlugin<InlineSuggestionConfig>(editor, {
         key: 'inlineSuggestion',
       });
-      const { enabled, isLoading, suggestionPoint, suggestionText } = getOptions();
+      const { enabled, suggestionPoint, suggestionText } = getOptions();
       const [node, path] = entry;
 
       if (
-        !enabled ||
-        (!suggestionText && !isLoading) ||
-        !suggestionPoint ||
+        !shouldRenderInlineSuggestion(enabled, suggestionText, suggestionPoint) ||
         !TextApi.isText(node) ||
+        !suggestionPoint ||
         !PathApi.equals(path, suggestionPoint.path)
       ) {
         return;
@@ -1013,24 +1011,12 @@ export function InlineSuggestionLeaf(props: PlateLeafProps) {
 
 function InlineGhostTextContent() {
   const { api, editor } = useEditorPlugin(InlineSuggestionPlugin);
-  const isLoading = usePluginOption(InlineSuggestionPlugin, 'isLoading');
   const text = usePluginOption(InlineSuggestionPlugin, 'suggestionText');
   const candidateIndex = usePluginOption(
     InlineSuggestionPlugin,
     'suggestionCandidateIndex'
   );
   const candidates = usePluginOption(InlineSuggestionPlugin, 'suggestionCandidates');
-
-  if (isLoading && !text) {
-    return (
-      <span
-        className="pointer-events-none inline-flex items-center gap-2 text-muted-foreground/50"
-        contentEditable={false}
-      >
-        <span className="inline-block size-2 animate-pulse rounded-full bg-current" />
-      </span>
-    );
-  }
 
   if (!text) return null;
 
