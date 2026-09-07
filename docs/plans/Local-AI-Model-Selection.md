@@ -10,12 +10,12 @@
 
 | 프로필 | 목적 | 초기 구성 |
 | --- | --- | --- |
-| Kanana Unified | 한국어 스토리 작업과 Ghost Text 공용 | 30B-A3B Instruct, Q4_K_M, 16K context, 두 GPU 분산 |
+| Kanana Unified | 한국어 스토리 작업과 Ghost Text 공용 | 30B-A3B Instruct, Q4_K_M, 32K context, 두 GPU 분산 |
 | Kanana Fast | Ghost 지연 비교 및 저사양 대안 | Kanana-2-3B-Instruct, 품질 우선 양자화, 한 GPU |
 | SuperQwen Full | 검열 완화가 필요한 창작과 기존 품질 비교 | 현재 SuperQwen3.8 27B abliterated 서비스 보존 |
 | Image | 캐릭터·지형 이미지 생성 | Muse Novel 호환 API 모델 선정 후 별도 등록 |
 
-Kanana Unified가 안정적으로 올라가면 32K context를 별도 시험한다. Ghost Text에는 실제로 필요한 앞뒤 문맥만 보내므로 16K로도 충분한지 먼저 검증한다. MTP draft 모델, mmproj, 비전 인코더는 초기 서비스에 추가하지 않는다.
+Kanana Unified는 32K context로 실제 로딩과 짧은 생성 시험을 수행한다. Ghost Text에는 필요한 앞뒤 문맥만 보내며 MTP draft 모델, mmproj, 비전 인코더는 추가하지 않는다.
 
 ## 선정 근거
 
@@ -96,7 +96,7 @@ LLM 서버는 모델 추론만 담당한다. SearXNG 검색, 작품 기억 검�
 
 - 기존 `llama-qwen38.service`는 그대로 보존한다.
 - `llama-kanana2.service`와 선택적 `llama-kanana2-fast.service`를 별도 작성한다.
-- 최초 Unified 설정은 Q4_K_M, context 16384, KV cache q4, parallel 1, 두 GPU layer split으로 시작한다.
+- Unified 설정은 Q4_K_M, context 32768, KV cache q4, parallel 1, 두 GPU layer split을 사용한다.
 - 모델 alias, `/health`, `/models`, chat template와 한국어 출력 시험을 통과해야 메뉴에 READY로 표시한다.
 - 서비스 간 포트 충돌과 동시에 두 대형 모델이 올라가는 상황을 방지한다.
 

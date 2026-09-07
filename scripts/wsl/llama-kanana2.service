@@ -14,7 +14,7 @@ ExecStart=/opt/llama.cpp-qwen38/build/bin/llama-server \
   --n-gpu-layers all \
   --split-mode layer \
   --tensor-split 48,52 \
-  --ctx-size 16384 \
+  --ctx-size 32768 \
   --cache-type-k q4_0 \
   --cache-type-v q4_0 \
   --flash-attn on \
