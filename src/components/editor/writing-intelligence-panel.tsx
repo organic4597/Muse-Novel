@@ -5,6 +5,7 @@ import {
   BrainCircuit,
   CheckCircle2,
   ClipboardCheck,
+  FileSearch2,
   Loader2,
   Play,
   RefreshCw,
@@ -16,6 +17,7 @@ import { WebResearchSources, WebSearchControl } from '@/components/ai/web-resear
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import type { ManuscriptCriticSuggestion } from '@/lib/ai/manuscript-critic';
 import type { WebResearch, WebSearchMode } from '@/lib/web-research/types';
 
 type Finding = {
@@ -47,11 +49,21 @@ const CATEGORY_LABELS: Record<string, string> = {
   world_rule: '세계 규칙',
 };
 
+const CRITIC_CATEGORY_LABELS: Record<string, string> = {
+  awkwardness: '어색한 표현',
+  clarity: '명료성',
+  dialogue: '대사',
+  redundancy: '중복',
+  rhythm: '문장 리듬',
+  viewpoint: '시점',
+};
+
 export type WritingIntelligencePanelProps = {
   chapterId: string;
   getCurrentContentJson: () => Promise<string> | string;
   getCursorContext?: () => { before: string; after: string };
   onApply: (text: string) => void;
+  onReplace: (original: string, replacement: string) => boolean;
   projectId: string;
 };
 
@@ -101,6 +113,7 @@ export function WritingIntelligencePanel({
   getCurrentContentJson,
   getCursorContext,
   onApply,
+  onReplace,
   projectId,
 }: WritingIntelligencePanelProps) {
   const [instruction, setInstruction] = useState('');
@@ -125,6 +138,14 @@ export function WritingIntelligencePanel({
   const [indexStatus, setIndexStatus] = useState('');
   const [checking, setChecking] = useState(false);
   const [report, setReport] = useState<{ findings: Finding[]; summary: string } | null>(null);
+  const [criticRunning, setCriticRunning] = useState(false);
+  const [criticStatus, setCriticStatus] = useState('');
+  const [criticReport, setCriticReport] = useState<{
+    reviewedChars: number;
+    suggestions: ManuscriptCriticSuggestion[];
+    summary: string;
+    truncated: boolean;
+  } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const targetLengthRef = useRef('1800');
   const pendingOutputRef = useRef('');
@@ -204,6 +225,64 @@ export function WritingIntelligencePanel({
     } finally {
       setChecking(false);
     }
+  };
+
+  const runCritic = async () => {
+    setCriticRunning(true);
+    setCriticReport(null);
+    setCriticStatus('현재 원고의 문장과 표현을 검토하는 중...');
+    try {
+      const currentContentJson = await getCurrentContentJson();
+      const response = await fetch(`/api/projects/${projectId}/manuscript-critic`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chapterId, currentContentJson }),
+      });
+      const data = (await response.json()) as {
+        error?: string;
+        reviewedChars?: number;
+        suggestions?: ManuscriptCriticSuggestion[];
+        summary?: string;
+        truncated?: boolean;
+      };
+      if (!response.ok) throw new Error(data.error ?? '문장 비평에 실패했습니다.');
+      setCriticReport({
+        reviewedChars: data.reviewedChars ?? 0,
+        suggestions: data.suggestions ?? [],
+        summary: data.summary ?? '',
+        truncated: data.truncated ?? false,
+      });
+      setCriticStatus('');
+    } catch (error) {
+      setCriticStatus(
+        error instanceof Error ? error.message : '문장 비평에 실패했습니다.'
+      );
+    } finally {
+      setCriticRunning(false);
+    }
+  };
+
+  const applyCriticSuggestion = (
+    suggestion: ManuscriptCriticSuggestion,
+    index: number
+  ) => {
+    if (!onReplace(suggestion.original, suggestion.replacement)) {
+      setCriticStatus(
+        '원문이 이미 바뀌었거나 서식 경계를 걸쳐 있어 자동 교체하지 못했습니다. 다시 비평해주세요.'
+      );
+      return;
+    }
+    setCriticReport((current) =>
+      current
+        ? {
+            ...current,
+            suggestions: current.suggestions.filter(
+              (_item, suggestionIndex) => suggestionIndex !== index
+            ),
+          }
+        : current
+    );
+    setCriticStatus('제안을 승인해 원고에 반영했습니다.');
   };
 
   const runAgent = async () => {
@@ -324,10 +403,83 @@ export function WritingIntelligencePanel({
             {checking ? <Loader2 className="animate-spin" /> : <ClipboardCheck />}
             전체 일관성 검사
           </Button>
+          <Button
+            disabled={criticRunning || running || indexing || checking}
+            onClick={runCritic}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {criticRunning ? <Loader2 className="animate-spin" /> : <FileSearch2 />}
+            문장 비평
+          </Button>
         </div>
       </div>
 
       {indexStatus && <p className="text-xs leading-5 text-muted-foreground" role="status">{indexStatus}</p>}
+      {criticStatus && (
+        <p className="text-xs leading-5 text-muted-foreground" role="status">
+          {criticRunning && <Loader2 className="mr-1 inline size-3 animate-spin" />}
+          {criticStatus}
+        </p>
+      )}
+
+      {criticReport && (
+        <div className="space-y-3 rounded-2xl border border-border bg-card/80 p-4">
+          <div>
+            <h4 className="flex items-center gap-2 font-semibold">
+              <FileSearch2 className="size-4 text-primary" /> 문장 비평 제안
+            </h4>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              {criticReport.summary}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {criticReport.reviewedChars.toLocaleString()}자 검토
+              {criticReport.truncated && ' · 긴 원고이므로 최근 20,000자 범위'}
+            </p>
+          </div>
+          {criticReport.suggestions.length === 0 ? (
+            <p className="rounded-xl bg-muted/40 p-3 text-sm text-muted-foreground">
+              원문으로 검증할 수 있는 수정 제안이 없습니다.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {criticReport.suggestions.map((suggestion, index) => (
+                <article
+                  className="rounded-xl border border-border/70 bg-background/55 p-3"
+                  key={`${suggestion.original}-${index}`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground">
+                      {CRITIC_CATEGORY_LABELS[suggestion.category] ?? suggestion.category} · 확신 {Math.round(suggestion.confidence * 100)}%
+                    </span>
+                    <Button
+                      onClick={() => applyCriticSuggestion(suggestion, index)}
+                      size="sm"
+                      type="button"
+                    >
+                      승인하고 교체
+                    </Button>
+                  </div>
+                  <div className="mt-3 grid gap-2 text-sm md:grid-cols-2">
+                    <div className="rounded-lg bg-destructive/5 p-3">
+                      <strong className="text-xs text-muted-foreground">현재 문장</strong>
+                      <p className="mt-1 whitespace-pre-wrap leading-6">{suggestion.original}</p>
+                    </div>
+                    <div className="rounded-lg bg-primary/5 p-3">
+                      <strong className="text-xs text-muted-foreground">개선 제안</strong>
+                      <p className="mt-1 whitespace-pre-wrap leading-6">{suggestion.replacement}</p>
+                    </div>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                    {suggestion.reason}
+                  </p>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_9rem_auto] lg:items-end">
         <div>

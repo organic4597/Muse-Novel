@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   editor: {
     api: {
       isExpanded: vi.fn(() => false),
+      nodes: vi.fn(() => []),
     },
     getOptions: vi.fn(() => ({ chatOptions: {} })),
     getApi: vi.fn(() => ({ inlineSuggestion: { clearSuggestion: vi.fn() } })),
@@ -14,6 +15,8 @@ const mocks = vi.hoisted(() => ({
       collapse: vi.fn(),
       focus: vi.fn(),
       insertFragment: vi.fn(),
+      insertText: vi.fn(),
+      select: vi.fn(),
     },
     selection: null,
   },
@@ -25,6 +28,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('platejs', () => ({
   normalizeNodeId: mocks.normalizeNodeId,
+  TextApi: { isText: (node: unknown) => Boolean(node && typeof node === 'object' && 'text' in node) },
 }));
 
 vi.mock('platejs/react', () => ({
@@ -58,6 +62,7 @@ describe('PlateEditor content initialization', () => {
     mocks.normalizeNodeId.mockImplementation((value: unknown) => value);
     mocks.usePlateEditor.mockReturnValue(mocks.editor);
     mocks.editor.getOptions.mockReturnValue({ chatOptions: {} });
+    mocks.editor.api.nodes.mockReturnValue([]);
     mocks.editor.selection = null;
   });
 
@@ -133,6 +138,32 @@ describe('PlateEditor content initialization', () => {
     render(<PlateEditor chapterId="chapter-1" ref={ref} />);
     ref.current?.insertText('중간에 삽입');
     expect(mocks.editor.tf.focus).toHaveBeenCalledWith({ at: selection });
+  });
+
+  it('replaces one exact critic quote and rejects ambiguous quotes', () => {
+    const ref = createRef<PlateEditorHandle>();
+    mocks.editor.api.nodes.mockReturnValue([
+      [{ text: '그는 빠르게 빠른 걸음으로 걸었다.' }, [0, 0]],
+    ] as never);
+    render(<PlateEditor chapterId="chapter-1" ref={ref} />);
+
+    expect(
+      ref.current?.replaceText(
+        '빠르게 빠른 걸음으로',
+        '빠른 걸음으로'
+      )
+    ).toBe(true);
+    expect(mocks.editor.tf.select).toHaveBeenCalledWith({
+      anchor: { offset: 3, path: [0, 0] },
+      focus: { offset: 14, path: [0, 0] },
+    });
+    expect(mocks.editor.tf.insertText).toHaveBeenCalledWith('빠른 걸음으로');
+
+    mocks.editor.api.nodes.mockReturnValue([
+      [{ text: '반복 문장' }, [0, 0]],
+      [{ text: '반복 문장' }, [1, 0]],
+    ] as never);
+    expect(ref.current?.replaceText('반복 문장', '새 문장')).toBe(false);
   });
 
   it('turns Ghost Text off through the existing plugin option and clears a pending suggestion', () => {

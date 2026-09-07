@@ -1,6 +1,6 @@
 'use client';
 
-import { normalizeNodeId, type TRange, type Value } from 'platejs';
+import { normalizeNodeId, TextApi, type TRange, type Value } from 'platejs';
 import { Plate, usePlateEditor } from 'platejs/react';
 import {
   type ClipboardEvent,
@@ -42,6 +42,7 @@ export interface PlateEditorHandle {
   flushProcessing: () => Promise<void>;
   getCursorContext: () => { before: string; after: string };
   insertText: (text: string) => void;
+  replaceText: (original: string, replacement: string) => boolean;
 }
 
 export function PlateEditor({
@@ -110,6 +111,33 @@ export function PlateEditor({
         if (fragment.length > 0) {
           editor.tf.insertFragment(fragment);
         }
+      },
+      replaceText: (original: string, replacement: string) => {
+        if (!original || original === replacement) return false;
+        const matches: Array<{ index: number; path: number[] }> = [];
+        for (const [node, path] of editor.api.nodes({
+          at: [],
+          match: (candidate) => TextApi.isText(candidate),
+        })) {
+          if (!TextApi.isText(node)) continue;
+          let offset = node.text.indexOf(original);
+          while (offset >= 0) {
+            matches.push({ index: offset, path: [...path] });
+            offset = node.text.indexOf(original, offset + original.length);
+          }
+        }
+        if (matches.length !== 1) return false;
+        const match = matches[0];
+        editor.tf.select({
+          anchor: { offset: match.index, path: match.path },
+          focus: {
+            offset: match.index + original.length,
+            path: match.path,
+          },
+        });
+        editor.tf.insertText(replacement);
+        editor.tf.focus();
+        return true;
       },
     }),
     [editor, flush]

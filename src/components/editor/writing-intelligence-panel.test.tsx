@@ -28,6 +28,7 @@ describe('WritingIntelligencePanel', () => {
         chapterId="11111111-1111-4111-8111-111111111111"
         getCurrentContentJson={() => '[]'}
         onApply={onApply}
+        onReplace={vi.fn()}
         projectId="project-1"
       />
     );
@@ -60,6 +61,7 @@ describe('WritingIntelligencePanel', () => {
         chapterId="11111111-1111-4111-8111-111111111111"
         getCurrentContentJson={() => '[]'}
         onApply={onApply}
+        onReplace={vi.fn()}
         projectId="project-1"
       />
     );
@@ -94,6 +96,7 @@ describe('WritingIntelligencePanel', () => {
           before: '커서 바로 앞 문장',
         })}
         onApply={vi.fn()}
+        onReplace={vi.fn()}
         projectId="project-1"
       />
     );
@@ -114,6 +117,50 @@ describe('WritingIntelligencePanel', () => {
         cursorBefore: '커서 바로 앞 문장',
         targetLength: 777,
       })
+    );
+  });
+
+  it('applies a verified critic suggestion only after approval', async () => {
+    const onReplace = vi.fn(() => true);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        Response.json({
+          reviewedChars: 120,
+          suggestions: [
+            {
+              category: 'rhythm',
+              confidence: 0.91,
+              original: '그는 빠르게 빠른 걸음으로 걸었다.',
+              reason: '같은 의미가 반복되어 문장 리듬이 늘어집니다.',
+              replacement: '그는 빠른 걸음으로 나아갔다.',
+            },
+          ],
+          summary: '중복 표현 한 곳을 다듬을 수 있습니다.',
+          truncated: false,
+        })
+      )
+    );
+
+    render(
+      <WritingIntelligencePanel
+        chapterId="11111111-1111-4111-8111-111111111111"
+        getCurrentContentJson={() =>
+          '[{"children":[{"text":"그는 빠르게 빠른 걸음으로 걸었다."}],"type":"p"}]'
+        }
+        onApply={vi.fn()}
+        onReplace={onReplace}
+        projectId="project-1"
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: '문장 비평' }));
+
+    expect(await screen.findByText('그는 빠른 걸음으로 나아갔다.')).toBeInTheDocument();
+    expect(onReplace).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '승인하고 교체' }));
+    expect(onReplace).toHaveBeenCalledWith(
+      '그는 빠르게 빠른 걸음으로 걸었다.',
+      '그는 빠른 걸음으로 나아갔다.'
     );
   });
 });

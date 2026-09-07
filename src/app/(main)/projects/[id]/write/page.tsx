@@ -358,6 +358,9 @@ export default function WritePage() {
                     }
                   }
                   onApply={(text) => editorRef.current?.insertText(text)}
+                  onReplace={(original, replacement) =>
+                    editorRef.current?.replaceText(original, replacement) ?? false
+                  }
                   projectId={params.id}
                 />
               )}
