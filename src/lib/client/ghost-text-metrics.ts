@@ -93,9 +93,9 @@ export function getGhostTextTuning(projectId: string): {
   const { counts } = readGhostTextMetrics(projectId);
   const shown = counts.automatic_shown + counts.explicit_shown;
   const accepted = counts.full_accepted + counts.word_accepted;
-  if (shown < 10) return { debounceMs: 900 };
+  if (shown < 10) return { debounceMs: 350 };
   const acceptanceRate = accepted / shown;
-  if (acceptanceRate >= 0.45) return { debounceMs: 700 };
-  if (acceptanceRate < 0.15) return { debounceMs: 1300 };
-  return { debounceMs: 900 };
+  if (acceptanceRate >= 0.45) return { debounceMs: 250 };
+  if (acceptanceRate < 0.15) return { debounceMs: 700 };
+  return { debounceMs: 350 };
 }

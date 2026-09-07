@@ -86,10 +86,28 @@ async function generateInlineCompletion({
   genre?: string | null;
 }) {
   const startedAt = Date.now();
-  const boundedPrefix = prefix.slice(-6000);
-  const boundedSuffix = suffix.slice(0, 1500);
+  const boundedPrefix = prefix.slice(explicit ? -6000 : -1600);
+  const boundedSuffix = suffix.slice(0, explicit ? 1500 : 400);
   if (boundedPrefix.trim().length < (explicit ? 4 : 15)) {
     return NextResponse.json({ text: '', status: 'empty', latencyMs: 0 });
+  }
+
+  const localRootUrl = providerConfig.provider === 'qwen-local'
+    ? (providerConfig.baseUrl || 'http://127.0.0.1:8321')
+        .replace(/\/v1\/?$/, '')
+        .replace(/\/+$/, '')
+    : null;
+  if (
+    !explicit &&
+    localRootUrl &&
+    !(await hasAvailableLocalModelSlot(localRootUrl, req.signal))
+  ) {
+    return NextResponse.json({
+      text: '',
+      skipped: 'model_busy',
+      status: 'model_busy',
+      latencyMs: Date.now() - startedAt,
+    });
   }
 
   const [storyContext, activeProfile] = await Promise.all([
@@ -99,7 +117,7 @@ async function generateInlineCompletion({
       chapterId ?? undefined,
       {
         focusText: `${boundedPrefix}\n${boundedSuffix}`,
-        maxChars: 1400,
+        maxChars: explicit ? 1400 : 700,
       }
     ).catch(() => ''),
     Promise.resolve(getActiveWritingStyleProfile(db, projectId)).catch(
@@ -131,7 +149,7 @@ async function generateInlineCompletion({
     prefix: boundedPrefix,
     suffix: boundedSuffix,
     storyContext,
-    styleDescription: activeProfile?.description,
+    styleDescription: activeProfile?.description?.slice(0, explicit ? 1200 : 500),
     genre,
     explicit,
   };
@@ -142,18 +160,7 @@ async function generateInlineCompletion({
 
   let rawText = '';
   if (providerConfig.provider === 'qwen-local') {
-    const rootUrl = (
-      providerConfig.baseUrl || 'http://127.0.0.1:8321'
-    ).replace(/\/v1\/?$/, '').replace(/\/+$/, '');
-    if (!explicit && !(await hasAvailableLocalModelSlot(rootUrl, req.signal))) {
-      return NextResponse.json({
-        text: '',
-        skipped: 'model_busy',
-        status: 'model_busy',
-        latencyMs: Date.now() - startedAt,
-      });
-    }
-    const response = await fetch(`${rootUrl}/v1/chat/completions`, {
+    const response = await fetch(`${localRootUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -168,7 +175,7 @@ async function generateInlineCompletion({
             content: buildInlineCompletionUserPrompt(inlineInput),
           },
         ],
-        max_tokens: explicit ? 120 : 80,
+        max_tokens: explicit ? 96 : 48,
         temperature,
         repeat_penalty: 1.18,
         top_k: 20,
@@ -193,7 +200,7 @@ async function generateInlineCompletion({
   } else {
     const result = await generateText({
       abortSignal: req.signal,
-      maxOutputTokens: explicit ? 120 : 80,
+      maxOutputTokens: explicit ? 96 : 48,
       model,
       prompt: buildInlineCompletionUserPrompt(inlineInput),
       providerOptions: getProviderOptions(providerConfig),

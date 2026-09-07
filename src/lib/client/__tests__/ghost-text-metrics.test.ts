@@ -43,7 +43,7 @@ describe('Ghost Text local metrics', () => {
       if (index < 5) recordGhostTextMetric('high', 'full_accepted');
     }
 
-    expect(getGhostTextTuning('low').debounceMs).toBe(1300);
-    expect(getGhostTextTuning('high').debounceMs).toBe(700);
+    expect(getGhostTextTuning('low').debounceMs).toBe(700);
+    expect(getGhostTextTuning('high').debounceMs).toBe(250);
   });
 });

@@ -210,6 +210,54 @@ describe('POST /api/ai/copilot', () => {
     expect(payload.messages[1].content).toContain('멀리서 종소리가 울렸다.');
   });
 
+  it('bounds automatic Ghost context before calling a local model', async () => {
+    const { getProject } = await import('@/lib/db/queries/projects');
+    const { getDefaultProvider } = await import('@/lib/db/queries/ai-settings');
+    const { createProvider } = await import('@/lib/ai/provider-factory');
+    const fetchMock = vi.fn().mockImplementation((input: string | URL) => {
+      if (String(input).includes('/slots?')) return Promise.resolve(new Response('{}'));
+      return Promise.resolve(
+        Response.json({
+          choices: [{ message: { content: '토끼의 귀가 움직였다.' } }],
+        })
+      );
+    });
+
+    vi.mocked(getProject).mockResolvedValue(mockProject);
+    vi.mocked(getDefaultProvider).mockResolvedValue({
+      ...mockProviderSettings,
+      providerType: 'qwen-local',
+      modelName: 'Kanana-Ghost',
+      baseUrl: 'http://ghost-model:8080',
+    });
+    vi.mocked(createProvider).mockReturnValue(mockModel as never);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { POST } = await import('../copilot/route');
+    const response = await POST(
+      createRequest({
+        mode: 'inline-suggestion',
+        trigger: 'automatic',
+        projectId: 'project-1',
+        prefix: `삭제되어야할-오래된-문맥-${'가'.repeat(3000)} 끝 문장.`,
+        suffix: `${'나'.repeat(1000)} 뒤 문장.`,
+      })
+    );
+
+    expect(response.status).toBe(200);
+    const chatRequest = fetchMock.mock.calls.find(([url]) =>
+      String(url).endsWith('/v1/chat/completions')
+    );
+    const payload = JSON.parse(String((chatRequest?.[1] as RequestInit).body));
+    expect(payload.max_tokens).toBe(48);
+    expect(payload.messages[1].content).not.toContain('삭제되어야할-오래된-문맥');
+    expect(payload.messages[1].content).toContain('끝 문장.');
+    const suffixMatch = payload.messages[1].content.match(
+      /<suffix>([\s\S]*?)<\/suffix>/u
+    );
+    expect(suffixMatch?.[1].trim().length).toBeLessThanOrEqual(400);
+  });
+
   it('prefers a project Ghost provider only for inline suggestions', async () => {
     const { getProject } = await import('@/lib/db/queries/projects');
     const { getDefaultProvider } = await import('@/lib/db/queries/ai-settings');

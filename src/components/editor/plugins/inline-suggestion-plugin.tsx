@@ -59,8 +59,10 @@ export type InlineSuggestionConfig = PluginConfig<
 const NON_SPACE_REGEX = /^\s*(\S)/;
 const TOKEN_MATCH_REGEX = /^(\s*\S+[\u3000-\u303F\uFF00-\uFFEF.,!?…]*)/;
 const PROJECT_PATH_REGEX = /\/projects\/([^/]+)/;
-const COPILOT_PREFIX_CHAR_LIMIT = 6000;
-const COPILOT_SUFFIX_CHAR_LIMIT = 1500;
+const COPILOT_AUTOMATIC_PREFIX_CHAR_LIMIT = 1600;
+const COPILOT_AUTOMATIC_SUFFIX_CHAR_LIMIT = 400;
+const COPILOT_EXPLICIT_PREFIX_CHAR_LIMIT = 6000;
+const COPILOT_EXPLICIT_SUFFIX_CHAR_LIMIT = 1500;
 const COPILOT_AUTOMATIC_TIMEOUT_MS = 4000;
 const COPILOT_EXPLICIT_TIMEOUT_MS = 15000;
 const COPILOT_SENTENCE_CHAR_LIMIT = 120;
@@ -324,11 +326,11 @@ export function getCursorAwareContext(
   const prefix = [...previousBlocks, currentBlockPrefix]
     .filter(Boolean)
     .join('\n\n')
-    .slice(-COPILOT_PREFIX_CHAR_LIMIT);
+    .slice(-COPILOT_EXPLICIT_PREFIX_CHAR_LIMIT);
   const suffix = [currentBlockSuffix, ...nextBlocks]
     .filter(Boolean)
     .join('\n\n')
-    .slice(0, COPILOT_SUFFIX_CHAR_LIMIT);
+    .slice(0, COPILOT_EXPLICIT_SUFFIX_CHAR_LIMIT);
 
   return { prefix, suffix, currentBlockPrefix, currentBlockSuffix };
 }
@@ -535,12 +537,19 @@ export function getNextCandidateIndex(
 function getClientCacheKey(
   chapterId: string | null,
   prefix: string,
-  suffix: string
+  suffix: string,
+  explicit = false
 ): string {
+  const prefixLimit = explicit
+    ? COPILOT_EXPLICIT_PREFIX_CHAR_LIMIT
+    : COPILOT_AUTOMATIC_PREFIX_CHAR_LIMIT;
+  const suffixLimit = explicit
+    ? COPILOT_EXPLICIT_SUFFIX_CHAR_LIMIT
+    : COPILOT_AUTOMATIC_SUFFIX_CHAR_LIMIT;
   return [
     chapterId ?? '',
-    prefix.slice(-COPILOT_PREFIX_CHAR_LIMIT),
-    suffix.slice(0, COPILOT_SUFFIX_CHAR_LIMIT),
+    prefix.slice(-prefixLimit),
+    suffix.slice(0, suffixLimit),
   ].join('\u0000');
 }
 
@@ -574,10 +583,20 @@ const runCompletion = async (
   if (!context) return;
   if (!options.explicit && !shouldTriggerAutomatically(context)) return;
 
+  const prefixLimit = options.explicit
+    ? COPILOT_EXPLICIT_PREFIX_CHAR_LIMIT
+    : COPILOT_AUTOMATIC_PREFIX_CHAR_LIMIT;
+  const suffixLimit = options.explicit
+    ? COPILOT_EXPLICIT_SUFFIX_CHAR_LIMIT
+    : COPILOT_AUTOMATIC_SUFFIX_CHAR_LIMIT;
+  const requestPrefix = context.prefix.slice(-prefixLimit);
+  const requestSuffix = context.suffix.slice(0, suffixLimit);
+
   const cacheKey = getClientCacheKey(
     chapterId,
-    context.prefix,
-    context.suffix
+    requestPrefix,
+    requestSuffix,
+    Boolean(options.explicit)
   );
   const projectId = getProjectIdFromLocation();
   if (!projectId) return;
@@ -626,12 +645,12 @@ const runCompletion = async (
     const res = await fetch('/api/ai/copilot', {
       body: JSON.stringify({
         mode: 'inline-suggestion',
-        maxOutputTokens: options.explicit ? 120 : 80,
+        maxOutputTokens: options.explicit ? 96 : 48,
         projectId,
         chapterId,
-        prompt: context.prefix,
-        prefix: context.prefix,
-        suffix: context.suffix,
+        prompt: requestPrefix,
+        prefix: requestPrefix,
+        suffix: requestSuffix,
         trigger: options.explicit ? 'explicit' : 'automatic',
         temperature: options.temperature,
       }),
@@ -676,7 +695,8 @@ const runCompletion = async (
       getClientCacheKey(
         chapterId,
         latestContext.prefix,
-        latestContext.suffix
+        latestContext.suffix,
+        Boolean(options.explicit)
       ) !== cacheKey
     ) {
       return;
@@ -734,7 +754,7 @@ const triggerCompletion = (editor: PlateEditor, explicit = false) => {
   const projectId = getProjectIdFromLocation();
   const debounceMs = projectId
     ? getGhostTextTuning(projectId).debounceMs
-    : 900;
+    : 350;
   debounceTimer = setTimeout(
     () => runCompletion(editor, { temperature: 0.25 }),
     debounceMs
