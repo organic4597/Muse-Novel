@@ -45,6 +45,72 @@ export interface PlateEditorHandle {
   replaceText: (original: string, replacement: string) => boolean;
 }
 
+type IndexedTextEntry = readonly [{ text: string }, number[]];
+
+export function findUniqueEditorTextRange(
+  entries: IndexedTextEntry[],
+  original: string
+): TRange | null {
+  if (!original) return null;
+  const roots = new Map<
+    number,
+    Array<{ node: { text: string }; path: number[] }>
+  >();
+  for (const [node, path] of entries) {
+    const rootIndex = path[0];
+    if (typeof rootIndex !== 'number') continue;
+    const rootEntries = roots.get(rootIndex) ?? [];
+    rootEntries.push({ node, path });
+    roots.set(rootIndex, rootEntries);
+  }
+
+  let documentText = '';
+  const segments: Array<{
+    end: number;
+    path: number[];
+    start: number;
+  }> = [];
+  let hasContent = false;
+  for (const rootEntries of roots.values()) {
+    const rootText = rootEntries.map((entry) => entry.node.text).join('');
+    if (!rootText) continue;
+    if (hasContent) documentText += '\n';
+    hasContent = true;
+    for (const entry of rootEntries) {
+      const start = documentText.length;
+      documentText += entry.node.text;
+      segments.push({ end: documentText.length, path: entry.path, start });
+    }
+  }
+
+  const startOffset = documentText.indexOf(original);
+  if (
+    startOffset < 0 ||
+    documentText.indexOf(original, startOffset + original.length) >= 0
+  ) {
+    return null;
+  }
+  const endOffset = startOffset + original.length;
+  const startSegment = segments.find(
+    (segment) => startOffset >= segment.start && startOffset <= segment.end
+  );
+  const endSegment = [...segments]
+    .reverse()
+    .find((segment) => endOffset >= segment.start && endOffset <= segment.end);
+  if (!startSegment || !endSegment) return null;
+
+  return {
+    anchor: {
+      offset: startOffset - startSegment.start,
+      path: startSegment.path,
+    },
+    focus: {
+      offset: endOffset - endSegment.start,
+      path: endSegment.path,
+    },
+  };
+}
+
 export function PlateEditor({
   chapterId,
   projectId,
@@ -114,28 +180,30 @@ export function PlateEditor({
       },
       replaceText: (original: string, replacement: string) => {
         if (!original || original === replacement) return false;
-        const matches: Array<{ index: number; path: number[] }> = [];
+        const entries: IndexedTextEntry[] = [];
         for (const [node, path] of editor.api.nodes({
           at: [],
           match: (candidate) => TextApi.isText(candidate),
         })) {
           if (!TextApi.isText(node)) continue;
-          let offset = node.text.indexOf(original);
-          while (offset >= 0) {
-            matches.push({ index: offset, path: [...path] });
-            offset = node.text.indexOf(original, offset + original.length);
-          }
+          entries.push([node, [...path]]);
         }
-        if (matches.length !== 1) return false;
-        const match = matches[0];
-        editor.tf.select({
-          anchor: { offset: match.index, path: match.path },
-          focus: {
-            offset: match.index + original.length,
-            path: match.path,
-          },
-        });
-        if (replacement) {
+        const range = findUniqueEditorTextRange(entries, original);
+        if (!range) return false;
+        editor.tf.select(range);
+        if (replacement.includes('\n')) {
+          editor.tf.delete();
+          const fragment = replacement
+            .replace(/\r\n?/gu, '\n')
+            .split(/\n+/gu)
+            .map((paragraph) => paragraph.trim())
+            .filter(Boolean)
+            .map((paragraph) => ({
+              children: [{ text: paragraph }],
+              type: 'p',
+            }));
+          if (fragment.length > 0) editor.tf.insertFragment(fragment);
+        } else if (replacement) {
           editor.tf.insertText(replacement);
         } else {
           editor.tf.delete();

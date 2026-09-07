@@ -55,7 +55,11 @@ vi.mock('@/components/ui/editor', () => ({
   EditorContainer: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
-import { PlateEditor, type PlateEditorHandle } from '../plate-editor';
+import {
+  findUniqueEditorTextRange,
+  PlateEditor,
+  type PlateEditorHandle,
+} from '../plate-editor';
 
 describe('PlateEditor content initialization', () => {
   beforeEach(() => {
@@ -168,6 +172,22 @@ describe('PlateEditor content initialization', () => {
       [{ text: '반복 문장' }, [1, 0]],
     ] as never);
     expect(ref.current?.replaceText('반복 문장', '새 문장')).toBe(false);
+  });
+
+  it('maps an exact critic quote across formatted leaves and paragraphs', () => {
+    const range = findUniqueEditorTextRange(
+      [
+        [{ text: '첫 문장.' }, [0, 0]],
+        [{ text: '둘째' }, [1, 0]],
+        [{ text: ' 문장.' }, [1, 1]],
+      ],
+      '첫 문장.\n둘째 문장.'
+    );
+
+    expect(range).toEqual({
+      anchor: { offset: 0, path: [0, 0] },
+      focus: { offset: 4, path: [1, 1] },
+    });
   });
 
   it('turns Ghost Text off through the existing plugin option and clears a pending suggestion', () => {
