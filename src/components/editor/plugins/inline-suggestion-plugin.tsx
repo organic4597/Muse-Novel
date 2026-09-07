@@ -16,6 +16,7 @@ import {
   PlateLeaf,
   type PlateLeafProps,
   useFocused,
+  useEditorPlugin,
   usePluginOption,
 } from 'platejs/react';
 import {
@@ -1011,6 +1012,7 @@ export function InlineSuggestionLeaf(props: PlateLeafProps) {
 }
 
 function InlineGhostTextContent() {
+  const { api, editor } = useEditorPlugin(InlineSuggestionPlugin);
   const isLoading = usePluginOption(InlineSuggestionPlugin, 'isLoading');
   const text = usePluginOption(InlineSuggestionPlugin, 'suggestionText');
   const candidateIndex = usePluginOption(
@@ -1022,7 +1024,7 @@ function InlineGhostTextContent() {
   if (isLoading && !text) {
     return (
       <span
-        className="pointer-events-none inline-flex items-center gap-2 text-muted-foreground/50 max-sm:hidden"
+        className="pointer-events-none inline-flex items-center gap-2 text-muted-foreground/50"
         contentEditable={false}
       >
         <span className="inline-block size-2 animate-pulse rounded-full bg-current" />
@@ -1033,14 +1035,51 @@ function InlineGhostTextContent() {
   if (!text) return null;
 
   return (
-    <span
-      className="pointer-events-none max-sm:hidden"
-      contentEditable={false}
-    >
+    <span className="pointer-events-none" contentEditable={false}>
       <span className="text-muted-foreground/40">{text}</span>
-      <span className="ml-2 text-[10px] text-muted-foreground/25 select-none">
+      <span className="ml-2 hidden text-[10px] text-muted-foreground/25 select-none sm:inline">
         {candidates.length > 1 && `${candidateIndex + 1}/${candidates.length} · `}
         Tab 적용 · Alt+→ 단어 · Alt+↑↓ 후보 · Alt+R 새 후보 · Esc 숨김
+      </span>
+      <span className="pointer-events-auto ml-2 inline-flex items-center gap-1 align-middle sm:hidden">
+        <button
+          className="rounded-md border border-primary/25 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary"
+          onClick={() => acceptSuggestion(editor)}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          type="button"
+        >
+          적용
+        </button>
+        <button
+          aria-label="Ghost Text 다시 생성"
+          className="rounded-md border border-border bg-background/85 px-2 py-1 text-[11px] text-muted-foreground"
+          onClick={() => {
+            api.inlineSuggestion.clearSuggestion();
+            void runCompletion(editor, { explicit: true, temperature: 0.65 });
+          }}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          type="button"
+        >
+          다시
+        </button>
+        <button
+          aria-label="Ghost Text 닫기"
+          className="rounded-md px-2 py-1 text-[11px] text-muted-foreground"
+          onClick={() => api.inlineSuggestion.clearSuggestion()}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          type="button"
+        >
+          닫기
+        </button>
       </span>
     </span>
   );
