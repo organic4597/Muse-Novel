@@ -18,6 +18,14 @@ describe('manuscript critic', () => {
           replacement: '빠른 걸음으로',
           reason: '같은 뜻이 반복됩니다.',
         },
+        {
+          category: 'not-a-category',
+          confidence: 0.8,
+          original: '잘못된 항목',
+          replacement: '폐기될 항목',
+          reason: '한 항목 오류가 전체 결과를 깨뜨리면 안 됩니다.',
+          scope: 'sentence',
+        },
       ],
     })}\n\`\`\``);
 
