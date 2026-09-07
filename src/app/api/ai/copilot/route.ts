@@ -7,7 +7,6 @@ import { buildStoryContext } from '@/lib/ai/build-story-context';
 import { getEnvProviderConfig } from '@/lib/ai/daily-slogan';
 import { decryptApiKey } from '@/lib/ai/encryption';
 import {
-  buildCompletionStylePrompt,
   buildInlineCompletionSystemPrompt,
   buildInlineCompletionUserPrompt,
   cacheInlineCompletion,
@@ -142,19 +141,28 @@ async function generateInlineCompletion({
     if (!explicit && !(await hasAvailableLocalModelSlot(rootUrl, req.signal))) {
       return NextResponse.json({ text: '', skipped: 'model_busy' });
     }
-    const response = await fetch(`${rootUrl}/v1/completions`, {
+    const response = await fetch(`${rootUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: providerConfig.modelId,
-        prompt: buildCompletionStylePrompt(inlineInput),
+        messages: [
+          {
+            role: 'system',
+            content: buildInlineCompletionSystemPrompt(inlineInput),
+          },
+          {
+            role: 'user',
+            content: buildInlineCompletionUserPrompt(inlineInput),
+          },
+        ],
         max_tokens: explicit ? 120 : 80,
-        n_predict: explicit ? 120 : 80,
         temperature,
         repeat_penalty: 1.18,
         top_k: 20,
         top_p: 0.8,
         min_p: 0,
+        chat_template_kwargs: { enable_thinking: false },
         stop: ['\n\n', '[커서', '[출력]', '<CURSOR>'],
       }),
       signal: req.signal,
@@ -163,9 +171,9 @@ async function generateInlineCompletion({
       return NextResponse.json({ text: '' });
     }
     const data = (await response.json()) as {
-      choices?: Array<{ text?: string }>;
+      choices?: Array<{ message?: { content?: string }; text?: string }>;
     };
-    rawText = data.choices?.[0]?.text ?? '';
+    rawText = data.choices?.[0]?.message?.content ?? data.choices?.[0]?.text ?? '';
   } else {
     const result = await generateText({
       abortSignal: req.signal,

@@ -1,0 +1,46 @@
+[Unit]
+Description=Kanana-2 30B-A3B Instruct llama.cpp server
+After=network-online.target
+Wants=network-online.target
+Conflicts=llama-qwen38.service
+ConditionPathExists=/opt/models/Kanana-2-30b-a3b-instruct-2601-GGUF/kanana-2-30b-a3b-instruct-2601-Q4_K_M.gguf
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/models/Kanana-2-30b-a3b-instruct-2601-GGUF
+ExecStart=/opt/llama.cpp-qwen38/build/bin/llama-server \
+  --model /opt/models/Kanana-2-30b-a3b-instruct-2601-GGUF/kanana-2-30b-a3b-instruct-2601-Q4_K_M.gguf \
+  --device CUDA0,CUDA1 \
+  --n-gpu-layers all \
+  --split-mode layer \
+  --tensor-split 48,52 \
+  --ctx-size 16384 \
+  --cache-type-k q4_0 \
+  --cache-type-v q4_0 \
+  --flash-attn on \
+  --parallel 1 \
+  --batch-size 1024 \
+  --ubatch-size 256 \
+  --threads 6 \
+  --threads-batch 6 \
+  --host 0.0.0.0 \
+  --port 8080 \
+  --cors-origins localhost \
+  --alias Kanana-2-30B-A3B-Instruct-2601 \
+  --jinja \
+  --reasoning off \
+  --metrics \
+  --log-timestamps
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=600
+TimeoutStopSec=30
+KillSignal=SIGINT
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

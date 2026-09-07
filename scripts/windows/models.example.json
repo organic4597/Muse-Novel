@@ -3,12 +3,24 @@
   "timeoutSeconds": 600,
   "models": [
     {
-      "id": "story",
-      "label": "Story LLM - SuperQwen",
+      "id": "qwen",
+      "label": "SuperQwen3.8 27B Abliterated",
       "service": "llama-qwen38.service",
       "healthUrl": "http://127.0.0.1:8080/health",
       "apiBaseUrl": "http://127.0.0.1:8080/v1",
-      "model": "SuperQwen3.8-27B-abliterated"
+      "model": "SuperQwen3.8-27B-abliterated",
+      "capabilities": ["story", "ghost"],
+      "exclusiveGroup": "text-gpu"
+    },
+    {
+      "id": "kanana",
+      "label": "Kanana-2 30B-A3B Instruct 2601",
+      "service": "llama-kanana2.service",
+      "healthUrl": "http://127.0.0.1:8080/health",
+      "apiBaseUrl": "http://127.0.0.1:8080/v1",
+      "model": "Kanana-2-30B-A3B-Instruct-2601",
+      "capabilities": ["story", "ghost"],
+      "exclusiveGroup": "text-gpu"
     },
     {
       "id": "image",
@@ -16,15 +28,9 @@
       "service": "",
       "healthUrl": "",
       "apiBaseUrl": "",
-      "model": ""
-    },
-    {
-      "id": "ghost",
-      "label": "Ghost Text AI (not configured)",
-      "service": "",
-      "healthUrl": "",
-      "apiBaseUrl": "",
-      "model": ""
+      "model": "",
+      "capabilities": ["image"],
+      "exclusiveGroup": "text-gpu"
     }
   ]
 }

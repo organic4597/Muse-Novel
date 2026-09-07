@@ -2,8 +2,7 @@
 param(
     [ValidateSet('Menu', 'Status', 'Validate', 'Start', 'Stop', 'Switch')]
     [string]$Action = 'Menu',
-    [ValidateSet('story', 'image', 'ghost')]
-    [string]$Model = 'story',
+    [string]$Model = 'qwen',
     [string]$ConfigPath = ''
 )
 
@@ -20,13 +19,21 @@ function Read-LauncherConfig {
     $config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($config.distro -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') { throw 'Invalid WSL distro name.' }
     if ($config.timeoutSeconds -lt 10 -or $config.timeoutSeconds -gt 1800) { throw 'timeoutSeconds must be 10..1800.' }
-    $ids = @($config.models | ForEach-Object { $_.id })
-    if (($ids.Count -ne 3) -or (@($ids | Select-Object -Unique).Count -ne 3) -or
-        (@($ids | Where-Object { $_ -notin @('story', 'image', 'ghost') }).Count -gt 0)) {
-        throw 'Configure exactly one story, image and ghost entry.'
+    $ids = @($config.models | ForEach-Object { [string]$_.id })
+    if ($ids.Count -lt 1 -or @($ids | Select-Object -Unique).Count -ne $ids.Count -or
+        @($ids | Where-Object { $_ -notmatch '^[a-z0-9][a-z0-9_-]*$' }).Count -gt 0) {
+        throw 'Configure one or more models with unique lowercase ids.'
     }
     $services = @()
     foreach ($entry in $config.models) {
+        $capabilities = @($entry.capabilities)
+        if ($capabilities.Count -lt 1 -or
+            @($capabilities | Where-Object { $_ -notin @('story', 'ghost', 'image') }).Count -gt 0) {
+            throw "$($entry.id): capabilities must contain story, ghost or image."
+        }
+        if ($entry.exclusiveGroup -and $entry.exclusiveGroup -notmatch '^[A-Za-z0-9][A-Za-z0-9_.-]*$') {
+            throw "$($entry.id): invalid exclusiveGroup."
+        }
         if (-not $entry.service) { continue }
         if ($entry.service -notmatch '^[A-Za-z0-9][A-Za-z0-9_.@-]*\.service$') { throw 'Invalid service name.' }
         if ($entry.service -in $services) { throw 'Each model must have a separate service.' }
@@ -69,7 +76,7 @@ function Show-Status {
         if ($state -eq 'active') {
             if (Test-ModelReady $entry) { $state = 'READY' } else { $state = 'running / API not ready' }
         }
-        Write-Host ('{0,-7} {1,-29} {2}' -f $entry.id, $state, $entry.label)
+        Write-Host ('{0,-10} {1,-29} {2} [{3}]' -f $entry.id, $state, $entry.label, (@($entry.capabilities) -join ', '))
     }
 }
 
@@ -80,23 +87,21 @@ function Stop-Model($Entry) {
     Write-Host "Stopped: $($Entry.label)"
 }
 
-function Start-Model($Entry, [bool]$Exclusive) {
+function Start-Model($Entry) {
     $state = Get-ServiceState $Entry
     if ($state -in @('not configured', 'not installed')) {
         Write-Host "$($Entry.label): $state. Register an installed WSL service in models.local.json."
         return
     }
     $others = @($script:Config.models | Where-Object {
-        $_.id -ne $Entry.id -and $_.service -and (Get-ServiceState $_) -in @('active', 'activating')
+        $_.id -ne $Entry.id -and $_.service -and $Entry.exclusiveGroup -and
+        $_.exclusiveGroup -eq $Entry.exclusiveGroup -and
+        (Get-ServiceState $_) -in @('active', 'activating')
     })
     if ($others.Count -gt 0) {
         $names = ($others | ForEach-Object { $_.label }) -join ', '
-        if ($Exclusive) {
-            if ((Read-Host "Stop [$names] and switch? Active requests will be interrupted. [y/N]") -ne 'y') { return }
-            foreach ($other in $others) { Invoke-WslCommand @('systemctl', 'stop', $other.service) | Out-Null }
-        } elseif ((Read-Host "[$names] already running. Start together using more GPU memory? [y/N]") -ne 'y') {
-            return
-        }
+        if ((Read-Host "Stop [$names] and switch? Active requests will be interrupted. [y/N]") -ne 'y') { return }
+        foreach ($other in $others) { Invoke-WslCommand @('systemctl', 'stop', $other.service) | Out-Null }
     }
     Invoke-WslCommand @('systemctl', 'start', $Entry.service) | Out-Null
     $timer = [Diagnostics.Stopwatch]::StartNew()
@@ -126,18 +131,27 @@ try {
     if ($Action -eq 'Validate') { Write-Host 'Configuration OK'; exit 0 }
     if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) { throw 'WSL is not installed.' }
     $entry = $script:Config.models | Where-Object id -eq $Model
+    if ($Action -in @('Start', 'Stop', 'Switch') -and -not $entry) {
+        throw "Unknown model profile: $Model"
+    }
     switch ($Action) {
         'Status' { Show-Status; exit 0 }
-        'Start' { Start-Model $entry $false; exit 0 }
-        'Switch' { Start-Model $entry $true; exit 0 }
+        'Start' { Start-Model $entry; exit 0 }
+        'Switch' { Start-Model $entry; exit 0 }
         'Stop' { Stop-Model $entry; exit 0 }
     }
     while ($true) {
         Write-Host "`nMuse Novel AI Launcher - $($script:Config.distro)"
         Show-Status
-        Write-Host "`n1 Story LLM    2 Image AI    3 Ghost Text AI"
+        Write-Host ''
+        for ($index = 0; $index -lt $script:Config.models.Count; $index++) {
+            $item = $script:Config.models[$index]
+            Write-Host ("{0} {1} [{2}]" -f ($index + 1), $item.label, (@($item.capabilities) -join ', '))
+        }
         Write-Host 'S Refresh status    G GPU memory    C Configuration    Q Exit'
         $choice = Read-Host 'Select'
+        if ([string]::IsNullOrWhiteSpace($choice)) { break }
+        $choice = $choice.Trim().ToLowerInvariant()
         if ($choice -eq 'q') { break }
         if ($choice -eq 's') { continue }
         if ($choice -eq 'g') {
@@ -152,16 +166,16 @@ try {
             $script:Config = Read-LauncherConfig
             continue
         }
-        if ($choice -notin @('1', '2', '3')) { continue }
-        $id = @('story', 'image', 'ghost')[[int]$choice - 1]
-        $entry = $script:Config.models | Where-Object id -eq $id
-        Write-Host '1 Start    2 Switch (stop other registered models)    3 Stop    4 Logs    0 Back'
+        $selectedNumber = 0
+        if (-not [int]::TryParse($choice, [ref]$selectedNumber) -or
+            $selectedNumber -lt 1 -or $selectedNumber -gt $script:Config.models.Count) { continue }
+        $entry = $script:Config.models[$selectedNumber - 1]
+        Write-Host '1 Start / switch    2 Stop    3 Logs    0 Back'
         try {
             switch (Read-Host 'Action') {
-                '1' { Start-Model $entry $false }
-                '2' { Start-Model $entry $true }
-                '3' { Stop-Model $entry }
-                '4' { if ($entry.service) { Invoke-WslCommand @('journalctl', '-u', $entry.service, '-n', '40', '--no-pager') | Write-Host } }
+                '1' { Start-Model $entry }
+                '2' { Stop-Model $entry }
+                '3' { if ($entry.service) { Invoke-WslCommand @('journalctl', '-u', $entry.service, '-n', '40', '--no-pager') | Write-Host } }
             }
         } catch { Write-Host $_.Exception.Message -ForegroundColor Red }
     }

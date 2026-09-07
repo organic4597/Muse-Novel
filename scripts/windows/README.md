@@ -2,19 +2,19 @@
 
 `Start-Muse-AI.bat`을 더블클릭합니다. Windows PowerShell 5.1 또는 PowerShell 7과 WSL Ubuntu의 systemd 서비스로 동작합니다. 관리자 암호를 파일에 저장하지 않으며 WSL root 사용자로 지정된 서비스만 제어합니다.
 
-- `1`: 스토리 구상·집필 LLM
-- `2`: 이미지 생성 모델
-- `3`: Ghost Text 모델
-- 모델 선택 후 `1` 실행, `2` 다른 등록 모델을 중지하고 전환, `3` 중지, `4` 로그 확인
+- `1`: 기존 SuperQwen3.8 27B Abliterated
+- `2`: Kanana-2 30B-A3B Instruct 2601
+- `3`: 이미지 생성 모델(설정 후)
+- 모델 선택 후 `1` 실행·전환, `2` 중지, `3` 로그 확인
 - `S`: 상태 및 API 준비 여부 확인, `G`: GPU 메모리 확인, `C`: 설정 편집
 
-전환은 진행 중 추론을 중단할 수 있어 확인을 받습니다. 실행만 선택하면 다른 모델을 중지하지 않으며 동시 실행 확인을 받습니다. 등록되지 않은 서비스나 WSL 전체를 종료하지 않습니다. 메뉴를 닫아도 모델 서비스는 계속 실행됩니다. GPU 메모리를 반환하려면 해당 모델의 중지를 선택하세요.
+같은 exclusive group의 다른 모델이 실행 중이면 전환 전에 확인을 받습니다. 등록되지 않은 서비스나 WSL 전체를 종료하지 않습니다. 메뉴를 닫아도 모델 서비스는 계속 실행됩니다. GPU 메모리를 반환하려면 해당 모델의 중지를 선택하세요.
 
 ## 최초 연결
 
 기본 예시는 `Ubuntu`의 `llama-qwen38.service`에 연결합니다. 기존 서비스의 모델 경로와 실행 옵션을 그대로 사용합니다. 시작 후 단순 프로세스 상태뿐 아니라 `/health` 응답을 확인하며 최대 600초 기다립니다. 실패 시 최근 로그를 표시하고 서비스는 자동으로 종료하지 않습니다.
 
-이미지·Ghost Text 항목은 기본적으로 미설정입니다. 이 스크립트는 모델을 다운로드하거나 미설치 서버를 만들어 주지 않습니다. 각 모델의 API 서버를 WSL systemd 서비스로 설치한 다음 `C`로 설정을 열어 해당 항목의 값을 채우세요.
+SuperQwen과 Kanana는 `story`, `ghost` 기능을 함께 제공하는 상호 배타적 프로필입니다. 전환하면 같은 GPU와 8080 포트를 사용하는 다른 텍스트 모델을 먼저 중지합니다. 이미지 항목은 기본적으로 미설정입니다.
 
 | 필드 | 의미 |
 | --- | --- |
@@ -22,6 +22,8 @@
 | `healthUrl` | WSL 내부에서 준비 상태를 확인할 HTTP 주소 |
 | `apiBaseUrl` | Muse Novel에 입력할 API 기본 주소의 로컬 예시 |
 | `model` | API가 제공하는 모델 ID 또는 체크포인트 이름 |
+| `capabilities` | `story`, `ghost`, `image` 중 이 프로필이 제공하는 기능 |
+| `exclusiveGroup` | 같은 GPU·포트를 사용해 동시에 실행하면 안 되는 프로필 묶음 |
 
 서로 다른 모델에는 다른 서비스와 포트를 사용하세요. `healthUrl`은 모델 로딩 완료 후 HTTP 성공 상태를 반환해야 합니다. 설정은 `models.local.json`에 저장되며 Git 추적에서 제외됩니다. 확인되지 않은 서비스명을 넣으면 `not installed`로 표시됩니다.
 
@@ -34,9 +36,10 @@ Muse Novel 연결 규격은 스토리 LLM의 `/v1/chat/completions`, Ghost Text�
 ```powershell
 .\Start-Muse-AI.ps1 -Action Validate
 .\Start-Muse-AI.ps1 -Action Status
-.\Start-Muse-AI.ps1 -Action Start -Model story
+.\Start-Muse-AI.ps1 -Action Start -Model qwen
+.\Start-Muse-AI.ps1 -Action Switch -Model kanana
 .\Start-Muse-AI.ps1 -Action Switch -Model image
-.\Start-Muse-AI.ps1 -Action Stop -Model ghost
+.\Start-Muse-AI.ps1 -Action Stop -Model kanana
 ```
 
 다른 배포판이나 경로에서는 `-ConfigPath`로 JSON 파일을 지정할 수 있습니다. 기본 로컬 설정이 없을 때만 예시를 사용하며, 명시한 다른 파일이 없으면 오류를 표시합니다.

@@ -95,7 +95,7 @@ LLM 서버는 모델 추론만 담당한다. SearXNG 검색, 작품 기억 검�
 ### 4. WSL 서비스 구성
 
 - 기존 `llama-qwen38.service`는 그대로 보존한다.
-- `llama-kanana2-unified.service`와 선택적 `llama-kanana2-fast.service`를 별도 작성한다.
+- `llama-kanana2.service`와 선택적 `llama-kanana2-fast.service`를 별도 작성한다.
 - 최초 Unified 설정은 Q4_K_M, context 16384, KV cache q4, parallel 1, 두 GPU layer split으로 시작한다.
 - 모델 alias, `/health`, `/models`, chat template와 한국어 출력 시험을 통과해야 메뉴에 READY로 표시한다.
 - 서비스 간 포트 충돌과 동시에 두 대형 모델이 올라가는 상황을 방지한다.

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ─── Module mocks ────────────────────────────────────────────────────────────
 
@@ -114,6 +114,10 @@ describe('POST /api/ai/copilot', () => {
     expect(body.text).toBe('다음 문장입니다.');
   });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('uses prefix and suffix for inline suggestions and normalizes the result', async () => {
     const { getProject } = await import('@/lib/db/queries/projects');
     const { getDefaultProvider } = await import('@/lib/db/queries/ai-settings');
@@ -144,6 +148,61 @@ describe('POST /api/ai/copilot', () => {
     expect(call?.prompt).toContain('<CURSOR>');
     expect(call?.prompt).toContain('복도 끝에서 발소리가 들렸다.');
     expect(call?.temperature).toBe(0.55);
+  });
+
+  it('uses the local model chat template for qwen-local inline suggestions', async () => {
+    const { getProject } = await import('@/lib/db/queries/projects');
+    const { getDefaultProvider } = await import('@/lib/db/queries/ai-settings');
+    const { createProvider } = await import('@/lib/ai/provider-factory');
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        choices: [
+          { message: { content: '차가운 바람이 젖은 털을 스쳤다.' } },
+        ],
+      })
+    );
+
+    vi.mocked(getProject).mockResolvedValue(mockProject);
+    vi.mocked(getDefaultProvider).mockResolvedValue({
+      ...mockProviderSettings,
+      providerType: 'qwen-local',
+      modelName: 'Kanana-2-30B-A3B-Instruct-2601',
+      baseUrl: 'http://127.0.0.1:8080/v1',
+    });
+    vi.mocked(createProvider).mockReturnValue(mockModel as never);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { POST } = await import('../copilot/route');
+    const req = createRequest({
+      mode: 'inline-suggestion',
+      trigger: 'explicit',
+      projectId: 'project-1',
+      prefix: '검은 토끼는 고개를 들었다.',
+      suffix: '멀리서 종소리가 울렸다.',
+      prompt: '검은 토끼는 고개를 들었다.',
+    });
+    const res = await POST(req);
+    const body = await res.json();
+
+    expect(body.text).toBe(' 차가운 바람이 젖은 털을 스쳤다.');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'http://127.0.0.1:8080/v1/chat/completions'
+    );
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const payload = JSON.parse(String(request.body));
+    expect(payload).toEqual(
+      expect.objectContaining({
+        chat_template_kwargs: { enable_thinking: false },
+        model: 'Kanana-2-30B-A3B-Instruct-2601',
+      })
+    );
+    expect(payload.messages).toEqual([
+      expect.objectContaining({ role: 'system' }),
+      expect.objectContaining({ role: 'user' }),
+    ]);
+    expect(payload.messages[1].content).toContain('<CURSOR>');
+    expect(payload.messages[1].content).toContain('멀리서 종소리가 울렸다.');
   });
 
   it('returns empty text (not 500) when AI generation throws an error', async () => {
