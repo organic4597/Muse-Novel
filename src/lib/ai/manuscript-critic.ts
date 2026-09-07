@@ -63,6 +63,30 @@ const manuscriptCriticResponseSchema = z.object({
   summary: z.string().trim().min(1).max(1200),
 });
 
+// llama.cpp grammar supports the core JSON shape reliably, while complex
+// enum/default/length constraints vary by build. Strict validation remains a
+// separate server-side step below.
+const manuscriptCriticGenerationSchema = z.object({
+  sceneNotes: z.array(
+    z.object({
+      category: z.string(),
+      issue: z.string(),
+      recommendation: z.string(),
+    })
+  ),
+  suggestions: z.array(
+    z.object({
+      category: z.string(),
+      confidence: z.number(),
+      original: z.string(),
+      reason: z.string(),
+      replacement: z.string(),
+      scope: z.string(),
+    })
+  ),
+  summary: z.string(),
+});
+
 export type ManuscriptCriticSuggestion = z.infer<
   typeof manuscriptCriticSuggestionSchema
 >;
@@ -155,6 +179,16 @@ function normalizeCriticPayload(value: unknown) {
   };
 }
 
+function parseManuscriptCriticValue(value: unknown) {
+  const parsed = manuscriptCriticResponseSchema.safeParse(
+    normalizeCriticPayload(value)
+  );
+  if (!parsed.success) {
+    throw new Error('비평 결과의 구조가 올바르지 않습니다.');
+  }
+  return parsed.data;
+}
+
 function extractJsonObject(text: string) {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/iu)?.[1];
   if (fenced) return fenced.trim();
@@ -172,13 +206,7 @@ export function parseManuscriptCriticReport(text: string) {
   } catch {
     throw new Error('비평 결과 JSON을 해석하지 못했습니다.');
   }
-  const parsed = manuscriptCriticResponseSchema.safeParse(
-    normalizeCriticPayload(value)
-  );
-  if (!parsed.success) {
-    throw new Error('비평 결과의 구조가 올바르지 않습니다.');
-  }
-  return parsed.data;
+  return parseManuscriptCriticValue(value);
 }
 
 function countOccurrences(text: string, needle: string) {
@@ -316,7 +344,7 @@ export async function analyzeManuscript({
           description:
             '승인 가능한 원문 리라이트와 장면 단위 편집 메모',
           name: 'manuscript_critic_report',
-          schema: manuscriptCriticResponseSchema,
+          schema: manuscriptCriticGenerationSchema,
         }),
         prompt: buildManuscriptCriticPrompt({
           intensity,
@@ -333,7 +361,7 @@ export async function analyzeManuscript({
           : {}),
       })
   );
-  const parsed = result.output;
+  const parsed = parseManuscriptCriticValue(result.output);
   return {
     ...parsed,
     suggestions: validateManuscriptCriticSuggestions(
