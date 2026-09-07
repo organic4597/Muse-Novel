@@ -6,6 +6,7 @@ import { Toaster } from 'sonner';
 import { AISettingsPage } from '@/components/settings/ai-settings-page';
 import { ExternalServiceEndpointForm } from '@/components/settings/external-service-endpoint-form';
 import { GlobalAISettingsInline } from '@/components/settings/global-ai-settings-inline';
+import { GhostAISettings } from '@/components/settings/ghost-ai-settings';
 import { ImageSettingsPage } from '@/components/settings/image-settings-page';
 import { LoraSettingsSection } from '@/components/settings/lora-settings-section';
 import { ProjectSelector } from '@/components/settings/project-selector';
@@ -122,6 +123,7 @@ export default async function GlobalAISettingsPage({
               <div className="muse-panel space-y-6 p-5 sm:p-7">
                 <h3 className="flex items-center gap-2 font-heading text-lg font-semibold"><Cpu className="size-4 text-primary" />AI 설정</h3>
                 <AISettingsPage projectId={resolvedProjectId} />
+                <GhostAISettings projectId={resolvedProjectId} />
               </div>
 
               <ExternalServiceEndpointForm

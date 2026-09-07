@@ -28,6 +28,7 @@ import {
   getDefaultProvider,
   getGlobalDefaultProvider,
 } from '@/lib/db/queries/ai-settings';
+import { getGhostAISettings } from '@/lib/db/queries/ghost-ai-settings';
 import { getProject } from '@/lib/db/queries/projects';
 import { getActiveWritingStyleProfile } from '@/lib/db/queries/writing-style-profiles';
 
@@ -219,7 +220,12 @@ export async function POST(req: NextRequest) {
     const project = await getProject(db, projectId);
     if (!project) return NextResponse.json({ text: '' });
 
+    const isInlineSuggestion = mode === 'inline-suggestion';
+    const ghostSettings = isInlineSuggestion
+      ? await getGhostAISettings(db, projectId)
+      : undefined;
     const providerSettings =
+      ghostSettings ??
       await getDefaultProvider(db, projectId) ??
       await getGlobalDefaultProvider(db);
     let providerConfig: ProviderConfig;
@@ -229,7 +235,9 @@ export async function POST(req: NextRequest) {
       providerConfig = resolveStoredProviderConfig(providerSettings, {
         decryptApiKey,
       });
-      providerId = providerSettings.id;
+      providerId = ghostSettings
+        ? `ghost:${projectId}:${ghostSettings.updatedAt?.getTime() ?? 0}`
+        : providerSettings.id;
     } else {
       const envConfig = getEnvProviderConfig();
       if (!envConfig) return NextResponse.json({ text: '' });
@@ -238,7 +246,7 @@ export async function POST(req: NextRequest) {
     }
     const model = createProvider(providerConfig);
 
-    if (mode === 'inline-suggestion') {
+    if (isInlineSuggestion) {
       return generateInlineCompletion({
         req,
         projectId,

@@ -433,6 +433,27 @@ export const aiProviderSettings = sqliteTable(
   ]
 );
 
+/**
+ * Optional project-level endpoint for latency-sensitive inline completion.
+ * Absence means the project inherits its normal Story provider.
+ */
+export const ghostAiSettings = sqliteTable('ghost_ai_settings', {
+  projectId: text('project_id')
+    .primaryKey()
+    .references(() => projects.id, { onDelete: 'cascade' }),
+  providerType: text('provider_type').notNull(),
+  apiKeyEncrypted: text('api_key_encrypted'),
+  modelName: text('model_name').notNull(),
+  baseUrl: text('base_url'),
+  contextSize: integer('context_size'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(
+    () => new Date()
+  ),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(
+    () => new Date()
+  ),
+});
+
 // ─── Character Emotions ─────────────────────────────────────────────────────
 
 export const characterEmotions = sqliteTable(

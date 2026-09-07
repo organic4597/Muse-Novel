@@ -4,6 +4,7 @@ import { checkProviderHealth } from '@/lib/ai/health-check';
 import { PROVIDER_TYPES, type ProviderType } from '@/lib/ai/types';
 import { db } from '@/lib/db';
 import { listProviders } from '@/lib/db/queries/ai-settings';
+import { getGhostAISettings } from '@/lib/db/queries/ghost-ai-settings';
 
 const VALID_PROVIDER_TYPES: readonly ProviderType[] = PROVIDER_TYPES;
 
@@ -17,6 +18,7 @@ export async function GET(
   const providerTypeParam = searchParams.get('providerType');
   const baseUrlParam = searchParams.get('baseUrl');
   const apiKeyParam = searchParams.get('apiKey');
+  const role = searchParams.get('role');
 
   if (!providerTypeParam) {
     return NextResponse.json(
@@ -39,8 +41,11 @@ export async function GET(
   let resolvedApiKey = apiKeyParam ?? '';
 
   if (!resolvedBaseUrl || !resolvedApiKey) {
-    const providers = await listProviders(db, projectId);
-    const stored = providers.find((p) => p.providerType === providerType);
+    const stored = role === 'ghost'
+      ? await getGhostAISettings(db, projectId)
+      : (await listProviders(db, projectId)).find(
+          (provider) => provider.providerType === providerType
+        );
     if (stored) {
       if (!resolvedBaseUrl && stored.baseUrl) {
         resolvedBaseUrl = stored.baseUrl;

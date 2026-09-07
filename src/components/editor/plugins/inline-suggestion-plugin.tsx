@@ -29,6 +29,7 @@ export type InlineSuggestionConfig = PluginConfig<
     abortController: AbortController | null;
     isAccepting: boolean;
     isLoading: boolean;
+    requestStatus: 'idle' | 'loading' | 'success' | 'empty' | 'model_busy' | 'timeout';
     chapterId: string | null;
     enabled: boolean;
   },
@@ -54,7 +55,8 @@ const PROJECT_PATH_REGEX = /\/projects\/([^/]+)/;
 const COPILOT_PREFIX_CHAR_LIMIT = 6000;
 const COPILOT_SUFFIX_CHAR_LIMIT = 1500;
 const COPILOT_DEBOUNCE_MS = 900;
-const COPILOT_TIMEOUT_MS = 30000;
+const COPILOT_AUTOMATIC_TIMEOUT_MS = 4000;
+const COPILOT_EXPLICIT_TIMEOUT_MS = 15000;
 const COPILOT_SENTENCE_CHAR_LIMIT = 120;
 
 function parseBracketedSuggestion(text: string): string {
@@ -550,10 +552,18 @@ const runCompletion = async (
 
   const abortController = new AbortController();
   const requestId = ++activeRequestId;
-  const timeoutId = setTimeout(() => abortController.abort(), COPILOT_TIMEOUT_MS);
+  let timedOut = false;
+  const timeoutMs = options.explicit
+    ? COPILOT_EXPLICIT_TIMEOUT_MS
+    : COPILOT_AUTOMATIC_TIMEOUT_MS;
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    abortController.abort();
+  }, timeoutMs);
   setOptions({
     abortController,
     isLoading: true,
+    requestStatus: 'loading',
     suggestionNodeId: currentBlockId,
     suggestionPoint: editor.selection
       ? {
@@ -595,10 +605,20 @@ const runCompletion = async (
       return;
     }
 
-    const data = (await res.json()) as { text?: string };
+    const data = (await res.json()) as {
+      skipped?: 'model_busy';
+      text?: string;
+    };
     const completion = data.text;
 
-    if (!completion || completion === '0') return;
+    if (data.skipped === 'model_busy') {
+      setOptions({ requestStatus: 'model_busy' });
+      return;
+    }
+    if (!completion || completion === '0') {
+      setOptions({ requestStatus: 'empty' });
+      return;
+    }
 
     const latestContext = getCursorAwareContext(editor);
     if (
@@ -627,9 +647,12 @@ const runCompletion = async (
         expiresAt: Date.now() + 2 * 60_000,
       });
     }
+    setOptions({ requestStatus: 'success' });
     api.inlineSuggestion.setSuggestion(normalizedSuggestion, currentBlockId);
   } catch {
-    // timeout or abort
+    if (timedOut && requestId === activeRequestId) {
+      setOptions({ requestStatus: 'timeout' });
+    }
   } finally {
     clearTimeout(timeoutId);
     if (requestId === activeRequestId) {
@@ -692,6 +715,7 @@ export const InlineSuggestionPlugin =
       enabled: true,
       isAccepting: false,
       isLoading: false,
+      requestStatus: 'idle',
       suggestionNodeId: null,
       suggestionPoint: null,
       suggestionText: null,
@@ -789,6 +813,7 @@ export const InlineSuggestionPlugin =
         setOptions({
           abortController: null,
           isLoading: false,
+          requestStatus: 'idle',
           suggestionNodeId: null,
           suggestionPoint: null,
           suggestionText: null,
@@ -799,6 +824,7 @@ export const InlineSuggestionPlugin =
         if (!getOptions().enabled) return;
         setOptions({
           isLoading: false,
+          requestStatus: 'success',
           suggestionNodeId: nodeId ?? null,
           suggestionPoint: editor.selection
             ? {

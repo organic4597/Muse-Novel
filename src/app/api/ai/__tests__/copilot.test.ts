@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@/lib/db', () => ({ db: {} }));
 vi.mock('@/lib/db/queries/projects');
 vi.mock('@/lib/db/queries/ai-settings');
+vi.mock('@/lib/db/queries/ghost-ai-settings');
 vi.mock('@/lib/ai/provider-factory');
 vi.mock('@/lib/db/queries/writing-style-profiles');
 vi.mock('ai');
@@ -47,8 +48,12 @@ const mockModel = { modelId: 'gpt-4o-mini', provider: 'openai' };
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('POST /api/ai/copilot', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    const { getGhostAISettings } = await import(
+      '@/lib/db/queries/ghost-ai-settings'
+    );
+    vi.mocked(getGhostAISettings).mockResolvedValue(undefined);
   });
 
   it('returns 400 when projectId is missing from request body', async () => {
@@ -203,6 +208,55 @@ describe('POST /api/ai/copilot', () => {
     ]);
     expect(payload.messages[1].content).toContain('<CURSOR>');
     expect(payload.messages[1].content).toContain('멀리서 종소리가 울렸다.');
+  });
+
+  it('prefers a project Ghost provider only for inline suggestions', async () => {
+    const { getProject } = await import('@/lib/db/queries/projects');
+    const { getDefaultProvider } = await import('@/lib/db/queries/ai-settings');
+    const { getGhostAISettings } = await import(
+      '@/lib/db/queries/ghost-ai-settings'
+    );
+    const { createProvider } = await import('@/lib/ai/provider-factory');
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        choices: [{ message: { content: '토끼의 귀가 가늘게 떨렸다.' } }],
+      })
+    );
+
+    vi.mocked(getProject).mockResolvedValue(mockProject);
+    vi.mocked(getDefaultProvider).mockResolvedValue(mockProviderSettings);
+    vi.mocked(getGhostAISettings).mockResolvedValue({
+      projectId: 'project-1',
+      providerType: 'qwen-local',
+      modelName: 'Kanana-Ghost',
+      baseUrl: 'http://ghost-model:8080',
+      apiKeyEncrypted: null,
+      contextSize: 32768,
+      createdAt: new Date(),
+      updatedAt: new Date('2026-09-07T00:00:00Z'),
+    });
+    vi.mocked(createProvider).mockReturnValue(mockModel as never);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { POST } = await import('../copilot/route');
+    const response = await POST(
+      createRequest({
+        mode: 'inline-suggestion',
+        trigger: 'explicit',
+        projectId: 'project-1',
+        prefix: '검은 토끼는 숨을 죽였다.',
+        suffix: '',
+      })
+    );
+
+    expect((await response.json()).text).toBe(' 토끼의 귀가 가늘게 떨렸다.');
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'http://ghost-model:8080/v1/chat/completions'
+    );
+    const body = JSON.parse(
+      String((fetchMock.mock.calls[0]?.[1] as RequestInit).body)
+    );
+    expect(body.model).toBe('Kanana-Ghost');
   });
 
   it('returns empty text (not 500) when AI generation throws an error', async () => {
