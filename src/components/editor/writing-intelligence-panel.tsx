@@ -17,7 +17,11 @@ import { WebResearchSources, WebSearchControl } from '@/components/ai/web-resear
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
-import type { ManuscriptCriticSuggestion } from '@/lib/ai/manuscript-critic';
+import type {
+  ManuscriptCriticIntensity,
+  ManuscriptCriticSceneNote,
+  ManuscriptCriticSuggestion,
+} from '@/lib/ai/manuscript-critic';
 import type { WebResearch, WebSearchMode } from '@/lib/web-research/types';
 
 type Finding = {
@@ -53,9 +57,32 @@ const CRITIC_CATEGORY_LABELS: Record<string, string> = {
   awkwardness: '어색한 표현',
   clarity: '명료성',
   dialogue: '대사',
+  emotional_logic: '감정 인과',
+  exposition: '설명 과잉',
+  imagery: '이미지·감각',
+  pacing: '장면 속도',
   redundancy: '중복',
   rhythm: '문장 리듬',
+  scene_focus: '장면 초점',
+  specificity: '구체성',
+  subtext: '서브텍스트',
   viewpoint: '시점',
+  voice: '인물 목소리',
+};
+
+const CRITIC_SCOPE_LABELS: Record<string, string> = {
+  paragraph: '문단 리라이트',
+  phrase: '구절 수정',
+  sentence: '문장 리라이트',
+};
+
+const CRITIC_SCENE_LABELS: Record<string, string> = {
+  character_voice: '인물 목소리',
+  emotional_logic: '감정 인과',
+  exposition: '정보 전달',
+  pacing: '장면 속도',
+  scene_focus: '장면 초점',
+  tension: '긴장감',
 };
 
 export type WritingIntelligencePanelProps = {
@@ -140,8 +167,11 @@ export function WritingIntelligencePanel({
   const [report, setReport] = useState<{ findings: Finding[]; summary: string } | null>(null);
   const [criticRunning, setCriticRunning] = useState(false);
   const [criticStatus, setCriticStatus] = useState('');
+  const [criticIntensity, setCriticIntensity] =
+    useState<ManuscriptCriticIntensity>('bold');
   const [criticReport, setCriticReport] = useState<{
     reviewedChars: number;
+    sceneNotes: ManuscriptCriticSceneNote[];
     suggestions: ManuscriptCriticSuggestion[];
     summary: string;
     truncated: boolean;
@@ -236,11 +266,16 @@ export function WritingIntelligencePanel({
       const response = await fetch(`/api/projects/${projectId}/manuscript-critic`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chapterId, currentContentJson }),
+        body: JSON.stringify({
+          chapterId,
+          currentContentJson,
+          intensity: criticIntensity,
+        }),
       });
       const data = (await response.json()) as {
         error?: string;
         reviewedChars?: number;
+        sceneNotes?: ManuscriptCriticSceneNote[];
         suggestions?: ManuscriptCriticSuggestion[];
         summary?: string;
         truncated?: boolean;
@@ -248,6 +283,7 @@ export function WritingIntelligencePanel({
       if (!response.ok) throw new Error(data.error ?? '문장 비평에 실패했습니다.');
       setCriticReport({
         reviewedChars: data.reviewedChars ?? 0,
+        sceneNotes: data.sceneNotes ?? [],
         suggestions: data.suggestions ?? [],
         summary: data.summary ?? '',
         truncated: data.truncated ?? false,
@@ -403,6 +439,18 @@ export function WritingIntelligencePanel({
             {checking ? <Loader2 className="animate-spin" /> : <ClipboardCheck />}
             전체 일관성 검사
           </Button>
+          <select
+            aria-label="비평 강도"
+            className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+            disabled={criticRunning}
+            onChange={(event) =>
+              setCriticIntensity(event.target.value as ManuscriptCriticIntensity)
+            }
+            value={criticIntensity}
+          >
+            <option value="bold">적극적 리라이트</option>
+            <option value="balanced">균형 편집</option>
+          </select>
           <Button
             disabled={criticRunning || running || indexing || checking}
             onClick={runCritic}
@@ -411,7 +459,7 @@ export function WritingIntelligencePanel({
             variant="outline"
           >
             {criticRunning ? <Loader2 className="animate-spin" /> : <FileSearch2 />}
-            문장 비평
+            원고 비평
           </Button>
         </div>
       </div>
@@ -428,7 +476,7 @@ export function WritingIntelligencePanel({
         <div className="space-y-3 rounded-2xl border border-border bg-card/80 p-4">
           <div>
             <h4 className="flex items-center gap-2 font-semibold">
-              <FileSearch2 className="size-4 text-primary" /> 문장 비평 제안
+              <FileSearch2 className="size-4 text-primary" /> 원고 편집 제안
             </h4>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
               {criticReport.summary}
@@ -438,6 +486,24 @@ export function WritingIntelligencePanel({
               {criticReport.truncated && ' · 긴 원고이므로 최근 20,000자 범위'}
             </p>
           </div>
+          {criticReport.sceneNotes.length > 0 && (
+            <div className="grid gap-2 md:grid-cols-2">
+              {criticReport.sceneNotes.map((note, index) => (
+                <article
+                  className="rounded-xl border border-primary/15 bg-primary/5 p-3"
+                  key={`${note.category}-${index}`}
+                >
+                  <strong className="text-xs text-primary">
+                    {CRITIC_SCENE_LABELS[note.category] ?? note.category}
+                  </strong>
+                  <p className="mt-1 text-sm leading-6">{note.issue}</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    편집 방향: {note.recommendation}
+                  </p>
+                </article>
+              ))}
+            </div>
+          )}
           {criticReport.suggestions.length === 0 ? (
             <p className="rounded-xl bg-muted/40 p-3 text-sm text-muted-foreground">
               원문으로 검증할 수 있는 수정 제안이 없습니다.
@@ -451,7 +517,7 @@ export function WritingIntelligencePanel({
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground">
-                      {CRITIC_CATEGORY_LABELS[suggestion.category] ?? suggestion.category} · 확신 {Math.round(suggestion.confidence * 100)}%
+                      {CRITIC_SCOPE_LABELS[suggestion.scope] ?? suggestion.scope} · {CRITIC_CATEGORY_LABELS[suggestion.category] ?? suggestion.category} · 확신 {Math.round(suggestion.confidence * 100)}%
                     </span>
                     <Button
                       onClick={() => applyCriticSuggestion(suggestion, index)}
@@ -463,12 +529,14 @@ export function WritingIntelligencePanel({
                   </div>
                   <div className="mt-3 grid gap-2 text-sm md:grid-cols-2">
                     <div className="rounded-lg bg-destructive/5 p-3">
-                      <strong className="text-xs text-muted-foreground">현재 문장</strong>
+                      <strong className="text-xs text-muted-foreground">현재 원문</strong>
                       <p className="mt-1 whitespace-pre-wrap leading-6">{suggestion.original}</p>
                     </div>
                     <div className="rounded-lg bg-primary/5 p-3">
-                      <strong className="text-xs text-muted-foreground">개선 제안</strong>
-                      <p className="mt-1 whitespace-pre-wrap leading-6">{suggestion.replacement}</p>
+                      <strong className="text-xs text-muted-foreground">리라이트 제안</strong>
+                      <p className="mt-1 whitespace-pre-wrap leading-6">
+                        {suggestion.replacement || '(이 구간 삭제)'}
+                      </p>
                     </div>
                   </div>
                   <p className="mt-2 text-xs leading-5 text-muted-foreground">

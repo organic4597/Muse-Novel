@@ -4,7 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@/lib/db', () => ({ db: {} }));
 vi.mock('@/lib/db/queries/projects', () => ({ getProject: vi.fn() }));
 vi.mock('@/lib/db/queries/chapters', () => ({ getChapter: vi.fn() }));
-vi.mock('@/lib/ai/manuscript-critic', () => ({ analyzeManuscript: vi.fn() }));
+vi.mock('@/lib/ai/manuscript-critic', () => ({
+  analyzeManuscript: vi.fn(),
+  MANUSCRIPT_CRITIC_INTENSITIES: ['balanced', 'bold'],
+}));
 
 const chapterId = '11111111-1111-4111-8111-111111111111';
 
@@ -62,6 +65,7 @@ describe('POST /api/projects/[id]/manuscript-critic', () => {
     const { analyzeManuscript } = await import('@/lib/ai/manuscript-critic');
     vi.mocked(analyzeManuscript).mockResolvedValue({
       reviewedChars: 60,
+      sceneNotes: [],
       suggestions: [],
       summary: '수정할 부분이 없습니다.',
       truncated: false,
@@ -80,7 +84,11 @@ describe('POST /api/projects/[id]/manuscript-critic', () => {
 
     expect(response.status).toBe(200);
     expect(analyzeManuscript).toHaveBeenCalledWith(
-      expect.objectContaining({ currentProse: prose, projectId: 'project-1' })
+      expect.objectContaining({
+        currentProse: prose,
+        intensity: 'bold',
+        projectId: 'project-1',
+      })
     );
   });
 });

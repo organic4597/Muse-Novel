@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
     setOption: vi.fn(),
     tf: {
       collapse: vi.fn(),
+      delete: vi.fn(),
       focus: vi.fn(),
       insertFragment: vi.fn(),
       insertText: vi.fn(),
@@ -158,6 +159,9 @@ describe('PlateEditor content initialization', () => {
       focus: { offset: 14, path: [0, 0] },
     });
     expect(mocks.editor.tf.insertText).toHaveBeenCalledWith('빠른 걸음으로');
+
+    expect(ref.current?.replaceText('빠르게 빠른 걸음으로', '')).toBe(true);
+    expect(mocks.editor.tf.delete).toHaveBeenCalled();
 
     mocks.editor.api.nodes.mockReturnValue([
       [{ text: '반복 문장' }, [0, 0]],

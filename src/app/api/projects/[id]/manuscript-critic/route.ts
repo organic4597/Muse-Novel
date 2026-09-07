@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
-import { analyzeManuscript } from '@/lib/ai/manuscript-critic';
+import {
+  analyzeManuscript,
+  MANUSCRIPT_CRITIC_INTENSITIES,
+} from '@/lib/ai/manuscript-critic';
 import { isAIRequestQueueFullError } from '@/lib/ai/request-scheduler';
 import { db } from '@/lib/db';
 import { getChapter } from '@/lib/db/queries/chapters';
@@ -15,6 +18,7 @@ const REQUEST_TIMEOUT_MS = 600_000;
 const requestSchema = z.object({
   chapterId: z.string().uuid(),
   currentContentJson: z.string().max(300_000),
+  intensity: z.enum(MANUSCRIPT_CRITIC_INTENSITIES).default('bold'),
 });
 
 export async function POST(
@@ -63,6 +67,7 @@ export async function POST(
       chapterId: parsed.data.chapterId,
       currentProse,
       db,
+      intensity: parsed.data.intensity,
       projectId: id,
       requestId: request.headers.get('x-request-id') ?? undefined,
       signal: AbortSignal.any([

@@ -127,6 +127,13 @@ describe('WritingIntelligencePanel', () => {
       vi.fn().mockResolvedValue(
         Response.json({
           reviewedChars: 120,
+          sceneNotes: [
+            {
+              category: 'pacing',
+              issue: '행동이 같은 속도로 반복됩니다.',
+              recommendation: '짧은 반응을 끼워 장면 속도를 변화시킵니다.',
+            },
+          ],
           suggestions: [
             {
               category: 'rhythm',
@@ -134,6 +141,7 @@ describe('WritingIntelligencePanel', () => {
               original: '그는 빠르게 빠른 걸음으로 걸었다.',
               reason: '같은 의미가 반복되어 문장 리듬이 늘어집니다.',
               replacement: '그는 빠른 걸음으로 나아갔다.',
+              scope: 'sentence',
             },
           ],
           summary: '중복 표현 한 곳을 다듬을 수 있습니다.',
@@ -153,9 +161,14 @@ describe('WritingIntelligencePanel', () => {
         projectId="project-1"
       />
     );
-    fireEvent.click(screen.getByRole('button', { name: '문장 비평' }));
+    fireEvent.click(screen.getByRole('button', { name: '원고 비평' }));
 
     expect(await screen.findByText('그는 빠른 걸음으로 나아갔다.')).toBeInTheDocument();
+    expect(screen.getByText('행동이 같은 속도로 반복됩니다.')).toBeInTheDocument();
+    const request = (vi.mocked(fetch).mock.calls[0]?.[1] ?? {}) as RequestInit;
+    expect(JSON.parse(String(request.body))).toEqual(
+      expect.objectContaining({ intensity: 'bold' })
+    );
     expect(onReplace).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '승인하고 교체' }));
     expect(onReplace).toHaveBeenCalledWith(

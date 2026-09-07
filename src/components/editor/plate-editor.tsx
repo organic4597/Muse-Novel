@@ -135,7 +135,11 @@ export function PlateEditor({
             path: match.path,
           },
         });
-        editor.tf.insertText(replacement);
+        if (replacement) {
+          editor.tf.insertText(replacement);
+        } else {
+          editor.tf.delete();
+        }
         editor.tf.focus();
         return true;
       },
