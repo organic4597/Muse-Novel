@@ -18,6 +18,10 @@ import {
   useFocused,
   usePluginOption,
 } from 'platejs/react';
+import {
+  getGhostTextTuning,
+  recordGhostTextMetric,
+} from '@/lib/client/ghost-text-metrics';
 import { MarkdownKit } from './markdown-kit';
 
 export type InlineSuggestionConfig = PluginConfig<
@@ -57,7 +61,6 @@ const TOKEN_MATCH_REGEX = /^(\s*\S+[\u3000-\u303F\uFF00-\uFFEF.,!?…]*)/;
 const PROJECT_PATH_REGEX = /\/projects\/([^/]+)/;
 const COPILOT_PREFIX_CHAR_LIMIT = 6000;
 const COPILOT_SUFFIX_CHAR_LIMIT = 1500;
-const COPILOT_DEBOUNCE_MS = 900;
 const COPILOT_AUTOMATIC_TIMEOUT_MS = 4000;
 const COPILOT_EXPLICIT_TIMEOUT_MS = 15000;
 const COPILOT_SENTENCE_CHAR_LIMIT = 120;
@@ -421,6 +424,9 @@ function acceptSuggestion(editor: PlateEditor, wordOnly = false) {
     );
     if (!chunk) return false;
 
+    const projectId = getProjectIdFromLocation();
+    if (projectId) recordGhostTextMetric(projectId, 'word_accepted');
+
     setOptions({ isAccepting: true });
     editor.tf.insertText(chunk);
     setOptions({ isAccepting: false });
@@ -431,15 +437,18 @@ function acceptSuggestion(editor: PlateEditor, wordOnly = false) {
         getCurrentBlockId(editor) ?? undefined
       );
     } else {
+      setOptions({ suggestionText: null });
       api.inlineSuggestion.clearSuggestion();
       triggerCompletion(editor);
     }
     return true;
   }
 
+  const projectId = getProjectIdFromLocation();
+  if (projectId) recordGhostTextMetric(projectId, 'full_accepted');
   setOptions({ isAccepting: true });
   editor.tf.insertText(normalizedSuggestion);
-  setOptions({ isAccepting: false });
+  setOptions({ isAccepting: false, suggestionText: null });
   api.inlineSuggestion.clearSuggestion();
   triggerCompletion(editor);
   return true;
@@ -484,6 +493,7 @@ const withInlineSuggestion: OverrideEditor<InlineSuggestionConfig> = ({
             getCurrentBlockId(editor) ?? undefined
           );
         } else {
+          setOptions({ suggestionText: null });
           api.inlineSuggestion.clearSuggestion();
         }
         return;
@@ -534,6 +544,12 @@ function getClientCacheKey(
   ].join('\u0000');
 }
 
+function getProjectIdFromLocation(): string | undefined {
+  return typeof window === 'undefined'
+    ? undefined
+    : window.location.pathname.match(PROJECT_PATH_REGEX)?.[1];
+}
+
 /**
  * Run a single completion request and show the result as ghost text.
  * Used by both the debounced onChange trigger and the ArrowUp regenerate key.
@@ -563,6 +579,8 @@ const runCompletion = async (
     context.prefix,
     context.suffix
   );
+  const projectId = getProjectIdFromLocation();
+  if (!projectId) return;
   if (!options.explicit) {
     const cached = clientCompletionCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
@@ -571,6 +589,7 @@ const runCompletion = async (
         suggestionCandidates: [cached.text],
       });
       api.inlineSuggestion.setSuggestion(cached.text, currentBlockId);
+      recordGhostTextMetric(projectId, 'automatic_shown', 0);
       return;
     }
     if (cached) clientCompletionCache.delete(cacheKey);
@@ -603,13 +622,7 @@ const runCompletion = async (
   editor.api.redecorate();
 
   try {
-    const projectIdMatch =
-          typeof window !== 'undefined'
-        ? window.location.pathname.match(PROJECT_PATH_REGEX)
-        : null;
-    const projectId = projectIdMatch?.[1];
-    if (!projectId) return;
-
+    const requestStartedAt = Date.now();
     const res = await fetch('/api/ai/copilot', {
       body: JSON.stringify({
         mode: 'inline-suggestion',
@@ -629,7 +642,9 @@ const runCompletion = async (
 
     if (requestId !== activeRequestId) return;
     if (!res.ok) {
-      setOptions({ requestStatus: res.status === 408 ? 'timeout' : 'empty' });
+      const outcome = res.status === 408 ? 'timeout' : 'empty';
+      setOptions({ requestStatus: outcome });
+      recordGhostTextMetric(projectId, outcome, Date.now() - requestStartedAt);
       console.warn('[ghost] response not ok:', res.status);
       return;
     }
@@ -642,10 +657,16 @@ const runCompletion = async (
 
     if (data.skipped === 'model_busy') {
       setOptions({ requestStatus: 'model_busy' });
+      recordGhostTextMetric(
+        projectId,
+        'model_busy',
+        Date.now() - requestStartedAt
+      );
       return;
     }
     if (!completion || completion === '0') {
       setOptions({ requestStatus: 'empty' });
+      recordGhostTextMetric(projectId, 'empty', Date.now() - requestStartedAt);
       return;
     }
 
@@ -685,9 +706,15 @@ const runCompletion = async (
       suggestionCandidates: candidates,
     });
     api.inlineSuggestion.setSuggestion(normalizedSuggestion, currentBlockId);
+    recordGhostTextMetric(
+      projectId,
+      options.explicit ? 'explicit_shown' : 'automatic_shown',
+      Date.now() - requestStartedAt
+    );
   } catch {
     if (timedOut && requestId === activeRequestId) {
       setOptions({ requestStatus: 'timeout' });
+      recordGhostTextMetric(projectId, 'timeout', timeoutMs);
     }
   } finally {
     clearTimeout(timeoutId);
@@ -704,9 +731,13 @@ const triggerCompletion = (editor: PlateEditor, explicit = false) => {
     void runCompletion(editor, { explicit: true, temperature: 0.55 });
     return;
   }
+  const projectId = getProjectIdFromLocation();
+  const debounceMs = projectId
+    ? getGhostTextTuning(projectId).debounceMs
+    : 900;
   debounceTimer = setTimeout(
     () => runCompletion(editor, { temperature: 0.25 }),
-    COPILOT_DEBOUNCE_MS
+    debounceMs
   );
 };
 
@@ -857,6 +888,11 @@ export const InlineSuggestionPlugin =
     }))
     .extendApi(({ editor, getOptions, setOptions }) => ({
       clearSuggestion: () => {
+        const hadSuggestion = Boolean(getOptions().suggestionText);
+        const projectId = getProjectIdFromLocation();
+        if (hadSuggestion && projectId) {
+          recordGhostTextMetric(projectId, 'dismissed');
+        }
         getOptions().abortController?.abort();
         activeRequestId++;
         if (debounceTimer) {
