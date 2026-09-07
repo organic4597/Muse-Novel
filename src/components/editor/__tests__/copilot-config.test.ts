@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { getContextForCopilot, getNovelSystemPrompt } from '@/lib/ai/prompts';
 import {
+  getAutomaticRequestDelay,
   getNextCandidateIndex,
   InlineSuggestionKit,
 } from '../plugins/inline-suggestion-plugin';
@@ -26,6 +27,12 @@ describe('InlineSuggestionPlugin configuration', () => {
     expect(getNextCandidateIndex(0, 3, 1)).toBe(1);
     expect(getNextCandidateIndex(2, 3, 1)).toBe(0);
     expect(getNextCandidateIndex(0, 3, -1)).toBe(2);
+  });
+
+  it('keeps the first suggestion responsive while rate-limiting repeated requests', () => {
+    expect(getAutomaticRequestDelay(10_000, 0, 350)).toBe(350);
+    expect(getAutomaticRequestDelay(10_000, 9000, 350)).toBe(1000);
+    expect(getAutomaticRequestDelay(10_000, 9900, 700)).toBe(1900);
   });
 });
 

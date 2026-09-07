@@ -65,6 +65,7 @@ const COPILOT_EXPLICIT_PREFIX_CHAR_LIMIT = 6000;
 const COPILOT_EXPLICIT_SUFFIX_CHAR_LIMIT = 1500;
 const COPILOT_AUTOMATIC_TIMEOUT_MS = 4000;
 const COPILOT_EXPLICIT_TIMEOUT_MS = 15000;
+const COPILOT_AUTOMATIC_COOLDOWN_MS = 2000;
 const COPILOT_SENTENCE_CHAR_LIMIT = 120;
 
 function parseBracketedSuggestion(text: string): string {
@@ -508,6 +509,7 @@ const withInlineSuggestion: OverrideEditor<InlineSuggestionConfig> = ({
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let activeRequestId = 0;
+let lastAutomaticRequestAt = 0;
 const clientCompletionCache = new Map<
   string,
   { text: string; expiresAt: number }
@@ -532,6 +534,18 @@ export function getNextCandidateIndex(
 ): number {
   if (candidateCount < 1) return 0;
   return (currentIndex + direction + candidateCount) % candidateCount;
+}
+
+export function getAutomaticRequestDelay(
+  now: number,
+  lastRequestAt: number,
+  debounceMs: number
+): number {
+  const cooldownRemaining = Math.max(
+    0,
+    COPILOT_AUTOMATIC_COOLDOWN_MS - (now - lastRequestAt)
+  );
+  return Math.max(debounceMs, cooldownRemaining);
 }
 
 function getClientCacheKey(
@@ -642,6 +656,7 @@ const runCompletion = async (
 
   try {
     const requestStartedAt = Date.now();
+    if (!options.explicit) lastAutomaticRequestAt = requestStartedAt;
     const res = await fetch('/api/ai/copilot', {
       body: JSON.stringify({
         mode: 'inline-suggestion',
@@ -757,7 +772,7 @@ const triggerCompletion = (editor: PlateEditor, explicit = false) => {
     : 350;
   debounceTimer = setTimeout(
     () => runCompletion(editor, { temperature: 0.25 }),
-    debounceMs
+    getAutomaticRequestDelay(Date.now(), lastAutomaticRequestAt, debounceMs)
   );
 };
 
