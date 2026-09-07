@@ -87,6 +87,8 @@ describe('manuscript critic', () => {
     expect(prompt).toContain('연속해서 정확히 존재');
     expect(prompt).toContain('맞춤법 검사기가 아니다');
     expect(prompt).toContain('문장 병합·분할');
+    expect(prompt).toContain('현재 회차 개요·서술 시점');
+    expect(prompt).toContain('자연스러운 한국어 존댓말 완결문장');
     expect(prompt).toContain('<manuscript>');
   });
 
@@ -109,5 +111,29 @@ describe('manuscript critic', () => {
 
     expect(suggestions).toHaveLength(1);
     expect(suggestions[0].scope).toBe('paragraph');
+  });
+
+  it('removes semantically repetitive edit reasons across separate ranges', () => {
+    const prose = '첫 문장은 설명이 길게 이어졌다. 둘째 문장도 설명이 길게 이어졌다.';
+    const suggestions = validateManuscriptCriticSuggestions(prose, [
+      {
+        category: 'pacing',
+        confidence: 0.9,
+        original: '첫 문장은 설명이 길게 이어졌다.',
+        reason: '설명이 길게 반복되어 장면의 속도가 느려집니다.',
+        replacement: '첫 문장은 짧게 끝났다.',
+        scope: 'sentence',
+      },
+      {
+        category: 'pacing',
+        confidence: 0.88,
+        original: '둘째 문장도 설명이 길게 이어졌다.',
+        reason: '설명이 길게 반복되면서 장면 속도가 느려집니다.',
+        replacement: '둘째 문장도 짧게 끝났다.',
+        scope: 'sentence',
+      },
+    ]);
+
+    expect(suggestions).toHaveLength(1);
   });
 });
