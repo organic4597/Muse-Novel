@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildInlineCompletionSystemPrompt,
   buildInlineCompletionUserPrompt,
+  getInlineContinuationMode,
   normalizeInlineCompletion,
 } from './inline-completion';
 
@@ -16,8 +17,27 @@ describe('inline completion prompt and normalization', () => {
     expect(prompt).toContain('그녀는 문을 열었다.');
     expect(prompt).toContain('<CURSOR>');
     expect(prompt).toContain('복도 끝에서 발소리가 들렸다.');
-    expect(prompt).toContain('<prefix>');
-    expect(prompt).toContain('<suffix>');
+    expect(prompt).toContain('<manuscript_before_cursor>');
+    expect(prompt).toContain('<manuscript_after_cursor>');
+    expect(prompt).toContain('<cursor_mode>');
+  });
+
+  it('distinguishes unfinished clauses, sentence boundaries and middle insertions', () => {
+    expect(getInlineContinuationMode('그는 향산의 ', '')).toBe('continue_clause');
+    expect(getInlineContinuationMode('그는 검을 뽑았다.', '')).toBe('next_sentence');
+    expect(
+      getInlineContinuationMode('그는 문을 열었다.', '복도는 비어 있었다.')
+    ).toBe('bridge');
+  });
+
+  it('requires an unfinished clause to continue the existing grammar', () => {
+    const prompt = buildInlineCompletionSystemPrompt({
+      prefix: '그는 조금씩 밝아오는 향산의 ',
+      suffix: '',
+    });
+
+    expect(prompt).toContain('끝나지 않은 문장');
+    expect(prompt).toContain('새 문장이나 새 주어로 다시 시작하지 말고');
   });
 
   it('defines continuity and output-only quality criteria', () => {
@@ -48,6 +68,24 @@ describe('inline completion prompt and normalization', () => {
     );
 
     expect(result).toBe(' 그는 숨을 죽였다.');
+  });
+
+  it('removes a repeated short Korean word at the cursor boundary', () => {
+    const result = normalizeInlineCompletion(
+      '향산의 어둠 속을 향해 걸음을 옮겼다.',
+      { prefix: '그는 조금씩 밝아오는 향산의 ', suffix: '' }
+    );
+
+    expect(result).toBe('어둠 속을 향해 걸음을 옮겼다.');
+  });
+
+  it('keeps only the first complete inline sentence', () => {
+    const result = normalizeInlineCompletion(
+      '절벽 끝으로 걸음을 옮겼다. 바람이 다시 불었다.',
+      { prefix: '그는 향산의 ', suffix: '' }
+    );
+
+    expect(result).toBe('절벽 끝으로 걸음을 옮겼다.');
   });
 
   it('does not duplicate punctuation already present after the cursor', () => {

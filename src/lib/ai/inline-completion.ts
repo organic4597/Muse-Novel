@@ -10,20 +10,51 @@ export type InlineCompletionInput = {
   explicit?: boolean;
 };
 
+export type InlineContinuationMode =
+  | 'continue_clause'
+  | 'next_sentence'
+  | 'bridge';
+
 const MAX_SUGGESTION_CHARS = 180;
 const META_PREFIX = /^(이어쓰기|이어질\s*문구|출력|응답|다음\s*문장|제안)\s*[:：-]\s*/i;
 const META_TEXT = /(다음 문장|이어쓰기|요청하신|도와드리|AI|언어 모델|문맥상|추천 문구)/i;
 
+export function getInlineContinuationMode(
+  prefix: string,
+  suffix: string
+): InlineContinuationMode {
+  if (suffix.trim()) return 'bridge';
+  return /[.!?…。！？]["'”’」』)]*\s*$/u.test(prefix)
+    ? 'next_sentence'
+    : 'continue_clause';
+}
+
+function getContinuationInstruction(mode: InlineContinuationMode) {
+  if (mode === 'continue_clause') {
+    return '커서는 아직 끝나지 않은 문장 안에 있다. 새 문장이나 새 주어로 다시 시작하지 말고, 바로 앞 조사·어미·구문의 지배를 받는 문장 성분부터 이어서 현재 문장을 자연스럽게 완성한다.';
+  }
+  if (mode === 'bridge') {
+    return '커서 뒤에 기존 원문이 있다. 앞 문맥에서 뒤 원문으로 이어지는 데 꼭 필요한 최소한의 구절만 쓰고, 뒤 원문의 첫 구절이나 사건을 미리 반복하지 않는다.';
+  }
+  return '커서는 완결된 문장 뒤에 있다. 직전 문장을 다른 말로 설명하지 말고, 같은 장면에서 그 행동의 즉각적인 결과·반응·감각 중 하나를 한 박자 전진시킨다.';
+}
+
 export function buildInlineCompletionSystemPrompt(
   input: InlineCompletionInput
 ): string {
+  const continuationMode = getInlineContinuationMode(input.prefix, input.suffix);
   const parts = [
     '당신은 한국어 소설 편집기의 인라인 자동완성 엔진이다.',
-    '목표: 독자가 이미 읽던 본문의 커서 위치에 바로 삽입할 짧고 자연스러운 소설 본문을 작성한다.',
-    '선택 우선순위: ① 앞뒤 문장의 문법적 연결 ② 장면의 인과와 인물 행동 ③ 시점·시제·어조·호흡 ④ 표현의 신선함.',
-    '출력은 자연스러운 한 문장 또는 한 절, 12~100자 정도로 한다.',
+    '목표: 작가가 쓰던 문장의 일부처럼 보이도록 커서 직전의 구문·주어·행동·호흡을 직접 이어 쓴다.',
+    '선택 우선순위: ① 커서 바로 앞 구문의 문법적 결속 ② 직전 두 문장의 인과와 초점 ③ 시점·시제·인물 말투·문장 길이 ④ 장면의 작은 전진.',
+    getContinuationInstruction(continuationMode),
+    continuationMode === 'continue_clause'
+      ? '출력은 보통 4~60자의 문장 나머지 부분으로 한다.'
+      : '출력은 보통 12~90자의 한 문장 또는 짧은 연결 구절로 한다.',
     '본문만 출력한다. 설명, 제목, 목록, 따옴표 포장, 마크다운, 후보 번호, 인사말은 붙이지 않는다.',
-    '직전 표현을 되풀이하거나 장면을 요약하지 않고, 설정에 없는 고유명사와 갑작스러운 장면 전환은 만들지 않는다.',
+    '이미 나온 주어와 정보를 불필요하게 다시 말하지 않는다. 장면을 요약하거나 설정에 없는 고유명사·사건·감정을 새로 만들지 않는다.',
+    '문체를 멋대로 화려하게 바꾸지 말고, 바로 앞 원고의 어휘 수준과 문장 길이 편차를 따른다.',
+    '출력 후보를 커서 직전 120자에 실제로 붙여 읽고 조사 호응, 수식 대상, 주어와 서술어가 하나의 문장으로 성립하는지 확인한다.',
     '답변 전에 앞 문장과의 중복 및 뒤 문장과의 문법 연결을 내부적으로 확인하되 과정은 출력하지 않는다.',
     input.suffix
       ? '커서 뒤 본문이 있으므로 그 문장과 문법적으로 자연스럽게 이어지며 뒤 본문을 반복하지 마라.'
@@ -47,12 +78,20 @@ export function buildInlineCompletionSystemPrompt(
 export function buildInlineCompletionUserPrompt(
   input: Pick<InlineCompletionInput, 'prefix' | 'suffix'>
 ): string {
+  const continuationMode = getInlineContinuationMode(input.prefix, input.suffix);
   return [
-    formatPromptData('prefix', input.prefix),
+    formatPromptData('manuscript_before_cursor', input.prefix),
     '<CURSOR>',
-    formatPromptData('suffix', input.suffix || '(없음)'),
+    formatPromptData('manuscript_after_cursor', input.suffix || '(없음)'),
+    formatPromptData('cursor_mode', continuationMode),
+    formatPromptData(
+      'literal_join_check',
+      `${input.prefix.slice(-120)}[출력은 이 위치부터 시작]${input.suffix.slice(0, 80)}`
+    ),
     '',
-    '커서에 삽입할 본문만 출력한다:',
+    continuationMode === 'continue_clause'
+      ? '마지막 문장을 처음부터 다시 쓰지 말고, 커서 바로 다음 글자부터 이어질 본문만 출력한다:'
+      : '커서 바로 다음에 삽입할 본문만 출력한다:',
   ].join('\n');
 }
 
@@ -69,7 +108,7 @@ function stripContextEcho(prefix: string, value: string): string {
   let result = value;
   const max = Math.min(160, normalizedPrefix.length, result.length);
 
-  for (let size = max; size >= 4; size--) {
+  for (let size = max; size >= 2; size--) {
     const tail = normalizedPrefix.slice(-size);
     if (result.startsWith(tail)) {
       result = result.slice(size).trimStart();
@@ -128,7 +167,7 @@ function ngramSimilarity(context: string, suggestion: string): number {
 function takeUsefulLength(value: string): string {
   const sentences = value.match(/[^.!?…。！？]+[.!?…。！？](?:["'”’」』]*)?/g);
   if (sentences?.length) {
-    const selected = sentences.slice(0, 2).join(' ').trim();
+    const selected = sentences[0].trim();
     if (selected.length <= MAX_SUGGESTION_CHARS) return selected;
   }
 

@@ -661,7 +661,7 @@ const runCompletion = async (
     const res = await fetch('/api/ai/copilot', {
       body: JSON.stringify({
         mode: 'inline-suggestion',
-        maxOutputTokens: options.explicit ? 96 : 48,
+        maxOutputTokens: options.explicit ? 96 : 32,
         projectId,
         chapterId,
         prompt: requestPrefix,
@@ -771,7 +771,7 @@ const triggerCompletion = (editor: PlateEditor, explicit = false) => {
     ? getGhostTextTuning(projectId).debounceMs
     : 350;
   debounceTimer = setTimeout(
-    () => runCompletion(editor, { temperature: 0.25 }),
+    () => runCompletion(editor, { temperature: 0.4 }),
     getAutomaticRequestDelay(Date.now(), lastAutomaticRequestAt, debounceMs)
   );
 };

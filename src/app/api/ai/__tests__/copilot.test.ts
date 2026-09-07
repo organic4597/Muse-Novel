@@ -152,7 +152,7 @@ describe('POST /api/ai/copilot', () => {
     const call = vi.mocked(generateText).mock.calls.at(-1)?.[0];
     expect(call?.prompt).toContain('<CURSOR>');
     expect(call?.prompt).toContain('복도 끝에서 발소리가 들렸다.');
-    expect(call?.temperature).toBe(0.55);
+    expect(call?.temperature).toBe(0.62);
   });
 
   it('uses the local model chat template for qwen-local inline suggestions', async () => {
@@ -162,7 +162,12 @@ describe('POST /api/ai/copilot', () => {
     const fetchMock = vi.fn().mockResolvedValue(
       Response.json({
         choices: [
-          { message: { content: '차가운 바람이 젖은 털을 스쳤다.' } },
+          {
+            finish_reason: 'length',
+            message: {
+              content: '차가운 바람이 젖은 털을 스쳤다. 그러나 멀리서',
+            },
+          },
         ],
       })
     );
@@ -249,11 +254,11 @@ describe('POST /api/ai/copilot', () => {
       String(url).endsWith('/v1/chat/completions')
     );
     const payload = JSON.parse(String((chatRequest?.[1] as RequestInit).body));
-    expect(payload.max_tokens).toBe(48);
+    expect(payload.max_tokens).toBe(32);
     expect(payload.messages[1].content).not.toContain('삭제되어야할-오래된-문맥');
     expect(payload.messages[1].content).toContain('끝 문장.');
     const suffixMatch = payload.messages[1].content.match(
-      /<suffix>([\s\S]*?)<\/suffix>/u
+      /<manuscript_after_cursor>([\s\S]*?)<\/manuscript_after_cursor>/u
     );
     expect(suffixMatch?.[1].trim().length).toBeLessThanOrEqual(400);
   });

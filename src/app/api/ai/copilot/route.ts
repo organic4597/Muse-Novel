@@ -155,10 +155,11 @@ async function generateInlineCompletion({
   };
   const temperature = clampTemperature(
     requestedTemperature,
-    explicit ? 0.55 : 0.25
+    explicit ? 0.62 : 0.4
   );
 
   let rawText = '';
+  let finishReason: string | undefined;
   if (providerConfig.provider === 'qwen-local') {
     const response = await fetch(`${localRootUrl}/v1/chat/completions`, {
       method: 'POST',
@@ -175,12 +176,12 @@ async function generateInlineCompletion({
             content: buildInlineCompletionUserPrompt(inlineInput),
           },
         ],
-        max_tokens: explicit ? 96 : 48,
+        max_tokens: explicit ? 96 : 32,
         temperature,
-        repeat_penalty: 1.18,
-        top_k: 20,
-        top_p: 0.8,
-        min_p: 0,
+        repeat_penalty: 1.08,
+        top_k: 32,
+        top_p: 0.9,
+        min_p: 0.03,
         chat_template_kwargs: { enable_thinking: false },
         stop: ['\n\n', '[커서', '[출력]', '<CURSOR>'],
       }),
@@ -194,13 +195,18 @@ async function generateInlineCompletion({
       });
     }
     const data = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string }; text?: string }>;
+      choices?: Array<{
+        finish_reason?: string;
+        message?: { content?: string };
+        text?: string;
+      }>;
     };
     rawText = data.choices?.[0]?.message?.content ?? data.choices?.[0]?.text ?? '';
+    finishReason = data.choices?.[0]?.finish_reason;
   } else {
     const result = await generateText({
       abortSignal: req.signal,
-      maxOutputTokens: explicit ? 96 : 48,
+      maxOutputTokens: explicit ? 96 : 32,
       model,
       prompt: buildInlineCompletionUserPrompt(inlineInput),
       providerOptions: getProviderOptions(providerConfig),
@@ -210,7 +216,14 @@ async function generateInlineCompletion({
     rawText = result.text;
   }
 
-  const text = normalizeInlineCompletion(rawText, inlineInput);
+  let text = normalizeInlineCompletion(rawText, inlineInput);
+  if (
+    finishReason === 'length' &&
+    text &&
+    !/[.!?…。！？]["'”’」』)]*\s*$/u.test(text)
+  ) {
+    text = '';
+  }
   if (text && !explicit) cacheInlineCompletion(cacheKey, text);
   return NextResponse.json({
     text,
