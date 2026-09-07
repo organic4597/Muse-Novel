@@ -1,4 +1,4 @@
-import { generateText } from 'ai';
+import { generateText, Output } from 'ai';
 import { z } from 'zod';
 
 import { buildStoryContext } from '@/lib/ai/build-story-context';
@@ -312,6 +312,12 @@ export async function analyzeManuscript({
         abortSignal,
         maxOutputTokens: 2600,
         model,
+        output: Output.object({
+          description:
+            '승인 가능한 원문 리라이트와 장면 단위 편집 메모',
+          name: 'manuscript_critic_report',
+          schema: manuscriptCriticResponseSchema,
+        }),
         prompt: buildManuscriptCriticPrompt({
           intensity,
           prose,
@@ -327,7 +333,7 @@ export async function analyzeManuscript({
           : {}),
       })
   );
-  const parsed = parseManuscriptCriticReport(result.text);
+  const parsed = result.output;
   return {
     ...parsed,
     suggestions: validateManuscriptCriticSuggestions(
