@@ -69,22 +69,22 @@ const manuscriptCriticResponseSchema = z.object({
 const manuscriptCriticGenerationSchema = z.object({
   sceneNotes: z.array(
     z.object({
-      category: z.string(),
-      issue: z.string(),
-      recommendation: z.string(),
+      category: z.string().max(40),
+      issue: z.string().max(300),
+      recommendation: z.string().max(400),
     })
-  ),
+  ).max(3),
   suggestions: z.array(
     z.object({
-      category: z.string(),
+      category: z.string().max(80),
       confidence: z.number(),
-      original: z.string(),
-      reason: z.string(),
-      replacement: z.string(),
-      scope: z.string(),
+      original: z.string().max(1000),
+      reason: z.string().max(300),
+      replacement: z.string().max(1000),
+      scope: z.string().max(20),
     })
-  ),
-  summary: z.string(),
+  ).max(4),
+  summary: z.string().max(500),
 });
 
 export type ManuscriptCriticSuggestion = z.infer<
@@ -365,6 +365,8 @@ export function buildManuscriptCriticPrompt({
     '현재 회차가 다른 인물의 시점으로 계획됐다면 시점 전환을 권하지 않는다. 원고와 설정에 없는 별칭, 행동, 동기, 사건을 사실처럼 추가하지 않는다.',
     'original은 manuscript에 연속해서 정확히 존재하는 3~1600자의 원문을 글자·공백·문장부호까지 그대로 복사한다. 같은 짧은 문장이 반복되면 더 긴 주변 문맥을 포함해 위치를 유일하게 만든다.',
     'replacement는 앞뒤 문맥에 바로 교체할 수 있어야 한다. 불필요한 문장은 빈 문자열로 삭제해도 된다. 설정·사건 결과·고유명사는 새로 만들지 않는다.',
+    'replacement에는 실제 소설 본문만 쓴다. 독자에게 미치는 효과, 수정 의도, “이로써”로 시작하는 편집 설명은 reason에만 쓰고 replacement에 절대 섞지 않는다.',
+    'replacement는 원문의 핵심 의미를 유지하며 대체로 원문과 비슷하거나 더 짧게 쓴다. 원문에 없던 행동과 감각을 반복해서 덧붙여 분량을 늘리지 않는다.',
     'scope는 phrase, sentence, paragraph 중 하나다. 적극적 리라이트에서는 phrase 제안만 나열하지 말고 문장·문단 단위 개선을 우선한다.',
     'category와 scope에는 허용된 값 중 정확히 하나만 쓴다. |, 쉼표, 슬래시로 여러 값을 합치지 않는다.',
     '직접 교체하기 어려운 장면 전체의 문제는 sceneNotes에 문제와 구체적인 수정 방향으로 남긴다.',
@@ -431,7 +433,8 @@ export async function analyzeManuscript({
     (abortSignal) =>
       generateText({
         abortSignal,
-        maxOutputTokens: 2600,
+        frequencyPenalty: 0.25,
+        maxOutputTokens: 1800,
         model,
         output: Output.object({
           description:

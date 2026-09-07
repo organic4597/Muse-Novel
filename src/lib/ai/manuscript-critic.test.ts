@@ -90,6 +90,7 @@ describe('manuscript critic', () => {
     expect(prompt).toContain('문장 병합·분할');
     expect(prompt).toContain('현재 회차 개요·서술 시점');
     expect(prompt).toContain('자연스러운 한국어 존댓말 완결문장');
+    expect(prompt).toContain('replacement에는 실제 소설 본문만 쓴다');
     expect(prompt).toContain('<manuscript>');
   });
 
