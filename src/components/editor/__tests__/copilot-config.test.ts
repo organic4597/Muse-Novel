@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { getContextForCopilot, getNovelSystemPrompt } from '@/lib/ai/prompts';
-import { InlineSuggestionKit } from '../plugins/inline-suggestion-plugin';
+import {
+  getNextCandidateIndex,
+  InlineSuggestionKit,
+} from '../plugins/inline-suggestion-plugin';
 
 // ─── InlineSuggestionPlugin Configuration Tests ──────────────────────────────
 
@@ -17,6 +20,12 @@ describe('InlineSuggestionPlugin configuration', () => {
   it('should expose clearSuggestion shortcut configuration', () => {
     const shortcuts = entry?.__configuration?.({})?.shortcuts ?? entry?.shortcuts;
     expect(shortcuts?.clearSuggestion).toBeDefined();
+  });
+
+  it('cycles explicit candidates in both directions', () => {
+    expect(getNextCandidateIndex(0, 3, 1)).toBe(1);
+    expect(getNextCandidateIndex(2, 3, 1)).toBe(0);
+    expect(getNextCandidateIndex(0, 3, -1)).toBe(2);
   });
 });
 

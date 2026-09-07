@@ -85,10 +85,11 @@ async function generateInlineCompletion({
   model: ReturnType<typeof createProvider>;
   genre?: string | null;
 }) {
+  const startedAt = Date.now();
   const boundedPrefix = prefix.slice(-6000);
   const boundedSuffix = suffix.slice(0, 1500);
   if (boundedPrefix.trim().length < (explicit ? 4 : 15)) {
-    return NextResponse.json({ text: '' });
+    return NextResponse.json({ text: '', status: 'empty', latencyMs: 0 });
   }
 
   const [storyContext, activeProfile] = await Promise.all([
@@ -117,7 +118,12 @@ async function generateInlineCompletion({
   if (!explicit) {
     const cached = getCachedInlineCompletion(cacheKey);
     if (cached) {
-      return NextResponse.json({ text: cached, cached: true });
+      return NextResponse.json({
+        text: cached,
+        cached: true,
+        status: 'success',
+        latencyMs: 0,
+      });
     }
   }
 
@@ -140,7 +146,12 @@ async function generateInlineCompletion({
       providerConfig.baseUrl || 'http://127.0.0.1:8321'
     ).replace(/\/v1\/?$/, '').replace(/\/+$/, '');
     if (!explicit && !(await hasAvailableLocalModelSlot(rootUrl, req.signal))) {
-      return NextResponse.json({ text: '', skipped: 'model_busy' });
+      return NextResponse.json({
+        text: '',
+        skipped: 'model_busy',
+        status: 'model_busy',
+        latencyMs: Date.now() - startedAt,
+      });
     }
     const response = await fetch(`${rootUrl}/v1/chat/completions`, {
       method: 'POST',
@@ -169,7 +180,11 @@ async function generateInlineCompletion({
       signal: req.signal,
     });
     if (!response.ok) {
-      return NextResponse.json({ text: '' });
+      return NextResponse.json({
+        text: '',
+        status: 'error',
+        latencyMs: Date.now() - startedAt,
+      });
     }
     const data = (await response.json()) as {
       choices?: Array<{ message?: { content?: string }; text?: string }>;
@@ -190,7 +205,12 @@ async function generateInlineCompletion({
 
   const text = normalizeInlineCompletion(rawText, inlineInput);
   if (text && !explicit) cacheInlineCompletion(cacheKey, text);
-  return NextResponse.json({ text, cached: false });
+  return NextResponse.json({
+    text,
+    cached: false,
+    status: text ? 'success' : 'empty',
+    latencyMs: Date.now() - startedAt,
+  });
 }
 
 export async function POST(req: NextRequest) {

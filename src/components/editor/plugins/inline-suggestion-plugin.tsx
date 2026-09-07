@@ -30,12 +30,15 @@ export type InlineSuggestionConfig = PluginConfig<
     isAccepting: boolean;
     isLoading: boolean;
     requestStatus: 'idle' | 'loading' | 'success' | 'empty' | 'model_busy' | 'timeout';
+    suggestionCandidateIndex: number;
+    suggestionCandidates: string[];
     chapterId: string | null;
     enabled: boolean;
   },
   {
     inlineSuggestion: {
       setSuggestion: (text: string, nodeId?: string) => void;
+      cycleCandidate: (direction: -1 | 1) => boolean;
       clearSuggestion: () => void;
     };
   },
@@ -497,6 +500,27 @@ const clientCompletionCache = new Map<
   string,
   { text: string; expiresAt: number }
 >();
+const explicitCandidateCache = new Map<string, string[]>();
+
+function rememberExplicitCandidate(cacheKey: string, text: string): string[] {
+  const current = explicitCandidateCache.get(cacheKey) ?? [];
+  const candidates = [...current.filter((candidate) => candidate !== text), text].slice(-3);
+  if (explicitCandidateCache.size >= 20 && !explicitCandidateCache.has(cacheKey)) {
+    const oldest = explicitCandidateCache.keys().next().value;
+    if (oldest) explicitCandidateCache.delete(oldest);
+  }
+  explicitCandidateCache.set(cacheKey, candidates);
+  return candidates;
+}
+
+export function getNextCandidateIndex(
+  currentIndex: number,
+  candidateCount: number,
+  direction: -1 | 1
+): number {
+  if (candidateCount < 1) return 0;
+  return (currentIndex + direction + candidateCount) % candidateCount;
+}
 
 function getClientCacheKey(
   chapterId: string | null,
@@ -542,6 +566,10 @@ const runCompletion = async (
   if (!options.explicit) {
     const cached = clientCompletionCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
+      setOptions({
+        suggestionCandidateIndex: 0,
+        suggestionCandidates: [cached.text],
+      });
       api.inlineSuggestion.setSuggestion(cached.text, currentBlockId);
       return;
     }
@@ -601,6 +629,7 @@ const runCompletion = async (
 
     if (requestId !== activeRequestId) return;
     if (!res.ok) {
+      setOptions({ requestStatus: res.status === 408 ? 'timeout' : 'empty' });
       console.warn('[ghost] response not ok:', res.status);
       return;
     }
@@ -647,7 +676,14 @@ const runCompletion = async (
         expiresAt: Date.now() + 2 * 60_000,
       });
     }
-    setOptions({ requestStatus: 'success' });
+    const candidates = options.explicit
+      ? rememberExplicitCandidate(cacheKey, normalizedSuggestion)
+      : [normalizedSuggestion];
+    setOptions({
+      requestStatus: 'success',
+      suggestionCandidateIndex: candidates.length - 1,
+      suggestionCandidates: candidates,
+    });
     api.inlineSuggestion.setSuggestion(normalizedSuggestion, currentBlockId);
   } catch {
     if (timedOut && requestId === activeRequestId) {
@@ -716,6 +752,8 @@ export const InlineSuggestionPlugin =
       isAccepting: false,
       isLoading: false,
       requestStatus: 'idle',
+      suggestionCandidateIndex: 0,
+      suggestionCandidates: [],
       suggestionNodeId: null,
       suggestionPoint: null,
       suggestionText: null,
@@ -769,6 +807,21 @@ export const InlineSuggestionPlugin =
 
         if (!suggestionText?.length) return;
 
+        if (
+          event.altKey &&
+          !event.ctrlKey &&
+          (event.key === 'ArrowUp' || event.key === 'ArrowDown')
+        ) {
+          const { api } = getEditorPlugin<InlineSuggestionConfig>(editor, {
+            key: 'inlineSuggestion',
+          });
+          if (api.inlineSuggestion.cycleCandidate(event.key === 'ArrowUp' ? -1 : 1)) {
+            event.preventDefault();
+            event.stopPropagation();
+            return true;
+          }
+        }
+
         if (event.key === 'Tab' && !event.shiftKey) {
           event.preventDefault();
           event.stopPropagation();
@@ -814,6 +867,8 @@ export const InlineSuggestionPlugin =
           abortController: null,
           isLoading: false,
           requestStatus: 'idle',
+          suggestionCandidateIndex: 0,
+          suggestionCandidates: [],
           suggestionNodeId: null,
           suggestionPoint: null,
           suggestionText: null,
@@ -835,6 +890,21 @@ export const InlineSuggestionPlugin =
           suggestionText: text,
         });
         editor.api.redecorate();
+      },
+      cycleCandidate: (direction: -1 | 1) => {
+        const { suggestionCandidateIndex, suggestionCandidates } = getOptions();
+        if (suggestionCandidates.length < 2) return false;
+        const nextIndex = getNextCandidateIndex(
+          suggestionCandidateIndex,
+          suggestionCandidates.length,
+          direction
+        );
+        setOptions({
+          suggestionCandidateIndex: nextIndex,
+          suggestionText: suggestionCandidates[nextIndex],
+        });
+        editor.api.redecorate();
+        return true;
       },
     }))
     .extendTransforms(({ editor }) => ({
@@ -872,6 +942,11 @@ export function InlineSuggestionLeaf(props: PlateLeafProps) {
 function InlineGhostTextContent() {
   const isLoading = usePluginOption(InlineSuggestionPlugin, 'isLoading');
   const text = usePluginOption(InlineSuggestionPlugin, 'suggestionText');
+  const candidateIndex = usePluginOption(
+    InlineSuggestionPlugin,
+    'suggestionCandidateIndex'
+  );
+  const candidates = usePluginOption(InlineSuggestionPlugin, 'suggestionCandidates');
 
   if (isLoading && !text) {
     return (
@@ -893,7 +968,8 @@ function InlineGhostTextContent() {
     >
       <span className="text-muted-foreground/40">{text}</span>
       <span className="ml-2 text-[10px] text-muted-foreground/25 select-none">
-        Tab 적용 · Alt+→ 단어 · Esc 숨김
+        {candidates.length > 1 && `${candidateIndex + 1}/${candidates.length} · `}
+        Tab 적용 · Alt+→ 단어 · Alt+↑↓ 후보 · Alt+R 새 후보 · Esc 숨김
       </span>
     </span>
   );
