@@ -29,6 +29,8 @@ import {
 } from './optional-word-paste';
 
 export interface PlateEditorProps {
+  documentId?: string;
+  ariaLabel?: string;
   chapterId?: string | null;
   projectId?: string | null;
   content?: string | null;
@@ -114,6 +116,8 @@ export function findUniqueEditorTextRange(
 }
 
 export function PlateEditor({
+  documentId,
+  ariaLabel = '원고 편집기',
   chapterId,
   projectId,
   content,
@@ -123,17 +127,21 @@ export function PlateEditor({
   sceneId = null,
   ref,
 }: PlateEditorProps) {
+  const editorDocumentId = documentId ?? chapterId;
+  // Content is a document bootstrap value; save acknowledgements must not reset selection.
+  /* eslint-disable react-hooks/preserve-manual-memoization, react-hooks/exhaustive-deps */
   const initialEditorValue = useMemo(
     () => normalizeNodeId(parseEditorContent(content)),
-    [chapterId]
+    [editorDocumentId]
   );
+  /* eslint-enable react-hooks/preserve-manual-memoization, react-hooks/exhaustive-deps */
 
   const editor = usePlateEditor(
     {
       plugins: EditorKit,
       value: initialEditorValue,
     },
-    [chapterId]
+    [editorDocumentId]
   );
   const lastSelectionRef = useRef<TRange | null>(null);
 
@@ -271,7 +279,7 @@ export function PlateEditor({
       onValueChange={({ value }) => processValue(value)}
     >
       <EditorContainer variant="writing">
-        <Editor onPaste={handlePaste} variant="writing" />
+        <Editor aria-label={ariaLabel} onPaste={handlePaste} variant="writing" />
       </EditorContainer>
     </Plate>
   );

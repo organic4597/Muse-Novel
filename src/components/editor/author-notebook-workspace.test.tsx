@@ -1,5 +1,16 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { useImperativeHandle } from 'react';
+import type { PlateEditorProps } from './plate-editor';
+
+const editorCalls = vi.hoisted(() => ({ props: [] as PlateEditorProps[] }));
+vi.mock('next/dynamic', () => ({ default: () => function MockNoteEditor(props: PlateEditorProps) {
+  editorCalls.props.push(props);
+  useImperativeHandle(props.ref, () => ({ flushProcessing: async () => {}, getSelectedText: () => '', getCursorContext: () => ({ before: '', after: '' }), insertText: () => {}, replaceText: () => false }));
+  const initial = JSON.parse(props.content ?? '[]');
+  return <textarea aria-label={props.ariaLabel} defaultValue={initial.map((node: { children: { text: string }[] }) => node.children.map(leaf => leaf.text).join('')).join('\n')}
+    onChange={event => props.onValueChange?.(JSON.stringify([{ type: 'p', children: [{ text: event.target.value, bold: true }] }]))} />;
+} }));
 
 import { AuthorNotebookWorkspace } from './author-notebook-workspace';
 
@@ -43,7 +54,36 @@ describe('AuthorNotebookWorkspace', () => {
     const request = fetchMock.mock.calls.at(-1)?.[1] as RequestInit;
     expect(JSON.parse(String(request.body)).content).toEqual({
       text: '수정된 전체 플롯',
+      editorJson: JSON.stringify([{ type: 'p', children: [{ text: '수정된 전체 플롯', bold: true }] }]),
     });
+    expect(editorCalls.props.at(-1)).toMatchObject({ documentId: `note:${baseNote.id}`, ghostTextEnabled: false, projectId: 'project-1' });
+  });
+
+  it('serializes saves and does not publish stale content while newer edits await saving', async () => {
+    const responses: ((response: Response) => void)[] = [];
+    const fetchMock = vi.fn().mockImplementation(() => new Promise<Response>(resolve => responses.push(resolve)));
+    vi.stubGlobal('fetch', fetchMock);
+    const onNoteUpdated = vi.fn();
+    const onClose = vi.fn();
+    render(<AuthorNotebookWorkspace
+      note={{ ...baseNote, contentJson: '{"text":"초기 구상"}', kind: 'text' }}
+      onClose={onClose} onNoteUpdated={onNoteUpdated} projectId="project-1"
+    />);
+    const editor = screen.getByLabelText('작가 구상 노트');
+    fireEvent.change(editor, { target: { value: '첫 번째 수정' } });
+    fireEvent.blur(editor);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    fireEvent.change(editor, { target: { value: '최신 수정' } });
+    fireEvent.click(screen.getByRole('button', { name: '작가 노트 닫기' }));
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => { responses[0](Response.json({ ...baseNote, kind: 'text', contentJson: '{"text":"첫 번째 수정"}' })); });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(onNoteUpdated).not.toHaveBeenCalled();
+    const body = JSON.parse(String(fetchMock.mock.calls[1][1].body));
+    expect(body.content.text).toBe('최신 수정');
+    await act(async () => { responses[1](Response.json({ ...baseNote, kind: 'text', contentJson: JSON.stringify(body.content) })); });
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    expect(onNoteUpdated).toHaveBeenCalledOnce();
   });
 
   it('adds and persists an editable mind-map card', async () => {

@@ -19,7 +19,7 @@ import {
   AuthorNotebookSidebar,
   type AuthorNotebookNote,
 } from '@/components/editor/author-notebook-sidebar';
-import type { AuthorNotebookWorkspaceProps } from '@/components/editor/author-notebook-workspace';
+import type { AuthorNotebookWorkspaceProps, AuthorNotebookWorkspaceHandle } from '@/components/editor/author-notebook-workspace';
 import { AutoSaveIndicator } from '@/components/editor/auto-save-indicator';
 import { ChapterReferenceBar } from '@/components/editor/chapter-reference-bar';
 import { SceneWorkbench } from '@/components/editor/scene-workbench';
@@ -106,6 +106,7 @@ function EditorLoadingPlaceholder() {
 export default function WritePage() {
   const params = useParams<{ id: string }>();
   const editorRef = useRef<PlateEditorHandle>(null);
+  const notebookRef = useRef<AuthorNotebookWorkspaceHandle>(null);
   const latestContentRef = useRef('');
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
   const [sceneId, setSceneId] = useState<string | null>(null);
@@ -164,6 +165,7 @@ export default function WritePage() {
   };
 
   const handleSelectChapter = async (chapter: Chapter | null) => {
+    if (selectedAuthorNote && notebookRef.current && !await notebookRef.current.flushSave()) return;
     if (chapter?.id !== selectedChapter?.id) { setSceneId(null); setSceneProposal(null); }
     setSelectedAuthorNote(null);
     // Finish worker serialization before flushing the current chapter save.
@@ -215,6 +217,7 @@ export default function WritePage() {
   };
 
   const handleSelectAuthorNote = async (note: AuthorNotebookNote | null) => {
+    if (note && selectedAuthorNote && notebookRef.current && !await notebookRef.current.flushSave()) return;
     if (selectedChapter) {
       await editorRef.current?.flushProcessing();
       autoSave.flush();
@@ -251,7 +254,10 @@ export default function WritePage() {
     <div className="grid min-h-[calc(100vh-12rem)] gap-5 lg:relative lg:left-1/2 lg:w-[calc(100vw-4rem)] lg:max-w-[118rem] lg:-translate-x-1/2 lg:grid-cols-[17rem_minmax(0,1fr)]">
       <aside className="min-w-0 space-y-4 self-start lg:sticky lg:top-[6.5rem] lg:max-h-[calc(100dvh-7.5rem)] lg:overflow-y-auto">
         <AuthorNotebookSidebar
-          onOpenExamples={() => { setSelectedAuthorNote(null); setExamplesOnly(true); setShowSceneWorkbench(true); }}
+          onOpenExamples={async () => {
+            if (selectedAuthorNote && notebookRef.current && !await notebookRef.current.flushSave()) return;
+            setSelectedAuthorNote(null); setExamplesOnly(true); setShowSceneWorkbench(true);
+          }}
           onSelectNote={handleSelectAuthorNote}
           projectId={params.id}
           refreshToken={notebookRefreshToken}
@@ -268,11 +274,12 @@ export default function WritePage() {
           <h1 className="sr-only">소설 작성</h1>
           {selectedAuthorNote ? (
             <AuthorNotebookWorkspace
+              ref={notebookRef}
               key={selectedAuthorNote.id}
               note={selectedAuthorNote}
               onClose={() => setSelectedAuthorNote(null)}
               onNoteUpdated={(updated) => {
-                setSelectedAuthorNote(updated);
+                setSelectedAuthorNote(current => current?.id === updated.id ? updated : current);
                 setNotebookRefreshToken((value) => value + 1);
               }}
               projectId={params.id}

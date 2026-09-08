@@ -12,13 +12,17 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
+import { type Ref, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 
 import type { AuthorNotebookNote } from '@/components/editor/author-notebook-sidebar';
+import type { PlateEditorHandle, PlateEditorProps } from '@/components/editor/plate-editor';
+import { extractBoundedPlateText } from '@/lib/editor/bounded-plate-content';
 import { Button } from '@/components/ui/button';
 import {
   type MindMapContent,
   type MindMapNode,
+  getTextNoteEditorJson,
   parseStoredAuthorNoteContent,
   type TextNoteContent,
 } from '@/lib/author-notebook';
@@ -27,7 +31,14 @@ const BOARD_WIDTH = 1800;
 const BOARD_HEIGHT = 1100;
 const NODE_COLORS = ['#8b5cf6', '#0ea5e9', '#10b981', '#f59e0b', '#f43f5e'];
 
+const NoteEditor = dynamic<PlateEditorProps>(
+  () => import('@/components/editor/plate-editor').then(module => module.PlateEditor),
+  { ssr: false, loading: () => <p className="p-6 text-sm text-muted-foreground">편집기를 불러오는 중...</p> }
+);
+export type AuthorNotebookWorkspaceHandle = { flushSave: () => Promise<boolean> };
+
 export type AuthorNotebookWorkspaceProps = {
+  ref?: Ref<AuthorNotebookWorkspaceHandle>;
   note: AuthorNotebookNote;
   onClose: () => void;
   onNoteUpdated: (note: AuthorNotebookNote) => void;
@@ -45,6 +56,7 @@ function initialContent(note: AuthorNotebookNote) {
 }
 
 export function AuthorNotebookWorkspace({
+  ref,
   note,
   onClose,
   onNoteUpdated,
@@ -58,21 +70,39 @@ export function AuthorNotebookWorkspace({
   const [saving, setSaving] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestContentRef = useRef(content);
+  const latestTitleRef = useRef(title);
+  const editorRef = useRef<PlateEditorHandle>(null);
+  const saveQueue = useRef<Promise<boolean>>(Promise.resolve(true));
+  const revisionRef = useRef(0);
+  const savedRevisionRef = useRef(0);
+  // Only a different document may reset local edits, not a delayed save acknowledgement.
+  /* eslint-disable react-hooks/exhaustive-deps */
+  const initialEditorContent = useMemo(() => {
+    const initial = initialContent(note);
+    return 'text' in initial ? getTextNoteEditorJson(initial) : undefined;
+  }, [note.id]);
 
   useEffect(() => {
     const next = initialContent(note);
     setTitle(note.title);
     setContent(next);
     latestContentRef.current = next;
+    latestTitleRef.current = note.title;
+    revisionRef.current = 0;
+    savedRevisionRef.current = 0;
     setStatus('저장됨');
-  }, [note]);
+  }, [note.id]);
+
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   const persist = useCallback(
-    async (nextContent = latestContentRef.current, nextTitle = title) => {
+    (nextContent = latestContentRef.current, nextTitle = latestTitleRef.current) => {
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
       }
+      const revision = revisionRef.current;
+      const pending = saveQueue.current.then(async () => {
       setSaving(true);
       setStatus('저장 중...');
       try {
@@ -88,19 +118,35 @@ export function AuthorNotebookWorkspace({
           error?: string;
         };
         if (!response.ok) throw new Error(updated.error ?? '저장하지 못했습니다.');
-        setStatus('저장됨');
-        onNoteUpdated(updated);
+        savedRevisionRef.current = revision;
+        if (revision === revisionRef.current) {
+          setStatus('저장됨');
+          onNoteUpdated(updated);
+        }
+        return true;
       } catch (error) {
         setStatus(error instanceof Error ? error.message : '저장하지 못했습니다.');
+        return false;
       } finally {
         setSaving(false);
       }
+      });
+      saveQueue.current = pending;
+      return pending;
     },
-    [note.id, onNoteUpdated, projectId, title]
+    [note.id, onNoteUpdated, projectId]
   );
+
+  const flushSave = async () => {
+    await editorRef.current?.flushProcessing();
+    if (revisionRef.current === savedRevisionRef.current) return saveQueue.current;
+    return persist();
+  };
+  useImperativeHandle(ref, () => ({ flushSave }));
 
   const scheduleSave = (next: TextNoteContent | MindMapContent) => {
     latestContentRef.current = next;
+    revisionRef.current += 1;
     setContent(next);
     setStatus('변경됨');
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -125,8 +171,10 @@ export function AuthorNotebookWorkspace({
         <input
           aria-label="작가 노트 제목"
           className="min-w-48 flex-1 bg-transparent font-heading text-xl font-semibold outline-none"
-          onBlur={() => void persist(latestContentRef.current, title)}
+          onBlur={() => void flushSave()}
           onChange={(event) => {
+            latestTitleRef.current = event.target.value;
+            revisionRef.current += 1;
             setTitle(event.target.value);
             setStatus('변경됨');
           }}
@@ -136,24 +184,30 @@ export function AuthorNotebookWorkspace({
           {saving && <Loader2 className="mr-1 inline size-3 animate-spin" />}
           {status}
         </span>
-        <Button onClick={() => void persist()} size="sm" type="button" variant="outline">
+        <Button onClick={() => void flushSave()} size="sm" type="button" variant="outline">
           <Save /> 저장
         </Button>
-        <Button aria-label="작가 노트 닫기" onClick={onClose} size="icon-sm" type="button" variant="ghost">
+        <Button aria-label="작가 노트 닫기" onClick={async () => { if (await flushSave()) onClose(); }} size="icon-sm" type="button" variant="ghost">
           <X />
         </Button>
       </header>
 
       {note.kind === 'text' && 'text' in content ? (
-        <textarea
-          aria-label="작가 구상 노트"
-          autoFocus
-          className="min-h-[calc(100vh-18rem)] flex-1 resize-none bg-transparent px-6 py-7 font-sans text-base leading-8 outline-none sm:px-10 lg:px-16"
-          onBlur={() => void persist()}
-          onChange={(event) => scheduleSave({ text: event.target.value })}
-          placeholder="전체 이야기 흐름, 장면 아이디어, 인물의 숨은 동기, 복선과 회수 계획을 자유롭게 적어보세요."
-          value={content.text}
-        />
+        <div className="min-h-[calc(100vh-18rem)] flex-1" onBlurCapture={() => {
+          void flushSave();
+        }}>
+          <NoteEditor
+            ariaLabel="작가 구상 노트"
+            content={initialEditorContent}
+            documentId={`note:${note.id}`}
+            ghostTextEnabled={false}
+            projectId={projectId}
+            ref={editorRef}
+            onValueChange={editorJson => scheduleSave({
+              text: extractBoundedPlateText(editorJson, { maxTextChars: 500_000 }), editorJson,
+            })}
+          />
+        </div>
       ) : note.kind === 'mindmap' && 'nodes' in content ? (
         <MindMapBoard
           content={content}

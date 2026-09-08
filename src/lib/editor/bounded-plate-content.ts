@@ -7,7 +7,7 @@ export class InvalidPlateContentError extends Error {
 }
 
 /** Parses untrusted editor JSON without recursive traversal or unbounded text. */
-export function extractBoundedPlateText(contentJson?: string) {
+export function extractBoundedPlateText(contentJson?: string, options: { maxTextChars?: number } = {}) {
   if (!contentJson) return '';
   let parsed: unknown;
   try {
@@ -40,7 +40,7 @@ export function extractBoundedPlateText(contentJson?: string) {
       const node = current.node as Record<string, unknown>;
       if (typeof node.text === 'string') {
         textChars += node.text.length;
-        if (textChars > MAX_TEXT_CHARS) {
+        if (textChars > (options.maxTextChars ?? MAX_TEXT_CHARS)) {
           throw new InvalidPlateContentError('현재 원고가 집필 요청 한도를 초과합니다.');
         }
         parts.push(node.text);
@@ -59,4 +59,3 @@ export function extractBoundedPlateText(contentJson?: string) {
   }
   return lines.join('\n');
 }
-

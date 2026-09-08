@@ -53,7 +53,12 @@ export async function PUT(request: Request, { params }: Context) {
         }
         contentJson = JSON.stringify(content);
       } else {
-        contentJson = JSON.stringify(textNoteContentSchema.parse(body.content));
+        const content = textNoteContentSchema.parse(body.content);
+        const previous = textNoteContentSchema.parse(JSON.parse(existing.contentJson));
+        if (previous.editorJson && !content.editorJson) {
+          throw new AuthorNotebookError('서식이 있는 노트입니다. 페이지를 새로고침한 뒤 편집해주세요.', 409);
+        }
+        contentJson = JSON.stringify(content);
       }
     }
     return Response.json(

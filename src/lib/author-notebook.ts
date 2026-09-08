@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { extractBoundedPlateText } from '@/lib/editor/bounded-plate-content';
 
 export const AUTHOR_NOTE_KINDS = ['text', 'mindmap'] as const;
 export type AuthorNoteKind = (typeof AUTHOR_NOTE_KINDS)[number];
@@ -8,7 +9,17 @@ export const authorNoteFolderNameSchema = z.string().trim().min(1).max(100);
 
 export const textNoteContentSchema = z.object({
   text: z.string().max(500_000),
-});
+  editorJson: z.string().max(2_000_000).refine(value => {
+    try { extractBoundedPlateText(value, { maxTextChars: 500_000 }); return true; }
+    catch { return false; }
+  }, '노트 편집기 데이터 형식이 올바르지 않습니다.').optional(),
+}).transform(value => value.editorJson
+  ? { ...value, text: extractBoundedPlateText(value.editorJson, { maxTextChars: 500_000 }) }
+  : value);
+
+export function getTextNoteEditorJson(content: { text: string; editorJson?: string }) {
+  return content.editorJson ?? JSON.stringify(content.text.replace(/\r\n?/gu, '\n').split('\n').map(text => ({ type: 'p', children: [{ text }] })));
+}
 
 export const mindMapNodeSchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
