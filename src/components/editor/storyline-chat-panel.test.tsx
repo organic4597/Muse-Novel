@@ -8,7 +8,8 @@ describe('storyline chat panel', () => {
   it('streams a reply, re-enables input, and changes notes only when explicitly approved', async () => {
     let controller!: ReadableStreamDefaultController<Uint8Array>;
     const response = new Response(new ReadableStream<Uint8Array>({ start(c) { controller = c; } }), { headers: { 'Content-Type': 'text/event-stream' } });
-    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ messages: [], revision: 0, chapters: [] })).mockResolvedValueOnce(response);
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ messages: [], revision: 0, chapters: [] })).mockResolvedValueOnce(response)
+      .mockResolvedValueOnce(Response.json({ text: '## 다음 전개\n\n### 검토할 제안\n\n- 갈등을 선택으로 연결한다.' }));
     vi.stubGlobal('fetch', fetchMock);
     const onAppend = vi.fn(async () => true);
     render(<StorylineChatPanel {...props} onAppend={onAppend} />);
@@ -25,10 +26,12 @@ describe('storyline chat panel', () => {
     const answer = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'assistant', text: '갈등을 선택으로 연결해 보세요.' };
     await act(async () => { send('done', { messages: [answer], revision: 1 }); controller.close(); });
     await waitFor(() => expect(input).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: '노트 끝에 추가' }));
-    await waitFor(() => expect(onAppend).toHaveBeenCalledWith(answer.text));
+    fireEvent.click(screen.getByRole('button', { name: '핵심 정리해 노트에 추가' }));
+    await waitFor(() => expect(onAppend).toHaveBeenCalledWith('## 다음 전개\n\n### 검토할 제안\n\n- 갈등을 선택으로 연결한다.'));
     expect(props.beforeSend).toHaveBeenCalled();
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({ message: '다음 전개는?', revision: 0, chapterId: null });
+    expect(fetchMock.mock.calls[2][0]).toBe('/api/projects/project/author-notes/note/chat/summary');
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual({ messageId: answer.id, revision: 1 });
   });
   it('restores the question and unlocks input on a provider error', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(Response.json({ messages: [], revision: 0, chapters: [] }))

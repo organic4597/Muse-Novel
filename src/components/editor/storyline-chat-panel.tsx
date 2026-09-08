@@ -22,6 +22,7 @@ export function StorylineChatPanel({ projectId, noteId, beforeSend, onAppend }: 
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const [appending, setAppending] = useState(false);
+  const [appendingMessageId, setAppendingMessageId] = useState('');
   const [added, setAdded] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const activeRef = useRef(false);
@@ -67,7 +68,7 @@ export function StorylineChatPanel({ projectId, noteId, beforeSend, onAppend }: 
       });
       if (!mounted.current) return;
       setConversation(result); setPendingQuestion(''); setDraft('');
-      setStatus('대화를 저장했습니다. 제안은 선택해서 노트에 추가할 수 있습니다.');
+      setStatus('대화를 저장했습니다. 필요한 답변은 핵심만 정리해 노트에 추가할 수 있습니다.');
     } catch (error) {
       if (!mounted.current) return;
       setDraft(buffered); setInput(question);
@@ -106,8 +107,8 @@ export function StorylineChatPanel({ projectId, noteId, beforeSend, onAppend }: 
         </select>
       </label>
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="ghost" disabled={busy} onClick={() => void refresh()}>대화 새로고침</Button>
-        <Button size="sm" variant="ghost" disabled={busy || !ready || !conversation.messages.length} onClick={() => void clear()}>대화 비우기</Button>
+        <Button size="sm" variant="ghost" disabled={busy || appending} onClick={() => void refresh()}>대화 새로고침</Button>
+        <Button size="sm" variant="ghost" disabled={busy || appending || !ready || !conversation.messages.length} onClick={() => void clear()}>대화 비우기</Button>
       </div>
     </div>
     <div ref={scrollRef} className="max-h-[60dvh] min-h-48 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 xl:max-h-none"
@@ -123,11 +124,25 @@ export function StorylineChatPanel({ projectId, noteId, beforeSend, onAppend }: 
         {message.incomplete && <p className="mt-2 text-xs text-amber-600">출력 길이 제한으로 답변이 끝났습니다. 이어서 설명해 달라고 요청할 수 있습니다.</p>}
         {message.references && <details className="mt-3 text-xs text-muted-foreground"><summary className="cursor-pointer">참고한 원고 범위</summary><ul className="mt-2 space-y-1">{message.references.map((reference, index) => <li key={`${index}:${reference}`}>{reference}</li>)}</ul></details>}
         {message.role === 'assistant' && <Button className="mt-3" size="sm" variant="outline" disabled={busy || appending || added.includes(message.id)} onClick={async () => {
-          setAppending(true);
-          try { if (await onAppend(message.text)) { setAdded(current => [...current, message.id]); setStatus('노트 끝에 추가하고 저장했습니다.'); } else setStatus('노트 저장 상태를 확인해주세요.'); }
-          catch { setStatus('노트에 추가하지 못했습니다. 저장 상태를 확인해주세요.'); }
-          finally { setAppending(false); }
-        }}>{added.includes(message.id) ? '추가됨' : '노트 끝에 추가'}</Button>}
+          setAppending(true); setAppendingMessageId(message.id);
+          try {
+            setStatus('답변에서 핵심 내용만 추려 기존 노트와 비교하고 있습니다.');
+            if (!await beforeSend()) throw new Error('노트를 먼저 저장해주세요.');
+            const controller = new AbortController(); abortRef.current = controller;
+            const response = await fetch(`${base}/summary`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+              body: JSON.stringify({ messageId: message.id, revision: conversation.revision }),
+              signal: AbortSignal.any([controller.signal, AbortSignal.timeout(600000)]),
+            });
+            const result = await readLongTask<{ text: string }>(response, progress => { if (mounted.current) setStatus(progress); });
+            if (await onAppend(result.text)) {
+              setAdded(current => [...current, message.id]);
+              setStatus('확정 내용·검토할 제안·남은 질문만 정리해 노트에 추가했습니다.');
+            } else setStatus('노트 저장 상태를 확인해주세요.');
+          }
+          catch (error) { setStatus(error instanceof DOMException && error.name === 'AbortError' ? '핵심 정리를 중단했습니다. 노트는 변경되지 않았습니다.' : error instanceof Error ? error.message : '핵심 정리를 노트에 추가하지 못했습니다.'); }
+          finally { abortRef.current = null; setAppending(false); setAppendingMessageId(''); }
+        }}>{added.includes(message.id) ? '정리해 추가됨' : appendingMessageId === message.id ? '핵심 정리 중...' : '핵심 정리해 노트에 추가'}</Button>}
       </article>)}
       {pendingQuestion && <div className="rounded-xl bg-primary/10 p-3 text-sm whitespace-pre-wrap">{pendingQuestion}</div>}
       {draft && <div className="rounded-xl border border-border p-3 text-sm leading-7 whitespace-pre-wrap">{draft}{!busy && <p className="mt-2 text-xs text-muted-foreground">미완료 응답 · 저장되지 않음</p>}</div>}
@@ -138,7 +153,7 @@ export function StorylineChatPanel({ projectId, noteId, beforeSend, onAppend }: 
         placeholder="이 사건 다음에 어떤 선택을 하게 하면 자연스러울까?" onChange={event => setInput(event.target.value)}
         onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
       <div className="flex items-center justify-between gap-2"><span className="text-xs text-muted-foreground">Ctrl/⌘ + Enter로 전송</span>
-        {busy ? <Button type="button" size="sm" variant="outline" onClick={() => abortRef.current?.abort()}>중단</Button>
+        {busy || appending ? <Button type="button" size="sm" variant="outline" onClick={() => abortRef.current?.abort()}>중단</Button>
           : <Button type="submit" size="sm" disabled={!ready || !input.trim() || appending}>전송</Button>}
       </div>
     </form>

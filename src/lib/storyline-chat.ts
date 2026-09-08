@@ -15,3 +15,8 @@ export const storylineRequestSchema = z.object({
   revision: z.number().int().nonnegative(),
   chapterId: z.string().uuid().nullable().default(null),
 });
+
+export const storylineNoteSummaryRequestSchema = z.object({
+  messageId: z.string().uuid(),
+  revision: z.number().int().nonnegative(),
+});
