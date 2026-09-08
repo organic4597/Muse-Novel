@@ -4,8 +4,6 @@ Muse Novel의 검색, 에이전트 루프, 프롬프트 구성과 저장은 웹 
 
 ## 설정 우선순위
 
-API 키 대신 ChatGPT 계정의 구독 한도로 연결하려면 [ChatGPT 계정 연결](ChatGPT-Connection)을 참고하세요. 기존 API 설정을 보존하는 선택형 실험 기능이며, 모델 및 일부 생성 옵션의 동작은 일반 API와 다릅니다.
-
 1. 프로젝트별 AI 설정
 2. 전역 AI 설정
 3. 환경 변수 fallback
@@ -81,3 +79,4 @@ WEB_SEARCH_URL=http://muse-search:8080
 ```
 
 설정 화면에 저장된 값이 환경 변수보다 우선합니다.
+

@@ -1,5 +1,4 @@
 'use client';
-import { ChatGPTConnection } from './chatgpt-connection';
 
 import {
   AlertTriangle,
@@ -69,7 +68,6 @@ const PROVIDER_CONFIGS: {
   defaultBaseUrl: string;
   requiresApiKey: boolean;
 }[] = [
-  { type: 'chatgpt', label: 'ChatGPT 계정', defaultBaseUrl: '', requiresApiKey: false },
   {
     type: 'openai-compatible',
     label: 'OpenAI 호환 API',
@@ -659,13 +657,13 @@ export function AISettingsPage({ projectId }: { projectId: string }) {
           return (
             <TabsContent key={config.type} value={config.type}>
               <div className="rounded-2xl border border-border/65 bg-background/35 p-5 sm:p-6">
-                {config.type === 'chatgpt' ? <ChatGPTConnection projectId={projectId} onSaved={fetchProviders} /> : <ProviderForm
+                <ProviderForm
                   config={config}
                   initial={getInitialState(config, existing)}
                   isActive={activeTab === config.type}
                   onSaved={fetchProviders}
                   projectId={projectId}
-                />}
+                />
               </div>
             </TabsContent>
           );

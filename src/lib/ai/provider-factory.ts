@@ -5,7 +5,6 @@ import type { LanguageModel } from 'ai';
 import { createOllama } from 'ollama-ai-provider-v2';
 
 import type { ProviderConfig } from './types';
-import { createChatGPTProvider } from './chatgpt-provider';
 
 function withV1Path(baseUrl: string): string {
   const normalized = baseUrl.replace(/\/+$/, '');
@@ -46,7 +45,6 @@ export function transformQwenRequestBody(body: Record<string, unknown>) {
  */
 export function createProvider(config: ProviderConfig): LanguageModel {
   switch (config.provider) {
-    case 'chatgpt': return createChatGPTProvider(config.modelId);
     case 'openai-compatible': {
       if (!config.baseUrl?.trim() || !config.modelId.trim()) {
         throw new Error('OpenAI 호환 API의 Base URL과 모델 ID를 입력해주세요.');

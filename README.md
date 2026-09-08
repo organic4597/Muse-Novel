@@ -205,14 +205,6 @@ MUSE_AUTH_SETUP_TOKEN=<방금 생성한 64자리 무작위 코드>
 
 ## LLM 연결
 
-### ChatGPT 계정으로 연결하기 (API 키 없이 · 실험 기능)
-
-`AI 환경`에서 **ChatGPT 계정 연결 (API 키 없음)** 또는 작품별 **ChatGPT 계정** 탭을 선택하세요. **ChatGPT로 로그인**을 누른 뒤 OpenAI 공식 페이지에서 일회용 코드를 입력합니다. 로그인 완료 후 모델을 선택하고 **공통 기본 AI로 사용** 또는 **이 작품의 기본 AI로 사용**을 누릅니다. 기존 API 제공자 설정은 보존됩니다.
-
-Docker 이미지에는 Codex CLI `0.153.4`가 포함됩니다. 직접 실행하는 환경은 `npm install -g @openai/codex@0.153.4`로 설치하거나 `MUSE_CODEX_BIN`에 실행 파일 경로를 지정하세요. 자세한 인증·호환 범위는 [ChatGPT 계정 연결](docs/wiki/ChatGPT-Connection.md)을 참고하세요. 실제 인증은 사용자가 직접 완료해야 합니다.
-
-이 방식은 ChatGPT의 Codex 사용 한도를 소비하며 별도 API 키 과금으로 자동 전환하지 않습니다. 기존 텍스트·JSON·스트리밍 요청 인터페이스를 재사용하지만 모델 목록과 생성 옵션은 Codex 지원 범위를 따릅니다. HTTP 추론 서버 대신 웹 서버 안의 격리된 Codex App Server를 사용하고, 자료 조회·검색·승인·저장은 여전히 Muse Novel이 담당합니다.
-
 ### 1. WSL llama.cpp / SuperQwen 연결
 
 LLM 서버가 WSL에서 실행 중이고 Windows에서 Muse Novel을 실행한다면 `localhost`가 서로 다른 네트워크 네임스페이스를 가리킬 수 있습니다. Muse Novel이 실행되는 환경에서 실제로 접근 가능한 주소를 사용하세요.

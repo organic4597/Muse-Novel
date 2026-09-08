@@ -22,7 +22,6 @@ RUN node node_modules/next/dist/bin/next build
 FROM node:24-trixie-slim AS runner
 
 WORKDIR /app
-RUN npm install --global @openai/codex@0.153.4
 ENV DATABASE_PROVIDER=sqlite
 ENV DATABASE_URL=/app/data/sqlite.db
 ENV HOSTNAME=0.0.0.0
