@@ -1,5 +1,7 @@
 'use client';
 
+import { OpenCodeOAuthConnection } from './opencode-oauth-connection';
+
 import { AlertTriangle, CheckCircle2, Loader2, XCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -62,6 +64,7 @@ export function GlobalAISettingsInline({
   onSaved?: () => void;
 }) {
   const [providerId, setProviderId] = useState<string | null>(null);
+  const [savedProviders, setSavedProviders] = useState<GlobalProviderResponse['providers']>([]);
   const [providerType, setProviderType] = useState('openai');
   const [modelName, setModelName] = useState('gpt-4o-mini');
   const [apiKey, setApiKey] = useState('');
@@ -87,6 +90,7 @@ export function GlobalAISettingsInline({
 
         if (settingsRes.ok) {
           const data = (await settingsRes.json()) as GlobalProviderResponse;
+          setSavedProviders(data.providers);
           const defaultProvider = data.providers.find((provider) => provider.id === data.defaultId);
 
           if (defaultProvider) {
@@ -187,6 +191,17 @@ export function GlobalAISettingsInline({
         apiKeyEncrypted: string | null;
       };
       setProviderId(saved.id);
+      setSavedProviders((current) => [
+        ...current.filter((provider) => provider.id !== saved.id),
+        {
+          id: saved.id,
+          providerType,
+          modelName: modelName.trim(),
+          apiKeyEncrypted: saved.apiKeyEncrypted,
+          baseUrl: baseUrl.trim(),
+          isDefault: 1,
+        },
+      ]);
       setApiKey(saved.apiKeyEncrypted ?? '');
       onSaved?.();
     } catch {
@@ -214,19 +229,29 @@ export function GlobalAISettingsInline({
         <div>
           <label className="muse-field-label">Provider</label>
           <select
+            disabled={loading || saving}
             className="mt-2 h-11 w-full rounded-xl border border-input bg-background/45 px-3.5 py-2 text-sm shadow-sm outline-none focus:border-ring focus:ring-[3px] focus:ring-ring/20"
             onChange={(e) => {
               const nextProvider = e.target.value;
+              const existing = savedProviders.find(
+                (provider) => provider.providerType === nextProvider
+              );
               setProviderType(nextProvider);
-              if (nextProvider === LOCAL_PROVIDER) {
-                if (!baseUrl.trim()) setBaseUrl('http://127.0.0.1:8321');
-                if (!modelName.trim()) setModelName('Qwen/Qwen3.5-9B-Base');
-              }
+              setProviderId(existing?.id ?? null);
+              setModelName(existing?.modelName ?? '');
+              setApiKey(existing?.apiKeyEncrypted ?? '');
+              setBaseUrl(
+                existing?.baseUrl ??
+                  (nextProvider === LOCAL_PROVIDER
+                    ? 'http://127.0.0.1:8321'
+                    : '')
+              );
               setHealth(null);
             }}
             value={providerType}
           >
             <option value="openai">OpenAI</option>
+            <option value="opencode-oauth">ChatGPT OAuth (OpenCode 호환)</option>
             <option value="openai-compatible">OpenAI 호환 API (모델 무관)</option>
             <option value="anthropic">Anthropic</option>
             <option value="ollama">Ollama</option>
@@ -235,7 +260,7 @@ export function GlobalAISettingsInline({
             <option value="qwen-local">Local</option>
           </select>
         </div>
-        <div>
+        {providerType !== 'opencode-oauth' && <div>
           <label className="muse-field-label">모델명</label>
           <input
             className="mt-2 h-11 w-full rounded-xl border border-input bg-background/45 px-3.5 py-2 text-sm shadow-sm outline-none focus:border-ring focus:ring-[3px] focus:ring-ring/20"
@@ -244,8 +269,8 @@ export function GlobalAISettingsInline({
             type="text"
             value={modelName}
           />
-        </div>
-        <div>
+        </div>}
+        {providerType !== 'opencode-oauth' && <div>
           <label className="muse-field-label">API Key (선택)</label>
           <input
             className="mt-2 h-11 w-full rounded-xl border border-input bg-background/45 px-3.5 py-2 text-sm shadow-sm outline-none focus:border-ring focus:ring-[3px] focus:ring-ring/20"
@@ -254,8 +279,8 @@ export function GlobalAISettingsInline({
             type="password"
             value={apiKey}
           />
-        </div>
-        <div>
+        </div>}
+        {providerType !== 'opencode-oauth' && <div>
           <label className="muse-field-label">
             Base URL {isLocalProvider ? '(필수)' : '(선택)'}
           </label>
@@ -266,15 +291,18 @@ export function GlobalAISettingsInline({
             type="text"
             value={baseUrl}
           />
-        </div>
+        </div>}
       </div>
+      {providerType === 'opencode-oauth' && (
+        <OpenCodeOAuthConnection onSaved={onSaved} />
+      )}
       {providerType === 'openai-compatible' && (
         <p className="text-xs text-muted-foreground">LLM 서버는 Chat Completions 추론 API만 제공하면 됩니다. 웹 검색·자료 조회·에이전트 반복은 Muse Novel 서버가 수행합니다.</p>
       )}
       
       {error && <p className="text-xs text-red-500">{error}</p>}
 
-      <div className="flex flex-wrap items-center gap-3">
+      {providerType !== 'opencode-oauth' && <div className="flex flex-wrap items-center gap-3">
         <Button
           disabled={isTesting}
           onClick={handleTest}
@@ -293,7 +321,7 @@ export function GlobalAISettingsInline({
           {saving ? '저장 중...' : '설정 저장'}
         </Button>
         <HealthStatusBadge health={health} />
-      </div>
+      </div>}
     </div>
   );
 }

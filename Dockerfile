@@ -40,6 +40,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/drizzle ./drizzle
 COPY --from=builder --chown=nextjs:nodejs /app/knowledge ./knowledge
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/sync-writing-sources.mjs ./scripts/sync-writing-sources.mjs
+COPY --from=builder --chown=nextjs:nodejs /app/docs/licenses ./licenses
 
 USER nextjs
 EXPOSE 3000

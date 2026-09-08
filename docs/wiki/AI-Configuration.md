@@ -4,6 +4,8 @@ Muse Novel의 검색, 에이전트 루프, 프롬프트 구성과 저장은 웹 
 
 ## 설정 우선순위
 
+API 키 대신 ChatGPT 구독의 Codex 한도를 사용하려면 [ChatGPT OAuth · OpenCode 호환 모듈](OpenCode-OAuth)을 참고하세요. 기존 API 연결을 보존하는 선택형 제공자입니다.
+
 1. 프로젝트별 AI 설정
 2. 전역 AI 설정
 3. 환경 변수 fallback

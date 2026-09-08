@@ -8,6 +8,7 @@
 - [세계관 지도](World-Maps)
 - [기존 설정 수정·복원](Setting-Revisions)
 - [AI 연결과 모델 설정](AI-Configuration)
+- [ChatGPT OAuth](OpenCode-OAuth)
 - [Ghost Text 자동완성](Ghost-Text)
 - [창작 지식 베이스](Writing-Knowledge)
 - [AI 웹 조사·참고처](Web-Research)

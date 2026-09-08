@@ -37,6 +37,9 @@ const mockNvidiaProvider = {
 vi.mock('@ai-sdk/openai-compatible', () => ({
   createOpenAICompatible: vi.fn(() => mockNvidiaProvider),
 }));
+vi.mock('../opencode-oauth-provider', () => ({
+  createOpenCodeOAuthProvider: vi.fn(() => mockLanguageModel),
+}));
 
 // ─── Provider Factory Tests ─────────────────────────────────────────────────
 
@@ -155,6 +158,13 @@ describe('createProvider', () => {
       baseURL: 'https://custom.nvidia.api/v1',
       apiKey: 'nvapi-test',
     });
+  });
+
+  it('creates the OpenCode OAuth provider through the common factory', async () => {
+    const { createProvider } = await import('../provider-factory');
+    const { createOpenCodeOAuthProvider } = await import('../opencode-oauth-provider');
+    expect(createProvider({ provider: 'opencode-oauth', modelId: 'gpt-5.4-mini' })).toBe(mockLanguageModel);
+    expect(createOpenCodeOAuthProvider).toHaveBeenCalledWith('gpt-5.4-mini');
   });
 
   it('maps fast Qwen requests to llama.cpp non-thinking mode', async () => {

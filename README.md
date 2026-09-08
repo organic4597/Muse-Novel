@@ -205,6 +205,12 @@ MUSE_AUTH_SETUP_TOKEN=<방금 생성한 64자리 무작위 코드>
 
 ## LLM 연결
 
+### ChatGPT OAuth 연결
+
+`AI 환경`에서 **ChatGPT OAuth (OpenCode 호환)**을 선택하면 API 키 없이 ChatGPT Codex 사용 한도로 연결할 수 있습니다. Muse Novel에는 OpenCode의 MIT 라이선스 OAuth·토큰 갱신·Responses 전송 부분만 모듈로 포함하며 OpenCode 프로세스나 코딩 도구는 실행하지 않습니다. 기존 API와 로컬 LLM 설정은 그대로 보존됩니다.
+
+로그인 후 사용할 모델과 공통 또는 작품별 기본 제공자 여부를 선택하세요. 토큰은 브라우저나 일반 설정 DB에 노출하지 않고 서버에서 암호화해 저장합니다. 자세한 내용과 제한은 [ChatGPT OAuth](docs/wiki/OpenCode-OAuth.md)를 참고하세요.
+
 ### 1. WSL llama.cpp / SuperQwen 연결
 
 LLM 서버가 WSL에서 실행 중이고 Windows에서 Muse Novel을 실행한다면 `localhost`가 서로 다른 네트워크 네임스페이스를 가리킬 수 있습니다. Muse Novel이 실행되는 환경에서 실제로 접근 가능한 주소를 사용하세요.

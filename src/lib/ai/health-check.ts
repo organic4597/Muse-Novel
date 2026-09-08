@@ -1,4 +1,5 @@
 import type { ProviderType } from './types';
+import { getOpenCodeOAuthState } from './opencode-oauth';
 
 const TIMEOUT_MS = 10_000;
 
@@ -115,6 +116,10 @@ export async function checkProviderHealth(
   const { baseUrl = '', apiKey = '' } = options;
 
   switch (providerType) {
+    case 'opencode-oauth': {
+      const state = await getOpenCodeOAuthState();
+      return { status: state.connected ? 'ok' : 'error', message: state.connected ? 'OpenCode 방식 ChatGPT OAuth 연결됨' : state.error ?? 'ChatGPT 계정을 먼저 연결해주세요.', models: state.models.map(model => model.id) };
+    }
     case 'openai-compatible': {
       if (!baseUrl.trim()) return { status: 'error', message: 'API Base URL을 입력해주세요.' };
       const normalized = baseUrl.trim().replace(/\/+$/, '');

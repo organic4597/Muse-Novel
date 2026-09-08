@@ -7,6 +7,8 @@ test-results
 playwright-report
 coverage
 docs
+!docs/licenses
+!docs/licenses/opencode-oauth-MIT.txt
 e2e
 playwright.config.ts
 **/*.test.ts
