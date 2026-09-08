@@ -133,7 +133,7 @@ export function ChapterSidebar({
       const res = await fetch(`/api/projects/${projectId}/chapters`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: '새 챕터' }),
+        body: JSON.stringify({}),
       });
 
       if (res.ok) {

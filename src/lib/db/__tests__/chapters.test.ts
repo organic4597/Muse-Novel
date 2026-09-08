@@ -44,6 +44,29 @@ describe('Chapter Queries', () => {
   });
 
   describe('createChapter', () => {
+    it('allocates numbered titles on creation and preserves authored titles', async () => {
+      const first = await createChapter(db, { projectId });
+      const second = await createChapter(db, { projectId, title: '새 챕터' });
+      const custom = await createChapter(db, { projectId, title: '돌산의 비밀' });
+      const [fourth, fifth] = await Promise.all([
+        createChapter(db, { projectId }), createChapter(db, { projectId }),
+      ]);
+      expect([first.title, second.title, custom.title, fourth.title, fifth.title]).toEqual([
+        '제 1장', '제 2장', '돌산의 비밀', '제 4장', '제 5장',
+      ]);
+    });
+
+    it('does not repeat existing chapter numbers after deletion or reordering', async () => {
+      const first = await createChapter(db, { projectId });
+      await createChapter(db, { projectId, title: '제3장: 수색' });
+      await deleteChapter(db, first.id);
+      const remaining = (await listChapters(db, projectId))[0];
+      await reorderChapter(db, remaining.id, 0);
+      expect((await createChapter(db, { projectId })).title).toBe('제 4장');
+      expect((await getChapter(db, remaining.id))?.title).toBe('제3장: 수색');
+      const other = await createProject(db, { title: '다른 작품' });
+      expect((await createChapter(db, { projectId: other.id })).title).toBe('제 1장');
+    });
     it('should create a chapter with title and projectId', async () => {
       const chapter = await createChapter(db, {
         projectId,

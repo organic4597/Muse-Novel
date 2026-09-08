@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 
 import { db } from '@/lib/db';
 import {
@@ -6,6 +7,12 @@ import {
   listChapterSummaries,
 } from '@/lib/db/queries/chapters';
 import { observeApiHandler } from '@/lib/observability/server-metrics';
+import { getProject } from '@/lib/db/queries/projects';
+
+const createChapterSchema = z.object({
+  title: z.string().trim().max(200).optional(),
+  order: z.number().int().nonnegative().max(1_000_000).optional(),
+});
 
 async function getChapters(
   _request: Request,
@@ -22,19 +29,21 @@ async function createChapterHandler(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const body = await request.json();
-
-  if (!body.title || typeof body.title !== 'string' || !body.title.trim()) {
+  const parsed = createChapterSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: '제목은 필수입니다.' },
+      { error: '챕터 제목과 순서 형식을 확인해주세요.' },
       { status: 400 }
     );
+  }
+  if (!await getProject(db, id)) {
+    return NextResponse.json({ error: '프로젝트를 찾을 수 없습니다.' }, { status: 404 });
   }
 
   const chapter = await createChapter(db, {
     projectId: id,
-    title: body.title.trim(),
-    order: body.order ?? undefined,
+    title: parsed.data.title,
+    order: parsed.data.order,
   });
 
   return NextResponse.json(chapter, { status: 201 });
