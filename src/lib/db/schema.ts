@@ -650,6 +650,30 @@ export const mapPins = sqliteTable('map_pins', {
 
 // ─── Author Notebook ────────────────────────────────────────────────────────
 
+export const writingScenes = sqliteTable('writing_scenes', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  chapterId: text('chapter_id').notNull().references(() => chapters.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  status: text('status', { enum: ['draft', 'confirmed'] }).notNull().default('draft'),
+  planJson: text('plan_json').notNull(),
+  revision: integer('revision').notNull().default(1),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull().$defaultFn(() => new Date()),
+}, table => [index('writing_scenes_chapter_idx').on(table.projectId, table.chapterId)]);
+
+export const writingExamples = sqliteTable('writing_examples', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  kind: text('kind', { enum: ['style', 'edit'] }).notNull(),
+  verdict: text('verdict', { enum: ['accepted', 'rejected'] }).notNull(),
+  title: text('title').notNull(),
+  original: text('original').notNull().default(''),
+  replacement: text('replacement').notNull(),
+  reason: text('reason').notNull().default(''),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().$defaultFn(() => new Date()),
+}, table => [index('writing_examples_project_idx').on(table.projectId)]);
+
 export const authorNoteFolders = sqliteTable(
   'author_note_folders',
   {

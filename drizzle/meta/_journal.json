@@ -169,6 +169,13 @@
       "when": 1788849916596,
       "tag": "0023_author_notebook",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1788864337423,
+      "tag": "0024_scene_editorial_workbench",
+      "breakpoints": true
     }
   ]
 }
