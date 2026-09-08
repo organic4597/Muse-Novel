@@ -415,7 +415,11 @@ function acceptSuggestion(editor: PlateEditor, wordOnly = false) {
   const { api, getOptions, setOptions } = getEditorPlugin<InlineSuggestionConfig>(editor, {
     key: 'inlineSuggestion',
   });
-  const { suggestionText } = getOptions();
+  const { suggestionText, suggestionPoint } = getOptions();
+  if (!suggestionPoint || !isSuggestionAtSelection(editor.selection, suggestionPoint)) {
+    api.inlineSuggestion.clearSuggestion();
+    return false;
+  }
   const normalizedSuggestion = suggestionText
     ? sanitizeSuggestionText(suggestionText)
     : null;
@@ -557,6 +561,17 @@ export function shouldRenderInlineSuggestion(
   return enabled && Boolean(suggestionText) && Boolean(suggestionPoint);
 }
 
+function isSuggestionAtSelection(
+  selection: TRange | null,
+  point: { offset: number; path: number[] }
+) {
+  return Boolean(selection &&
+    selection.anchor.offset === point.offset &&
+    selection.focus.offset === point.offset &&
+    PathApi.equals(selection.anchor.path, point.path) &&
+    PathApi.equals(selection.focus.path, point.path));
+}
+
 function getClientCacheKey(
   chapterId: string | null,
   prefix: string,
@@ -604,6 +619,10 @@ const runCompletion = async (
 
   const context = getCursorAwareContext(editor);
   if (!context) return;
+  const requestedPoint = editor.selection
+    ? { offset: editor.selection.focus.offset, path: [...editor.selection.focus.path] }
+    : null;
+  if (!requestedPoint) return;
   if (!options.explicit && !shouldTriggerAutomatically(context)) return;
 
   const prefixLimit = options.explicit
@@ -707,6 +726,7 @@ const runCompletion = async (
 
     const latestContext = getCursorAwareContext(editor);
     if (
+      !isSuggestionAtSelection(editor.selection, requestedPoint) ||
       !latestContext ||
       getClientCacheKey(
         chapterId,
@@ -850,8 +870,10 @@ export const InlineSuggestionPlugin =
         triggerCompletion(editor);
       },
       onKeyDown: ({ editor, event, getOptions }) => {
-        const { enabled, suggestionText } = getOptions();
+        const { enabled, suggestionText, isLoading } = getOptions();
         if (!enabled) return;
+        // IME owns these keys until the current composition has completed.
+        if (editor.api.isComposing() || event.nativeEvent.isComposing) return;
 
         if (
           event.code === 'Space' &&
@@ -870,22 +892,26 @@ export const InlineSuggestionPlugin =
           return true;
         }
 
-        if (!suggestionText?.length) return;
-
         if (
           event.altKey &&
           !event.ctrlKey &&
+          !event.metaKey &&
+          !event.shiftKey &&
+          (suggestionText || isLoading) &&
           (event.key === 'ArrowUp' || event.key === 'ArrowDown')
         ) {
+          // Always consume our navigation keys, even with zero/one candidates.
+          // Falling through lets Slate/browser move the caret by paragraph.
+          event.preventDefault();
+          event.stopPropagation();
           const { api } = getEditorPlugin<InlineSuggestionConfig>(editor, {
             key: 'inlineSuggestion',
           });
-          if (api.inlineSuggestion.cycleCandidate(event.key === 'ArrowUp' ? -1 : 1)) {
-            event.preventDefault();
-            event.stopPropagation();
-            return true;
-          }
+          api.inlineSuggestion.cycleCandidate(event.key === 'ArrowUp' ? -1 : 1);
+          return true;
         }
+
+        if (!suggestionText?.length) return;
 
         if (event.key === 'Tab' && !event.shiftKey) {
           event.preventDefault();
@@ -904,6 +930,8 @@ export const InlineSuggestionPlugin =
         }
 
         if (event.key.toLowerCase() === 'r' && event.altKey) {
+          event.preventDefault();
+          event.stopPropagation();
           const { api: _api } = getEditorPlugin<InlineSuggestionConfig>(editor, { key: 'inlineSuggestion' });
           _api.inlineSuggestion.clearSuggestion();
           void runCompletion(editor, { explicit: true, temperature: 0.65 });
@@ -943,7 +971,7 @@ export const InlineSuggestionPlugin =
           suggestionPoint: null,
           suggestionText: null,
         });
-        editor.api.redecorate();
+        if (hadSuggestion) editor.api.redecorate();
       },
       setSuggestion: (text: string, nodeId?: string) => {
         if (!getOptions().enabled) return;
