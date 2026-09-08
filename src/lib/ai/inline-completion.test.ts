@@ -11,6 +11,7 @@ describe('inline completion prompt and normalization', () => {
   it('preserves exact cursor whitespace in the prompt and joins to a following word', () => {
     expect(buildInlineCompletionUserPrompt({ prefix: '그는 \n', suffix: ' 걸었다.' })).toContain('그는 \\n');
     expect(normalizeInlineCompletion('조심스럽게', { prefix: '그는 ', suffix: '걸었다.' })).toBe('조심스럽게 ');
+    expect(normalizeInlineCompletion('소리 없이.', { prefix: '그는 ', suffix: '문을 닫았다.' })).toBe('');
   });
   it('keeps a closing quotation mark when completing dialogue', () => {
     expect(getInlineContinuationMode('발소리가 들렸다. "거기 ', '')).toBe('dialogue');
@@ -72,7 +73,7 @@ describe('inline completion prompt and normalization', () => {
   it('removes overlap with the suffix', () => {
     const result = normalizeInlineCompletion(
       '그는 숨을 죽였다. 발소리가 가까워졌다.',
-      { prefix: '어둠 속에서', suffix: '발소리가 가까워졌다.' }
+      { prefix: '그는 어둠 속에서 멈췄다.', suffix: '발소리가 가까워졌다.' }
     );
 
     expect(result).toBe(' 그는 숨을 죽였다.');

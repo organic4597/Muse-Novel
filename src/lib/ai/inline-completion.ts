@@ -56,6 +56,9 @@ export function buildInlineCompletionSystemPrompt(
     getContinuationInstruction(continuationMode),
     '최소한의 빈칸만 채운다. 같은 장소로 들어가기를 반복하거나, 하나의 행동을 다른 말로 두 번 쓰거나, 아직 일어나지 않은 장면 계획을 여기서 전부 실행하지 않는다.',
     '열린 따옴표 안에서는 같은 화자의 대사를 이어 쓴다. 따옴표 밖의 서술을 대사 안에 넣지 않는다.',
+    continuationMode === 'bridge' && !/[.!?…。！？]["”’」』]*\s*$/u.test(input.prefix)
+      ? '뒤 원문의 서술어까지 이어져야 하는 미완성 문장이다. 삽입 구절에 마침표를 넣어 문장을 중간에서 끊지 않는다.'
+      : '한 문장보다 길게 새 장면을 전개하지 않는다.',
     continuationMode === 'continue_clause'
       ? '출력은 보통 4~60자의 문장 나머지 부분으로 한다.'
       : '출력은 보통 12~90자의 한 문장 또는 짧은 연결 구절로 한다.',
@@ -215,6 +218,14 @@ export function normalizeInlineCompletion(
   value = stripContextEcho(input.prefix, value);
   value = stripSuffixEcho(input.suffix, value);
   value = takeUsefulLength(value).trim();
+
+  // A sentence-ending suggestion inside an unfinished clause would turn
+  // "그는 … [조용히.] 문을 닫았다" into a broken sentence. Do not show it.
+  if (!insideDialogue && input.suffix.trim() && /^[\p{L}\p{N}]/u.test(input.suffix.trimStart()) &&
+    !/[.!?…。！？]["”’」』]*\s*$/u.test(input.prefix) && /[.!?…。！？]$/.test(value)) return '';
+  if (insideDialogue && !input.suffix.trim() && /[.!?…。！？]$/.test(value)) {
+    value += input.prefix.lastIndexOf('“') > input.prefix.lastIndexOf('”') ? '”' : '"';
+  }
 
   if (value.length < 3 || META_TEXT.test(value)) return '';
   if (hasExcessiveRepetition(value)) return '';
