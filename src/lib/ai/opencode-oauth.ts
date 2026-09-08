@@ -212,6 +212,110 @@ export async function disconnectOpenCodeOAuth() {
   return getOpenCodeOAuthState();
 }
 
+type BufferedMessage = { annotations: unknown[]; phase?: string; text: string };
+
+/** Converts the subscription backend's mandatory SSE response into the JSON
+ * shape expected by AI SDK doGenerate callers. Streaming callers pass through. */
+export async function collectOpenCodeStreamResponse(response: Response) {
+  if (!response.ok || !response.body) return response;
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const messages = new Map<string, BufferedMessage>();
+  let buffer = '';
+  let completed: Record<string, unknown> | undefined;
+  let created: Record<string, unknown> | undefined;
+  let failure: { code: string; message: string } | undefined;
+  let totalText = 0;
+  const acceptEvent = (event: Record<string, unknown>) => {
+    const type = claimString(event.type, 200);
+    if (type === 'response.created') {
+      created = event.response && typeof event.response === 'object' && !Array.isArray(event.response)
+        ? event.response as Record<string, unknown> : {};
+      return;
+    }
+    if (type === 'response.output_item.added' || type === 'response.output_item.done') {
+      const item = event.item;
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return;
+      const record = item as Record<string, unknown>;
+      if (record.type !== 'message') return;
+      const id = claimString(record.id, 1000);
+      if (!id) return;
+      const current = messages.get(id) ?? { annotations: [], phase: claimString(record.phase, 100), text: '' };
+      current.phase = claimString(record.phase, 100) ?? current.phase;
+      if (!current.text && Array.isArray(record.content)) {
+        current.text = record.content.flatMap(content => {
+          if (!content || typeof content !== 'object' || Array.isArray(content)) return [];
+          const part = content as Record<string, unknown>;
+          if (part.type !== 'output_text' || typeof part.text !== 'string') return [];
+          if (Array.isArray(part.annotations)) current.annotations = part.annotations.slice(0, 1000);
+          return [part.text];
+        }).join('');
+      }
+      messages.set(id, current);
+      return;
+    }
+    if (type === 'response.output_text.delta') {
+      const id = claimString(event.item_id, 1000);
+      if (!id || typeof event.delta !== 'string') return;
+      totalText += event.delta.length;
+      if (totalText > 2_000_000) throw new Error('OAuth 응답 텍스트가 안전 한도를 초과했습니다.');
+      const current = messages.get(id) ?? { annotations: [], text: '' };
+      current.text += event.delta; messages.set(id, current); return;
+    }
+    if (type === 'response.completed' || type === 'response.incomplete') {
+      completed = event.response && typeof event.response === 'object' && !Array.isArray(event.response)
+        ? event.response as Record<string, unknown> : {};
+      if (type === 'response.incomplete' && completed.incomplete_details === undefined) {
+        completed.incomplete_details = { reason: 'max_output_tokens' };
+      }
+      return;
+    }
+    if (type === 'response.failed' || type === 'error') {
+      const source = event.error && typeof event.error === 'object' && !Array.isArray(event.error)
+        ? event.error as Record<string, unknown> : event;
+      failure = { code: claimString(source.code, 200) ?? 'oauth_response_failed', message: claimString(source.message, 2000) ?? 'ChatGPT OAuth 응답 생성에 실패했습니다.' };
+    }
+  };
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      if (buffer.length > 4_000_000) throw new Error('OAuth 스트림 이벤트가 너무 큽니다.');
+      const lines = buffer.split(/\r?\n/u); buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        if (!line.startsWith('data:')) continue;
+        const raw = line.slice(5).trimStart();
+        if (!raw || raw === '[DONE]') continue;
+        const event: unknown = JSON.parse(raw);
+        if (event && typeof event === 'object' && !Array.isArray(event)) acceptEvent(event as Record<string, unknown>);
+      }
+      if (done) break;
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => undefined);
+    throw error;
+  } finally { reader.releaseLock(); }
+  if (failure) {
+    return Response.json({ error: { ...failure, type: 'oauth_response_error', param: null } }, { status: 502 });
+  }
+  if (!completed) {
+    return Response.json({ error: { code: 'incomplete_stream', message: 'ChatGPT OAuth 응답이 완료되기 전에 연결이 끊겼습니다.', type: 'oauth_response_error', param: null } }, { status: 502 });
+  }
+  const output = [...messages.entries()]
+    .filter(([, message]) => message.phase !== 'commentary' && message.text)
+    .map(([id, message]) => ({ type: 'message', role: 'assistant', id, phase: 'final_answer',
+      content: [{ type: 'output_text', text: message.text, annotations: message.annotations, logprobs: [] }] }));
+  return Response.json({
+    id: claimString(completed.id, 1000) ?? claimString(created?.id, 1000) ?? crypto.randomUUID(),
+    created_at: typeof completed.created_at === 'number' ? completed.created_at
+      : typeof created?.created_at === 'number' ? created.created_at : Math.floor(Date.now() / 1000),
+    model: claimString(completed.model, 500) ?? claimString(created?.model, 500), output,
+    service_tier: claimString(completed.service_tier, 100) ?? null,
+    reasoning: completed.reasoning ?? null, incomplete_details: completed.incomplete_details ?? null,
+    usage: completed.usage,
+  });
+}
+
 export async function openCodeOAuthFetch(input: RequestInfo | URL, init?: RequestInit) {
   const parsed = input instanceof URL ? input : new URL(typeof input === 'string' ? input : input.url);
   if (!parsed.pathname.includes('/responses') && !parsed.pathname.includes('/chat/completions')) {
@@ -226,14 +330,19 @@ export async function openCodeOAuthFetch(input: RequestInfo | URL, init?: Reques
   const residency = extractOpenCodeResidency(credential.access);
   if (residency) headers.set('x-openai-internal-codex-residency', residency);
   let body = init?.body;
+  let callerWantsStream = false;
   if (typeof body === 'string') {
     const requestBody = JSON.parse(body) as Record<string, unknown>;
+    callerWantsStream = requestBody.stream === true;
     if (Array.isArray(requestBody.tools) && requestBody.tools.length > 0) throw new Error('OpenCode OAuth에서는 모델 도구 실행을 허용하지 않습니다.');
     requestBody.max_output_tokens = undefined;
     requestBody.tools = [];
     requestBody.store = false;
     requestBody.parallel_tool_calls = false;
+    requestBody.stream = true;
     body = JSON.stringify(requestBody);
   }
-  return fetch(OPENCODE_CODEX_ENDPOINT, { ...init, body, headers });
+  headers.set('Accept', 'text/event-stream');
+  const response = await fetch(OPENCODE_CODEX_ENDPOINT, { ...init, body, headers });
+  return callerWantsStream ? response : collectOpenCodeStreamResponse(response);
 }

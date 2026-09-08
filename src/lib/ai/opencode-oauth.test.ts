@@ -8,6 +8,17 @@ function jwt(payload: Record<string, unknown>) {
 }
 const access = jwt({ email: 'writer@example.invalid', 'https://api.openai.com/auth': { chatgpt_account_id: 'account-test', chatgpt_compute_residency: 'kr' } });
 const tokens = (expires = 3600) => ({ id_token: access, access_token: access, refresh_token: 'refresh-plain-secret', expires_in: expires });
+function oauthStream(finalText = 'OK') {
+  const events = [
+    { type: 'response.output_item.added', item: { id: 'commentary', type: 'message', phase: 'commentary', content: [] } },
+    { type: 'response.output_text.delta', item_id: 'commentary', delta: '내부 진행 상황' },
+    { type: 'response.output_item.added', item: { id: 'final', type: 'message', phase: 'final_answer', content: [] } },
+    { type: 'response.output_text.delta', item_id: 'final', delta: finalText },
+    { type: 'response.output_item.done', item: { id: 'final', type: 'message', phase: 'final_answer', content: [{ type: 'output_text', text: finalText, annotations: [] }] } },
+    { type: 'response.completed', response: { id: 'response', model: 'gpt-5.4-mini', usage: { input_tokens: 10, output_tokens: 2 } } },
+  ];
+  return new Response(`${events.map(event => `data: ${JSON.stringify(event)}\n\n`).join('')}data: [DONE]\n\n`, { headers: { 'Content-Type': 'text/event-stream' } });
+}
 
 describe('OpenCode-compatible OAuth module', () => {
   const authRoot = path.resolve('test-results', 'opencode-oauth-test');
@@ -64,8 +75,8 @@ describe('OpenCode-compatible OAuth module', () => {
   });
   it('rewrites only inference requests with OAuth identity and blocks model tools', async () => {
     const { module } = await login();
-    const inference = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => Response.json({ ok: true })); vi.stubGlobal('fetch', inference);
-    await module.openCodeOAuthFetch('https://api.openai.com/v1/responses', {
+    const inference = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => oauthStream('최종 답변')); vi.stubGlobal('fetch', inference);
+    const converted = await module.openCodeOAuthFetch('https://api.openai.com/v1/responses', {
       method: 'POST', headers: { Authorization: 'Bearer dummy' },
       body: JSON.stringify({ model: 'gpt-5.4-mini', input: 'test', max_output_tokens: 200 }),
     });
@@ -76,9 +87,22 @@ describe('OpenCode-compatible OAuth module', () => {
     expect(headers.get('ChatGPT-Account-Id')).toBe('account-test');
     expect(headers.get('originator')).toBe('opencode');
     expect(headers.get('x-openai-internal-codex-residency')).toBe('kr');
-    expect(JSON.parse(String(init.body))).not.toHaveProperty('max_output_tokens');
+    const sent = JSON.parse(String(init.body));
+    expect(sent).not.toHaveProperty('max_output_tokens'); expect(sent).toMatchObject({ stream: true, tools: [], store: false, parallel_tool_calls: false });
+    const result = await converted.json();
+    expect(result.output[0].content[0].text).toBe('최종 답변');
+    expect(JSON.stringify(result)).not.toContain('내부 진행 상황');
     await expect(module.openCodeOAuthFetch('https://api.openai.com/v1/responses', { method: 'POST', body: JSON.stringify({ tools: [{ type: 'function' }] }) })).rejects.toThrow('도구');
     await expect(module.openCodeOAuthFetch('https://api.openai.com/v1/models')).rejects.toThrow('텍스트 추론');
+  });
+  it('keeps native SSE for stream callers and turns failed or truncated buffered streams into errors', async () => {
+    const { module } = await login();
+    const stream = oauthStream('실시간'); vi.stubGlobal('fetch', vi.fn(async () => stream));
+    const forwarded = await module.openCodeOAuthFetch('https://api.openai.com/v1/responses', { method: 'POST', body: JSON.stringify({ stream: true }) });
+    expect(forwarded).toBe(stream);
+    const failed = new Response(`data: ${JSON.stringify({ type: 'response.failed', error: { code: 'bad_request', message: '실패' } })}\n\n`);
+    expect((await module.collectOpenCodeStreamResponse(failed)).status).toBe(502);
+    expect((await module.collectOpenCodeStreamResponse(new Response('data: [DONE]\n\n'))).status).toBe(502);
   });
   it('deletes only the Muse-owned encrypted credential on disconnect', async () => {
     const { module } = await login();
