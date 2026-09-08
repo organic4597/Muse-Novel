@@ -2,7 +2,7 @@ import { generateText, streamText, Output } from 'ai';
 import { z } from 'zod';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ listeners: new Set<(event: any) => void>(), request: vi.fn(), auth: 'chatgpt', text: '자연스러운 다음 문장입니다.', auto: true, count: 0 }));
-vi.mock('./chatgpt-account', () => ({ getChatGPTRpc: async () => ({ workspace: '/isolated', request: mocks.request, subscribe: (listener: (event: any) => void) => { mocks.listeners.add(listener); return () => mocks.listeners.delete(listener); } }) }));
+vi.mock('./chatgpt-account', () => ({ assertChatGPTNetworkAvailable: async () => {}, getChatGPTRpc: async () => ({ workspace: '/isolated', request: mocks.request, subscribe: (listener: (event: any) => void) => { mocks.listeners.add(listener); return () => mocks.listeners.delete(listener); } }) }));
 import { createChatGPTProvider, prepareChatGPTRequest } from './chatgpt-provider';
 const emit = (method: string, params: any) => { for (const listener of [...mocks.listeners]) listener({ method, params }); };
 describe('ChatGPT AI SDK compatibility', () => {

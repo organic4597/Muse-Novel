@@ -15,8 +15,9 @@ describe('isolated ChatGPT account lifecycle', () => {
       if (method === 'account/login/start') return { type: 'chatgptDeviceCode', loginId: 'private-login-id', verificationUrl: 'https://auth.openai.com/codex/device', userCode: 'TEST-1234', accessToken: 'fixture-never-expose' };
       return {};
     });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 204 })));
   });
-  afterEach(async () => { await (await import('./chatgpt-account')).disconnectChatGPT(); });
+  afterEach(async () => { await (await import('./chatgpt-account')).disconnectChatGPT(); vi.unstubAllGlobals(); });
   it('does not expose internal auth tokens or login identifiers and reuses a pending login', async () => {
     const account = await import('./chatgpt-account');
     const first = await account.beginChatGPTLogin();
@@ -38,5 +39,11 @@ describe('isolated ChatGPT account lifecycle', () => {
   it('rejects a non-official device authentication URL', async () => {
     mocks.request.mockImplementation(async method => method === 'account/read' ? { account: null } : { verificationUrl: 'https://example.invalid/sign-in', userCode: 'code' });
     await expect((await import('./chatgpt-account')).beginChatGPTLogin()).rejects.toThrow('공식 인증 주소');
+  });
+  it('reports a Cloudflare network challenge before starting or exposing device login', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 403, headers: { 'cf-mitigated': 'challenge' } })));
+    const account = await import('./chatgpt-account');
+    await expect(account.beginChatGPTLogin()).rejects.toMatchObject({ code: 'network_challenge' });
+    expect(mocks.request).not.toHaveBeenCalled();
   });
 });

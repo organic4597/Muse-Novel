@@ -11,6 +11,41 @@ const scope = globalThis as typeof globalThis & { __museChatGPTAccount?: State }
 scope.__museChatGPTAccount ??= {};
 const state = scope.__museChatGPTAccount;
 
+export class ChatGPTConnectionError extends Error {
+  readonly code: 'network_challenge' | 'network_error';
+  constructor(message: string, code: 'network_challenge' | 'network_error') {
+    super(message);
+    this.code = code;
+  }
+}
+
+export async function assertChatGPTNetworkAvailable(signal?: AbortSignal) {
+  try {
+    const response = await fetch('https://auth.openai.com/', {
+      cache: 'no-store', redirect: 'manual',
+      signal: AbortSignal.any([signal ?? new AbortController().signal, AbortSignal.timeout(8000)]),
+    });
+    if (response.status === 403 && response.headers.get('cf-mitigated') === 'challenge') {
+      throw new ChatGPTConnectionError(
+        '운영 서버의 OpenAI 연결이 Cloudflare 보안 확인에 차단되었습니다. ChatGPT 계정이나 기기 코드 설정 문제가 아닙니다. 서버의 외부 네트워크 경로를 바꾸거나 Codex가 동작하는 장비에 추론 브리지를 구성해주세요.',
+        'network_challenge'
+      );
+    }
+  } catch (error) {
+    if (error instanceof ChatGPTConnectionError) throw error;
+    throw new ChatGPTConnectionError(
+      '운영 서버에서 OpenAI 인증 서버에 연결할 수 없습니다. DNS·방화벽·프록시·TLS 설정을 확인해주세요.',
+      'network_error'
+    );
+  }
+}
+
+export function getChatGPTConnectionError(error: unknown) {
+  return error instanceof ChatGPTConnectionError
+    ? { code: error.code, error: error.message }
+    : { code: 'login_start_failed', error: 'ChatGPT 로그인을 시작하지 못했습니다. Codex 설치·서버 네트워크와 ChatGPT 보안 설정의 기기 코드 로그인을 확인해주세요.' };
+}
+
 export async function getChatGPTRpc() {
   if (!state.rpc || state.rpc.closed) {
     const rpc = new ChatGPTRpc(); state.rpc = rpc;
@@ -48,6 +83,7 @@ export async function getChatGPTAccount(): Promise<ChatGPTAccountState> {
 
 export async function beginChatGPTLogin() {
   if (!state.startingLogin) state.startingLogin = (async () => {
+    await assertChatGPTNetworkAvailable();
     const rpc = await getChatGPTRpc();
     if (state.login && state.login.expiresAt > Date.now()) return;
     const current = await rpc.request('account/read', { refreshToken: false });

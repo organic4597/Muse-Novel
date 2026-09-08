@@ -1,5 +1,5 @@
 import type { LanguageModelV3, LanguageModelV3CallOptions, LanguageModelV3GenerateResult, LanguageModelV3StreamPart, LanguageModelV3Usage, SharedV3Warning } from '@ai-sdk/provider';
-import { getChatGPTRpc } from './chatgpt-account';
+import { assertChatGPTNetworkAvailable, getChatGPTRpc } from './chatgpt-account';
 
 const emptyUsage = (): LanguageModelV3Usage => ({ inputTokens: { total: undefined, noCache: undefined, cacheRead: undefined, cacheWrite: undefined }, outputTokens: { total: undefined, text: undefined, reasoning: undefined } });
 
@@ -29,6 +29,7 @@ export function prepareChatGPTRequest(options: LanguageModelV3CallOptions) {
 
 async function runChatGPT(modelId: string, options: LanguageModelV3CallOptions, delta: (text: string) => void): Promise<LanguageModelV3GenerateResult> {
   const prepared = prepareChatGPTRequest(options);
+  await assertChatGPTNetworkAvailable(options.abortSignal);
   const rpc = await getChatGPTRpc();
   const signal = AbortSignal.any([options.abortSignal ?? new AbortController().signal, AbortSignal.timeout(600000)]);
   signal.throwIfAborted();
