@@ -213,6 +213,26 @@
     content-visibility: auto;
     contain-intrinsic-size: auto 8rem;
   }
+
+  /* Paint each text block independently: paragraph spacing and heading sizes
+     must not shift all following rules. CSS-only guides never enter the draft. */
+  .muse-ruled-paper .muse-ruled-block {
+    background-image: linear-gradient(
+      to bottom,
+      transparent calc(100% - 1px),
+      color-mix(in oklab, var(--foreground) 12%, transparent) 0
+    );
+    background-size: 100% 1lh;
+    background-origin: content-box;
+    background-clip: content-box;
+    background-repeat: repeat-y;
+  }
+}
+
+@media print {
+  .muse-ruled-paper .muse-ruled-block {
+    background-image: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

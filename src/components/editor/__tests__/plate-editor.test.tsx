@@ -51,7 +51,7 @@ vi.mock('@/components/editor/use-editor-content-worker', () => ({
   }),
 }));
 vi.mock('@/components/ui/editor', () => ({
-  Editor: () => <div data-testid="editor" />,
+  Editor: ({ className }: { className?: string }) => <div className={className} data-testid="editor" />,
   EditorContainer: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
@@ -109,6 +109,18 @@ describe('PlateEditor content initialization', () => {
     expect(mocks.usePlateEditor.mock.calls[3]?.[1]).toEqual([
       'chapter-2',
     ]);
+  });
+
+  it('toggles notebook guides without resetting content or processing the draft again', () => {
+    const { getByTestId, rerender } = render(<PlateEditor chapterId="chapter-1" ruledLines />);
+    expect(getByTestId('editor')).toHaveClass('muse-ruled-paper');
+    const value = mocks.usePlateEditor.mock.calls[0][0].value;
+    rerender(<PlateEditor chapterId="chapter-1" ruledLines={false} />);
+    expect(getByTestId('editor')).not.toHaveClass('muse-ruled-paper');
+    expect(mocks.usePlateEditor.mock.calls.at(-1)?.[0].value).toBe(value);
+    expect(mocks.processValue).toHaveBeenCalledTimes(1);
+    expect(mocks.editor.tf.focus).not.toHaveBeenCalled();
+    expect(mocks.editor.tf.select).not.toHaveBeenCalled();
   });
 
   it('falls back to an empty paragraph when persisted JSON is malformed', () => {

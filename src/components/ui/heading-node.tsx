@@ -5,7 +5,7 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import type { PlateElementProps } from 'platejs/react';
 import { PlateElement } from 'platejs/react';
 
-const headingVariants = cva('relative mb-1', {
+const headingVariants = cva('muse-ruled-block relative mb-1', {
   variants: {
     variant: {
       h1: 'mt-[1.6em] pb-1 font-bold font-heading text-4xl',

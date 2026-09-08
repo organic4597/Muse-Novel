@@ -8,6 +8,7 @@ import {
   LoaderCircle,
   Map as MapIcon,
   NotebookPen,
+  NotebookText,
   Sparkles,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
@@ -124,6 +125,7 @@ export default function WritePage() {
   const [isIntelligenceOpen, setIsIntelligenceOpen] = useState(false);
   const [isStoryStateOpen, setIsStoryStateOpen] = useState(false);
   const [ghostTextEnabled, setGhostTextEnabled] = useState(true);
+  const [ruledLines, setRuledLines] = useState(true);
   const [isMapReferenceOpen, setIsMapReferenceOpen] = useState(false);
   const [isWorldReferenceOpen, setIsWorldReferenceOpen] = useState(false);
   const [authorNoteStatus, setAuthorNoteStatus] = useState('');
@@ -151,6 +153,11 @@ export default function WritePage() {
   useEffect(() => {
     try { setGhostTextEnabled(localStorage.getItem(`muse-ghost-text:${params.id}`) !== 'off'); }
     catch { setGhostTextEnabled(true); }
+  }, [params.id]);
+
+  useEffect(() => {
+    try { setRuledLines(localStorage.getItem(`muse-ruled-lines:${params.id}`) !== 'off'); }
+    catch { setRuledLines(true); }
   }, [params.id]);
 
   const autoSave = useAutoSave({
@@ -330,6 +337,19 @@ export default function WritePage() {
                     <Sparkles />Ghost Text {ghostTextEnabled ? '켜짐' : '꺼짐'}
                   </Button>
                   <Button
+                    aria-pressed={ruledLines}
+                    onClick={() => setRuledLines((enabled) => {
+                      const next = !enabled;
+                      try { localStorage.setItem(`muse-ruled-lines:${params.id}`, next ? 'on' : 'off'); } catch { /* Optional display preference. */ }
+                      return next;
+                    })}
+                    size="sm"
+                    type="button"
+                    variant={ruledLines ? 'secondary' : 'outline'}
+                  >
+                    <NotebookText />줄노트 {ruledLines ? '켜짐' : '꺼짐'}
+                  </Button>
+                  <Button
                     onClick={() => setIsIntelligenceOpen((open) => !open)}
                     size="sm"
                     type="button"
@@ -444,6 +464,7 @@ export default function WritePage() {
                     chapterId={selectedChapter.id}
                     content={selectedChapter.contentJson}
                     ghostTextEnabled={ghostTextEnabled}
+                    ruledLines={ruledLines}
                     key={selectedChapter.id}
                     onStatsChange={setTextStats}
                     onValueChange={handleContentChange}

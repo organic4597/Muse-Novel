@@ -37,6 +37,7 @@ export interface PlateEditorProps {
   onStatsChange?: (stats: EditorTextStats) => void;
   onValueChange?: (content: string) => void;
   ghostTextEnabled?: boolean;
+  ruledLines?: boolean;
   sceneId?: string | null;
   ref?: Ref<PlateEditorHandle>;
 }
@@ -124,6 +125,7 @@ export function PlateEditor({
   onStatsChange,
   onValueChange,
   ghostTextEnabled = true,
+  ruledLines = false,
   sceneId = null,
   ref,
 }: PlateEditorProps) {
@@ -279,7 +281,7 @@ export function PlateEditor({
       onValueChange={({ value }) => processValue(value)}
     >
       <EditorContainer variant="writing">
-        <Editor aria-label={ariaLabel} onPaste={handlePaste} variant="writing" />
+        <Editor aria-label={ariaLabel} className={ruledLines ? 'muse-ruled-paper' : undefined} onPaste={handlePaste} variant="writing" />
       </EditorContainer>
     </Plate>
   );
