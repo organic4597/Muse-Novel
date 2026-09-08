@@ -87,6 +87,38 @@ describe('authentication proxy', () => {
     await expect(response.json()).resolves.toMatchObject({ code: 'AUTH_REQUIRED' });
   });
 
+  it.each([
+    '/',
+    '/projects/project-id',
+    '/projects/project-id/write',
+    '/projects/project-id/world',
+    '/projects/project-id/maps',
+    '/projects/project-id/characters',
+    '/projects/project-id/settings',
+    '/settings/ai',
+    '/settings/style-profiles',
+    '/diagnostics',
+    '/writing-knowledge',
+    '/uploads/author-notes/private.webp',
+  ])('requires a valid login session before opening %s', async (pathname) => {
+    await createInitialCredential(testCredential());
+    const response = await proxy(new NextRequest(`https://muse-novel.pyochang.online${pathname}`));
+    expect(response.status).toBe(307);
+    const location = new URL(response.headers.get('location') ?? '');
+    expect(location.origin).toBe('https://muse-novel.pyochang.online');
+    expect(location.pathname).toBe('/login');
+  });
+
+  it('exposes only the login flow after local credentials are configured', async () => {
+    await createInitialCredential(testCredential());
+    const login = await proxy(new NextRequest('https://muse-novel.pyochang.online/login'));
+    expect(login.headers.get('x-middleware-next')).toBe('1');
+
+    const setup = await proxy(new NextRequest('https://muse-novel.pyochang.online/setup'));
+    expect(setup.status).toBe(307);
+    expect(setup.headers.get('location')).toBe('https://muse-novel.pyochang.online/login');
+  });
+
   it('allows a cryptographically valid session and rejects a forged one', async () => {
     await createInitialCredential(testCredential());
     const { token } = await createSessionToken();

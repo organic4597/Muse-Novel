@@ -41,6 +41,7 @@ MUSE_AUTH_SETUP_TOKEN=<생성한 64자리 값>
 ## 세션과 요청 보호
 
 - HMAC-SHA256 서명 세션, 로그인 후 24시간 만료
+- 로그인·최초 설정·인증 처리·상태 확인을 제외한 모든 페이지, API, 업로드 파일은 유효한 로그인 세션 필요
 - `HttpOnly`, `SameSite=Lax`, `Priority=High` 쿠키
 - HTTPS에서는 `Secure` 자동 적용
 - 로그아웃 시 session epoch를 올려 기존 세션 폐기
