@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { SESSION_DURATION_SECONDS } from './constants';
 import { createSessionToken, validateSessionToken } from './session';
 import { createInitialCredential, incrementSessionEpoch } from './storage';
 import type { AuthCredential } from './types';
@@ -32,6 +33,13 @@ beforeEach(async () => {
   temporaryDirectory = await mkdtemp(path.join(tmpdir(), 'muse-auth-session-'));
   process.env.MUSE_AUTH_DATA_DIR = temporaryDirectory;
   await createInitialCredential(testCredential());
+});
+
+it('limits newly issued login sessions to exactly 24 hours', async () => {
+  const now = Date.now();
+  const { claims } = await createSessionToken(now);
+  expect(SESSION_DURATION_SECONDS).toBe(60 * 60 * 24);
+  expect(claims.expiresAt - claims.issuedAt).toBe(60 * 60 * 24);
 });
 
 afterEach(async () => {

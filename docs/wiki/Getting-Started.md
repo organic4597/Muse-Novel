@@ -34,6 +34,8 @@ docker run -d --name muse-novel --restart unless-stopped \
 
 브라우저에서 `http://localhost:3210`으로 접속합니다. 컨테이너를 업데이트할 때도 `muse-novel-data:/app/data`를 다시 연결해야 DB, 업로드 이미지, 로그인 계정이 유지됩니다.
 
+공개 도메인을 연결해도 별도 회원가입은 제공하지 않습니다. 서버의 최초 설정 과정에서 만든 로컬 관리자 계정만 로그인할 수 있으며 로그인 세션은 24시간 후 만료됩니다.
+
 ## 최초 로그인
 
 LAN에서 사용할 서버라면 실행 전에 `.env.local` 또는 `.env`에 `MUSE_AUTH_SETUP_TOKEN`을 설정하세요. 만드는 방법과 `/setup` 입력 순서는 [로그인과 운영 보안](Security)에 있습니다.
