@@ -12,7 +12,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
 import { ChapterSidebar } from '@/components/chapter/chapter-sidebar';
@@ -25,6 +25,7 @@ import { AutoSaveIndicator } from '@/components/editor/auto-save-indicator';
 import { ChapterReferenceBar } from '@/components/editor/chapter-reference-bar';
 import { SceneWorkbench } from '@/components/editor/scene-workbench';
 import type { ScenePlan } from '@/lib/writing-workbench';
+import { isGhostProviderType, isLocalGhostBaseUrl } from '@/lib/ai/ghost-provider-policy';
 import type {
   PlateEditorHandle,
   PlateEditorProps,
@@ -106,6 +107,7 @@ function EditorLoadingPlaceholder() {
 
 export default function WritePage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const editorRef = useRef<PlateEditorHandle>(null);
   const notebookRef = useRef<AuthorNotebookWorkspaceHandle>(null);
   const latestContentRef = useRef('');
@@ -125,6 +127,7 @@ export default function WritePage() {
   const [isIntelligenceOpen, setIsIntelligenceOpen] = useState(false);
   const [isStoryStateOpen, setIsStoryStateOpen] = useState(false);
   const [ghostTextEnabled, setGhostTextEnabled] = useState(true);
+  const [ghostProviderConfigured, setGhostProviderConfigured] = useState<boolean | null>(null);
   const [ruledLines, setRuledLines] = useState(true);
   const [isMapReferenceOpen, setIsMapReferenceOpen] = useState(false);
   const [isWorldReferenceOpen, setIsWorldReferenceOpen] = useState(false);
@@ -153,6 +156,23 @@ export default function WritePage() {
   useEffect(() => {
     try { setGhostTextEnabled(localStorage.getItem(`muse-ghost-text:${params.id}`) !== 'off'); }
     catch { setGhostTextEnabled(true); }
+  }, [params.id]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setGhostProviderConfigured(null);
+    void fetch(`/api/projects/${params.id}/ghost-ai-settings`, { signal: controller.signal })
+      .then(response => response.ok ? response.json() : null)
+      .then(data => {
+        if (controller.signal.aborted) return;
+        const override = data?.override;
+        setGhostProviderConfigured(Boolean(
+          override && isGhostProviderType(override.providerType) &&
+          override.baseUrl && isLocalGhostBaseUrl(override.baseUrl)
+        ));
+      })
+      .catch(() => { if (!controller.signal.aborted) setGhostProviderConfigured(false); });
+    return () => controller.abort();
   }, [params.id]);
 
   useEffect(() => {
@@ -324,17 +344,27 @@ export default function WritePage() {
                     <MapIcon />지도
                   </Button>
                   <Button
-                    aria-pressed={ghostTextEnabled}
-                    onClick={() => setGhostTextEnabled((enabled) => {
+                    aria-pressed={ghostProviderConfigured === true && ghostTextEnabled}
+                    onClick={() => {
+                      if (ghostProviderConfigured !== true) {
+                        router.push(`/settings/ai?projectId=${params.id}`);
+                        return;
+                      }
+                      setGhostTextEnabled((enabled) => {
                       const next = !enabled;
                       try { localStorage.setItem(`muse-ghost-text:${params.id}`, next ? 'on' : 'off'); } catch { /* Preference persistence is optional. */ }
                       return next;
-                    })}
+                      });
+                    }}
                     size="sm"
                     type="button"
-                    variant={ghostTextEnabled ? 'secondary' : 'outline'}
+                    variant={ghostProviderConfigured === true && ghostTextEnabled ? 'secondary' : 'outline'}
                   >
-                    <Sparkles />Ghost Text {ghostTextEnabled ? '켜짐' : '꺼짐'}
+                    <Sparkles />{ghostProviderConfigured === null
+                      ? 'Ghost Text 확인 중'
+                      : ghostProviderConfigured
+                        ? `Ghost Text ${ghostTextEnabled ? '켜짐' : '꺼짐'}`
+                        : 'Ghost Text 설정 필요'}
                   </Button>
                   <Button
                     aria-pressed={ruledLines}
@@ -463,7 +493,7 @@ export default function WritePage() {
                     sceneId={sceneId}
                     chapterId={selectedChapter.id}
                     content={selectedChapter.contentJson}
-                    ghostTextEnabled={ghostTextEnabled}
+                    ghostTextEnabled={ghostProviderConfigured === true && ghostTextEnabled}
                     ruledLines={ruledLines}
                     key={selectedChapter.id}
                     onStatsChange={setTextStats}

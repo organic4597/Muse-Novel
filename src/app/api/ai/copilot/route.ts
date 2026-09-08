@@ -23,6 +23,7 @@ import { resolveStoredProviderConfig } from '@/lib/ai/provider-config-resolver';
 import { createProvider } from '@/lib/ai/provider-factory';
 import { getProviderOptions } from '@/lib/ai/provider-options';
 import type { ProviderConfig } from '@/lib/ai/types';
+import { isGhostProviderType, isLocalGhostBaseUrl } from '@/lib/ai/ghost-provider-policy';
 import { db } from '@/lib/db';
 import {
   getDefaultProvider,
@@ -272,8 +273,17 @@ export async function POST(req: NextRequest) {
     const ghostSettings = isInlineSuggestion
       ? await getGhostAISettings(db, projectId)
       : undefined;
-    const providerSettings =
-      ghostSettings ??
+    if (isInlineSuggestion && !ghostSettings) {
+      return NextResponse.json({ text: '', skipped: 'not_configured', status: 'not_configured' });
+    }
+    if (
+      isInlineSuggestion && ghostSettings &&
+      (!isGhostProviderType(ghostSettings.providerType) ||
+        !ghostSettings.baseUrl || !isLocalGhostBaseUrl(ghostSettings.baseUrl))
+    ) {
+      return NextResponse.json({ text: '', skipped: 'unsupported_provider', status: 'unsupported_provider' });
+    }
+    const providerSettings = ghostSettings ??
       await getDefaultProvider(db, projectId) ??
       await getGlobalDefaultProvider(db);
     let providerConfig: ProviderConfig;

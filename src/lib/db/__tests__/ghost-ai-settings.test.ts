@@ -58,7 +58,7 @@ describe('Ghost AI settings queries', () => {
     ).toEqual({ count: 1 });
   });
 
-  it('removes an override to restore inheritance', async () => {
+  it('removes a dedicated connection to disable Ghost Text', async () => {
     await setGhostAISettings(db, projectId, {
       providerType: 'qwen-local',
       modelName: 'Kanana-Ghost',

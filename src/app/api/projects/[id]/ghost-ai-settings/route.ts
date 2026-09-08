@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { decryptApiKey, encryptApiKey, maskApiKey } from '@/lib/ai/encryption';
-import { PROVIDER_TYPES } from '@/lib/ai/types';
+import { GHOST_PROVIDER_TYPES, isLocalGhostBaseUrl } from '@/lib/ai/ghost-provider-policy';
 import { db } from '@/lib/db';
 import {
   deleteGhostAISettings,
@@ -13,10 +13,10 @@ import { getProject } from '@/lib/db/queries/projects';
 
 const settingsSchema = z.object({
   apiKey: z.string().max(1000).optional(),
-  baseUrl: z.string().trim().max(2000).optional(),
+  baseUrl: z.string().trim().url().max(2000).refine(isLocalGhostBaseUrl, 'Ghost Text는 로컬 또는 사설망 주소만 사용할 수 있습니다.'),
   contextSize: z.number().int().min(1024).max(2_000_000).nullable().optional(),
   modelName: z.string().trim().min(1).max(300),
-  providerType: z.enum(PROVIDER_TYPES),
+  providerType: z.enum(GHOST_PROVIDER_TYPES),
 });
 
 function maskSettings<T extends { apiKeyEncrypted: string | null }>(value: T) {
@@ -68,5 +68,5 @@ export async function DELETE(_request: Request, { params }: Context) {
     return NextResponse.json({ error: '프로젝트를 찾을 수 없습니다.' }, { status: 404 });
   }
   await deleteGhostAISettings(db, id);
-  return NextResponse.json({ inherited: true });
+  return NextResponse.json({ enabled: false, inherited: false });
 }

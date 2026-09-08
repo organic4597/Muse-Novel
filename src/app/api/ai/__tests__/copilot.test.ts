@@ -129,9 +129,16 @@ describe('POST /api/ai/copilot', () => {
     const { getDefaultProvider } = await import('@/lib/db/queries/ai-settings');
     const { createProvider } = await import('@/lib/ai/provider-factory');
     const { generateText } = await import('ai');
+    const { getGhostAISettings } = await import('@/lib/db/queries/ghost-ai-settings');
 
     vi.mocked(getProject).mockResolvedValue(mockProject);
     vi.mocked(getDefaultProvider).mockResolvedValue(mockProviderSettings);
+    vi.mocked(getGhostAISettings).mockResolvedValue({
+      ...mockProviderSettings,
+      providerType: 'openai-compatible',
+      modelName: 'local-ghost',
+      baseUrl: 'http://ghost-model:8080/v1',
+    });
     vi.mocked(createProvider).mockReturnValue(mockModel as never);
     vi.mocked(generateText).mockResolvedValue({
       text: '다음 문장: 차가운 바람이 얼굴을 스쳤다.',
@@ -160,6 +167,7 @@ describe('POST /api/ai/copilot', () => {
     const { getProject } = await import('@/lib/db/queries/projects');
     const { getDefaultProvider } = await import('@/lib/db/queries/ai-settings');
     const { createProvider } = await import('@/lib/ai/provider-factory');
+    const { getGhostAISettings } = await import('@/lib/db/queries/ghost-ai-settings');
     const fetchMock = vi.fn().mockResolvedValue(
       Response.json({
         choices: [
@@ -175,6 +183,12 @@ describe('POST /api/ai/copilot', () => {
 
     vi.mocked(getProject).mockResolvedValue(mockProject);
     vi.mocked(getDefaultProvider).mockResolvedValue({
+      ...mockProviderSettings,
+      providerType: 'qwen-local',
+      modelName: 'Kanana-2-30B-A3B-Instruct-2601',
+      baseUrl: 'http://127.0.0.1:8080/v1',
+    });
+    vi.mocked(getGhostAISettings).mockResolvedValue({
       ...mockProviderSettings,
       providerType: 'qwen-local',
       modelName: 'Kanana-2-30B-A3B-Instruct-2601',
@@ -220,6 +234,7 @@ describe('POST /api/ai/copilot', () => {
     const { getProject } = await import('@/lib/db/queries/projects');
     const { getDefaultProvider } = await import('@/lib/db/queries/ai-settings');
     const { createProvider } = await import('@/lib/ai/provider-factory');
+    const { getGhostAISettings } = await import('@/lib/db/queries/ghost-ai-settings');
     const fetchMock = vi.fn().mockImplementation((input: string | URL) => {
       if (String(input).includes('/slots?')) return Promise.resolve(new Response('{}'));
       return Promise.resolve(
@@ -231,6 +246,12 @@ describe('POST /api/ai/copilot', () => {
 
     vi.mocked(getProject).mockResolvedValue(mockProject);
     vi.mocked(getDefaultProvider).mockResolvedValue({
+      ...mockProviderSettings,
+      providerType: 'qwen-local',
+      modelName: 'Kanana-Ghost',
+      baseUrl: 'http://ghost-model:8080',
+    });
+    vi.mocked(getGhostAISettings).mockResolvedValue({
       ...mockProviderSettings,
       providerType: 'qwen-local',
       modelName: 'Kanana-Ghost',
@@ -311,6 +332,30 @@ describe('POST /api/ai/copilot', () => {
       String((fetchMock.mock.calls[0]?.[1] as RequestInit).body)
     );
     expect(body.model).toBe('Kanana-Ghost');
+  });
+
+  it('does not inherit the general ChatGPT provider when Ghost Text is unconfigured', async () => {
+    const { getProject } = await import('@/lib/db/queries/projects');
+    const { getDefaultProvider } = await import('@/lib/db/queries/ai-settings');
+    const { createProvider } = await import('@/lib/ai/provider-factory');
+    vi.mocked(getProject).mockResolvedValue(mockProject);
+    vi.mocked(getDefaultProvider).mockResolvedValue({ ...mockProviderSettings, providerType: 'opencode-oauth' });
+    const { POST } = await import('../copilot/route');
+    const response = await POST(createRequest({ mode: 'inline-suggestion', projectId: 'project-1', prefix: '그는 걸었다.', prompt: '그는 걸었다.' }));
+    expect(await response.json()).toEqual({ text: '', skipped: 'not_configured', status: 'not_configured' });
+    expect(createProvider).not.toHaveBeenCalled();
+  });
+
+  it('rejects legacy cloud or public Ghost provider settings without calling them', async () => {
+    const { getProject } = await import('@/lib/db/queries/projects');
+    const { getGhostAISettings } = await import('@/lib/db/queries/ghost-ai-settings');
+    const { createProvider } = await import('@/lib/ai/provider-factory');
+    vi.mocked(getProject).mockResolvedValue(mockProject);
+    vi.mocked(getGhostAISettings).mockResolvedValue({ ...mockProviderSettings, providerType: 'openai', baseUrl: 'https://api.openai.com' });
+    const { POST } = await import('../copilot/route');
+    const response = await POST(createRequest({ mode: 'inline-suggestion', projectId: 'project-1', prefix: '그는 걸었다.', prompt: '그는 걸었다.' }));
+    expect((await response.json()).status).toBe('unsupported_provider');
+    expect(createProvider).not.toHaveBeenCalled();
   });
 
   it('returns empty text (not 500) when AI generation throws an error', async () => {
