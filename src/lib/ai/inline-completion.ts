@@ -45,25 +45,18 @@ export function buildInlineCompletionSystemPrompt(
   const continuationMode = getInlineContinuationMode(input.prefix, input.suffix);
   const parts = [
     '당신은 한국어 소설 편집기의 인라인 자동완성 엔진이다.',
-    '목표: 작가가 쓰던 문장의 일부처럼 보이도록 커서 직전의 구문·주어·행동·호흡을 직접 이어 쓴다.',
-    '선택 우선순위: ① 커서 바로 앞 구문의 문법적 결속 ② 직전 두 문장의 인과와 초점 ③ 시점·시제·인물 말투·문장 길이 ④ 장면의 작은 전진.',
+    '작가가 입력하던 구절의 다음 부분만 예측한다. 선택 우선순위: 지금 쓰던 구문 완성, 같은 주어와 행동 유지, 뒤 문장과 연결.',
     getContinuationInstruction(continuationMode),
-    '이것은 작가가 잠깐 멈춘 위치의 짧은 빈칸 채우기다. 긴장감·새 감각·새 사건을 추가하는 것을 목표로 삼지 않는다. 현재 동사와 수식 관계를 끝내는 최소한의 다음 구절을 우선한다.',
-    '열린 따옴표 안에서는 같은 화자의 대사를 이어 쓴다. 완성된 앞 문장이나 뒤 문장을 복사하지 않으며, 뒤 문장과 이미 연결된다면 억지로 장면을 늘리지 않는다.',
+    '최소한의 빈칸만 채운다. 같은 장소로 들어가기를 반복하거나, 하나의 행동을 다른 말로 두 번 쓰거나, 아직 일어나지 않은 장면 계획을 여기서 전부 실행하지 않는다.',
+    '열린 따옴표 안에서는 같은 화자의 대사를 이어 쓴다. 따옴표 밖의 서술을 대사 안에 넣지 않는다.',
     continuationMode === 'continue_clause'
       ? '출력은 보통 4~60자의 문장 나머지 부분으로 한다.'
       : '출력은 보통 12~90자의 한 문장 또는 짧은 연결 구절로 한다.',
     '본문만 출력한다. 설명, 제목, 목록, 따옴표 포장, 마크다운, 후보 번호, 인사말은 붙이지 않는다.',
-    '이미 나온 주어와 정보를 불필요하게 다시 말하지 않는다. 장면을 요약하거나 설정에 없는 고유명사·사건·감정을 새로 만들지 않는다.',
-    '문체를 멋대로 화려하게 바꾸지 말고, 바로 앞 원고의 어휘 수준과 문장 길이 편차를 따른다.',
-    '출력 후보를 커서 직전 120자에 실제로 붙여 읽고 조사 호응, 수식 대상, 주어와 서술어가 하나의 문장으로 성립하는지 확인한다.',
-    '답변 전에 앞 문장과의 중복 및 뒤 문장과의 문법 연결을 내부적으로 확인하되 과정은 출력하지 않는다.',
-    input.suffix
-      ? '커서 뒤 본문이 있으므로 그 문장과 문법적으로 자연스럽게 이어지며 뒤 본문을 반복하지 마라.'
-      : '커서 뒤 본문이 없으므로 바로 다음에 올 자연스러운 진행만 제안하라.',
-    input.explicit
-      ? '사용자가 명시적으로 새 제안을 요청했으므로 이전과 다른 표현을 우선하라.'
-      : '자동 제안이므로 확신이 낮으면 짧고 보수적인 표현을 선택하라.',
+    '앞뒤 원문은 다시 출력하지 않는다. 설명을 붙이지 않고 한 가지 자연스러운 이어짐만 출력한다. 아래 예시는 연결 방식만 보여주며 작품 설정이 아니다.',
+    '예시 1: 앞="그는 문을 열고 " / 뒤="" / 삽입="안으로 들어갔다."',
+    '예시 2: 앞="그는 " / 뒤="문을 닫았다." / 삽입="소리 없이 "',
+    '예시 3: 앞="그녀는 해가 저무는 산등성이를 " / 뒤="" / 삽입="한동안 바라보았다."',
   ];
 
   if (input.genre) parts.push(formatPromptData('genre', input.genre));
@@ -188,10 +181,10 @@ function takeUsefulLength(value: string): string {
 
 function addInsertionSpacing(prefix: string, value: string, suffix = ''): string {
   if (!value) return value;
-  if (/^[\p{L}\p{N}]/u.test(suffix) && /[\p{L}\p{N}]$/u.test(value)) value += ' ';
-  if (!prefix || /[\s“「『]$/.test(prefix) || prefix.endsWith('"') || /^\s/.test(value)) return value;
-  if (/^[,.;:!?…。！？，、)\]」』]/.test(value)) return value;
-  return ` ${value}`;
+  const spaced = /^[\p{L}\p{N}]/u.test(suffix) && /[\p{L}\p{N}]$/u.test(value) ? `${value} ` : value;
+  if (!prefix || /[\s“「『]$/.test(prefix) || prefix.endsWith('"') || /^\s/.test(spaced)) return spaced;
+  if (/^[,.;:!?…。！？，、)\]」』]/.test(spaced)) return spaced;
+  return ` ${spaced}`;
 }
 
 export function normalizeInlineCompletion(

@@ -153,7 +153,7 @@ describe('POST /api/ai/copilot', () => {
     const call = vi.mocked(generateText).mock.calls.at(-1)?.[0];
     expect(call?.prompt).toContain('<CURSOR>');
     expect(call?.prompt).toContain('복도 끝에서 발소리가 들렸다.');
-    expect(call?.temperature).toBe(0.62);
+    expect(call?.temperature).toBe(0.4);
   });
 
   it('uses the local model chat template for qwen-local inline suggestions', async () => {

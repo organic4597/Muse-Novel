@@ -59,10 +59,19 @@ async function main() {
   assert.equal(edits.qualityReview.status, 'checked');
   assert.equal(db.prepare('SELECT content_json FROM chapters WHERE id=?').get(chapterId).content_json, content);
   const ghost = route('ai/copilot');
-  const ghostBody = { projectId, chapterId, sceneId: scene.id, mode: 'inline-suggestion', trigger: 'explicit', prefix: '복도에는 아무도 없었다. 그는 조심스럽게 문을 열고 ', suffix: '' };
-  const ghostResult = await ghost.POST(new Request('http://localhost/api/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ghostBody) })).then(result);
+  const ghosts = [];
+  for (const input of [
+    { prefix: '복도에는 아무도 없었다. 그는 조심스럽게 문을 열고 ', suffix: '' },
+    { prefix: '복도에서 낯선 발소리가 들렸다. "거기 ', suffix: '' },
+    { prefix: '그는 인기척이 들리지 않도록 ', suffix: '문을 닫았다.' },
+  ]) {
+    await new Promise(resolve => setTimeout(resolve, 1100));
+    const ghostBody = { projectId, chapterId, sceneId: scene.id, mode: 'inline-suggestion', trigger: 'explicit', ...input };
+    const response = await ghost.POST(new Request('http://localhost/api/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ghostBody) })).then(result);
+    ghosts.push({ ...input, text: response.text });
+  }
   console.log(JSON.stringify({ ok: true, goals: diagnosis.goals.map(item => ({ action: item.action, objective: item.objective })),
-    quality: edits.qualityReview, rewrites: edits.suggestions.map(item => item.replacement), ghost: ghostResult.text, sourceUnchanged: true }));
+    quality: edits.qualityReview, rewrites: edits.suggestions.map(item => item.replacement), ghosts, sourceUnchanged: true }));
   db.close();
 }
 main().catch(error => { console.error(error.name, error.message); process.exitCode = 1; });

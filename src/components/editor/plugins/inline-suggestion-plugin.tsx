@@ -791,7 +791,7 @@ const runCompletion = async (
 const triggerCompletion = (editor: PlateEditor, explicit = false) => {
   if (debounceTimer) clearTimeout(debounceTimer);
   if (explicit) {
-    void runCompletion(editor, { explicit: true, temperature: 0.55 });
+    void runCompletion(editor, { explicit: true, temperature: 0.4 });
     return;
   }
   const projectId = getProjectIdFromLocation();
@@ -799,7 +799,7 @@ const triggerCompletion = (editor: PlateEditor, explicit = false) => {
     ? getGhostTextTuning(projectId).debounceMs
     : 350;
   debounceTimer = setTimeout(
-    () => runCompletion(editor, { temperature: 0.4 }),
+    () => runCompletion(editor, { temperature: 0.3 }),
     getAutomaticRequestDelay(Date.now(), lastAutomaticRequestAt, debounceMs)
   );
 };

@@ -161,7 +161,7 @@ async function generateInlineCompletion({
   };
   const temperature = clampTemperature(
     requestedTemperature,
-    explicit ? 0.62 : 0.4
+    explicit ? 0.4 : 0.3
   );
 
   let rawText = '';
