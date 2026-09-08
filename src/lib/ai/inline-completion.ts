@@ -13,7 +13,12 @@ export type InlineCompletionInput = {
 export type InlineContinuationMode =
   | 'continue_clause'
   | 'next_sentence'
-  | 'bridge';
+  | 'bridge'
+  | 'dialogue';
+
+function isInsideDialogue(prefix: string) {
+  return (prefix.match(/"/g) ?? []).length % 2 === 1 || prefix.lastIndexOf('“') > prefix.lastIndexOf('”');
+}
 
 const MAX_SUGGESTION_CHARS = 180;
 const META_PREFIX = /^(이어쓰기|이어질\s*문구|출력|응답|다음\s*문장|제안)\s*[:：-]\s*/i;
@@ -23,6 +28,7 @@ export function getInlineContinuationMode(
   prefix: string,
   suffix: string
 ): InlineContinuationMode {
+  if (isInsideDialogue(prefix)) return 'dialogue';
   if (suffix.trim()) return 'bridge';
   return /[.!?…。！？]["'”’」』)]*\s*$/u.test(prefix)
     ? 'next_sentence'
@@ -30,6 +36,7 @@ export function getInlineContinuationMode(
 }
 
 function getContinuationInstruction(mode: InlineContinuationMode) {
+  if (mode === 'dialogue') return '커서는 열린 따옴표 안에 있다. 같은 인물이 실제로 말할 대사의 나머지만 출력한다. 발소리·동작·감정에 관한 서술문으로 전환하지 말고, 필요한 경우 닫는 따옴표를 포함한다.';
   if (mode === 'continue_clause') {
     return '커서는 아직 끝나지 않은 문장 안에 있다. 새 문장이나 새 주어로 다시 시작하지 말고, 바로 앞 조사·어미·구문의 지배를 받는 문장 성분부터 이어서 현재 문장을 자연스럽게 완성한다.';
   }
@@ -57,6 +64,7 @@ export function buildInlineCompletionSystemPrompt(
     '예시 1: 앞="그는 문을 열고 " / 뒤="" / 삽입="안으로 들어갔다."',
     '예시 2: 앞="그는 " / 뒤="문을 닫았다." / 삽입="소리 없이 "',
     '예시 3: 앞="그녀는 해가 저무는 산등성이를 " / 뒤="" / 삽입="한동안 바라보았다."',
+    '대사 예시: 앞은 열린 큰따옴표 뒤의 "거기 "까지다. 이어질 대사만 쓰면: 누구 있습니까?"',
   ];
 
   if (input.genre) parts.push(formatPromptData('genre', input.genre));
@@ -201,7 +209,7 @@ export function normalizeInlineCompletion(
     .replace(/\s+/g, ' ')
     .trim();
 
-  const insideDialogue = ((input.prefix.match(/"/g) ?? []).length % 2 === 1) || input.prefix.lastIndexOf('“') > input.prefix.lastIndexOf('”');
+  const insideDialogue = isInsideDialogue(input.prefix);
   if (!insideDialogue && ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith('“') && value.endsWith('”')))) value = value.slice(1, -1);
 
   value = stripContextEcho(input.prefix, value);

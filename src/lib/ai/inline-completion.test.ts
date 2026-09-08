@@ -13,6 +13,7 @@ describe('inline completion prompt and normalization', () => {
     expect(normalizeInlineCompletion('조심스럽게', { prefix: '그는 ', suffix: '걸었다.' })).toBe('조심스럽게 ');
   });
   it('keeps a closing quotation mark when completing dialogue', () => {
+    expect(getInlineContinuationMode('발소리가 들렸다. "거기 ', '')).toBe('dialogue');
     expect(normalizeInlineCompletion('돌아가자."', { prefix: '"이제 ', suffix: '' })).toBe('돌아가자."');
   });
   it('includes both cursor prefix and suffix', () => {

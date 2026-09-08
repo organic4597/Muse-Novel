@@ -642,6 +642,12 @@ export function WritingIntelligencePanel({
           <label className="flex items-start gap-2 text-sm"><Checkbox checked={selectedGoals.includes(index)} disabled={criticRunning || goal.action === 'keep'}
             onCheckedChange={value => setSelectedGoals(current => value ? [...current, index].slice(0, 4) : current.filter(item => item !== index))} />
             <span>{EDIT_LABELS[goal.action]} · {goal.issue}</span></label>
+          <select aria-label={`편집 방식 ${index + 1}`} className="my-2 rounded border border-border bg-background p-1 text-sm" disabled={criticRunning} value={goal.action}
+            onChange={event => {
+              const action = event.target.value as keyof typeof EDIT_LABELS;
+              setDiagnosis(current => current ? { ...current, goals: current.goals.map((item, i) => i === index ? { ...item, action } : item) } : current);
+              if (action === 'keep') setSelectedGoals(current => current.filter(i => i !== index));
+            }}>{Object.entries(EDIT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
           <blockquote className="my-2 whitespace-pre-wrap border-l-2 border-border pl-3 text-xs leading-6 text-muted-foreground">{goal.original}</blockquote>
           <textarea aria-label={`편집 목표 ${index + 1}`} className="w-full rounded border border-border bg-background p-2 text-sm" value={goal.objective} disabled={criticRunning || goal.action === 'keep'}
             onChange={event => setDiagnosis(current => current ? { ...current, goals: current.goals.map((item, i) => i === index ? { ...item, objective: event.target.value } : item) } : current)} />
