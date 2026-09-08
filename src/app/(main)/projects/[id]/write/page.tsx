@@ -15,6 +15,11 @@ import { useParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
 import { ChapterSidebar } from '@/components/chapter/chapter-sidebar';
+import {
+  AuthorNotebookSidebar,
+  type AuthorNotebookNote,
+} from '@/components/editor/author-notebook-sidebar';
+import type { AuthorNotebookWorkspaceProps } from '@/components/editor/author-notebook-workspace';
 import { AutoSaveIndicator } from '@/components/editor/auto-save-indicator';
 import { ChapterReferenceBar } from '@/components/editor/chapter-reference-bar';
 import type {
@@ -60,6 +65,14 @@ const StoryStatePanel = dynamic<StoryStatePanelProps>(
   { ssr: false }
 );
 
+const AuthorNotebookWorkspace = dynamic<AuthorNotebookWorkspaceProps>(
+  () =>
+    import('@/components/editor/author-notebook-workspace').then(
+      (module) => module.AuthorNotebookWorkspace
+    ),
+  { ssr: false }
+);
+
 const WritingReferencePanel = dynamic<WritingReferencePanelProps>(
   () => import('@/components/editor/writing-reference-panel').then((module) => module.WritingReferencePanel),
   { ssr: false }
@@ -93,6 +106,9 @@ export default function WritePage() {
   const editorRef = useRef<PlateEditorHandle>(null);
   const latestContentRef = useRef('');
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
+  const [selectedAuthorNote, setSelectedAuthorNote] =
+    useState<AuthorNotebookNote | null>(null);
+  const [notebookRefreshToken, setNotebookRefreshToken] = useState(0);
   const [textStats, setTextStats] = useState({ characterCount: 0, byteSize: 0 });
   const [projectSettingsJson, setProjectSettingsJson] = useState<string | null>(null);
   const [projectSettingsLoaded, setProjectSettingsLoaded] = useState(false);
@@ -142,6 +158,7 @@ export default function WritePage() {
   };
 
   const handleSelectChapter = async (chapter: Chapter | null) => {
+    setSelectedAuthorNote(null);
     // Finish worker serialization before flushing the current chapter save.
     if (selectedChapter) {
       await editorRef.current?.flushProcessing();
@@ -190,6 +207,14 @@ export default function WritePage() {
     }
   };
 
+  const handleSelectAuthorNote = async (note: AuthorNotebookNote | null) => {
+    if (selectedChapter) {
+      await editorRef.current?.flushProcessing();
+      autoSave.flush();
+    }
+    setSelectedAuthorNote(note);
+  };
+
   const handleRetry = () => {
     autoSave.retry();
   };
@@ -217,16 +242,34 @@ export default function WritePage() {
 
   return (
     <div className="grid min-h-[calc(100vh-12rem)] gap-5 lg:relative lg:left-1/2 lg:w-[calc(100vw-4rem)] lg:max-w-[118rem] lg:-translate-x-1/2 lg:grid-cols-[17rem_minmax(0,1fr)]">
-      <aside className="min-w-0">
+      <aside className="min-w-0 space-y-4">
         <ChapterSidebar
+          active={!selectedAuthorNote}
           onSelectChapter={handleSelectChapter}
           selectedChapterId={selectedChapter?.id ?? null}
+        />
+        <AuthorNotebookSidebar
+          onSelectNote={handleSelectAuthorNote}
+          projectId={params.id}
+          refreshToken={notebookRefreshToken}
+          selectedNoteId={selectedAuthorNote?.id ?? null}
         />
       </aside>
       <div className="min-w-0">
         <div className="flex h-full flex-col">
           <h1 className="sr-only">소설 작성</h1>
-          {selectedChapter ? (
+          {selectedAuthorNote ? (
+            <AuthorNotebookWorkspace
+              key={selectedAuthorNote.id}
+              note={selectedAuthorNote}
+              onClose={() => setSelectedAuthorNote(null)}
+              onNoteUpdated={(updated) => {
+                setSelectedAuthorNote(updated);
+                setNotebookRefreshToken((value) => value + 1);
+              }}
+              projectId={params.id}
+            />
+          ) : selectedChapter ? (
             <section className="muse-panel flex min-h-[calc(100vh-12rem)] flex-col overflow-hidden">
               <header className="flex flex-col justify-between gap-3 border-b border-border/60 bg-card/65 px-5 py-4 sm:flex-row sm:items-center sm:px-7">
                 <div className="min-w-0">

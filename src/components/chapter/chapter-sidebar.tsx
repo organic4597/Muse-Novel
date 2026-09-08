@@ -46,6 +46,7 @@ interface Chapter {
 }
 
 interface ChapterSidebarProps {
+  active?: boolean;
   selectedChapterId: string | null;
   onSelectChapter: (chapter: Chapter | null) => void;
 }
@@ -55,6 +56,7 @@ export type { Chapter };
 const CHAPTER_PAGE_SIZE = 80;
 
 export function ChapterSidebar({
+  active = true,
   selectedChapterId,
   onSelectChapter,
 }: ChapterSidebarProps) {
@@ -315,7 +317,7 @@ export function ChapterSidebar({
                           className={cn(
                             'flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm transition-colors',
                             'hover:bg-accent hover:text-accent-foreground',
-                            selectedChapterId === chapter.id
+                            active && selectedChapterId === chapter.id
                               ? 'bg-primary/10 text-foreground font-semibold shadow-[inset_3px_0_0_var(--primary)]'
                               : 'text-muted-foreground'
                           )}
