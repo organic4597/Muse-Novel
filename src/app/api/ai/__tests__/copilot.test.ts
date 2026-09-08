@@ -7,6 +7,7 @@ vi.mock('@/lib/db', () => ({ db: {} }));
 vi.mock('@/lib/db/queries/projects');
 vi.mock('@/lib/db/queries/ai-settings');
 vi.mock('@/lib/db/queries/ghost-ai-settings');
+vi.mock('@/lib/ai/ghost-request-limit', () => ({ reserveGhostRequest: vi.fn(() => () => {}) }));
 vi.mock('@/lib/ai/provider-factory');
 vi.mock('@/lib/db/queries/writing-style-profiles');
 vi.mock('ai');
@@ -254,7 +255,7 @@ describe('POST /api/ai/copilot', () => {
       String(url).endsWith('/v1/chat/completions')
     );
     const payload = JSON.parse(String((chatRequest?.[1] as RequestInit).body));
-    expect(payload.max_tokens).toBe(32);
+    expect(payload.max_tokens).toBe(64);
     expect(payload.messages[1].content).not.toContain('삭제되어야할-오래된-문맥');
     expect(payload.messages[1].content).toContain('끝 문장.');
     const suffixMatch = payload.messages[1].content.match(

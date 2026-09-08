@@ -24,6 +24,7 @@ import {
   recordGhostTextMetric,
 } from '@/lib/client/ghost-text-metrics';
 import { MarkdownKit } from './markdown-kit';
+import { useEffect } from 'react';
 
 export type InlineSuggestionConfig = PluginConfig<
   'inlineSuggestion',
@@ -38,6 +39,7 @@ export type InlineSuggestionConfig = PluginConfig<
     suggestionCandidateIndex: number;
     suggestionCandidates: string[];
     chapterId: string | null;
+    sceneId: string | null;
     enabled: boolean;
   },
   {
@@ -66,7 +68,7 @@ const COPILOT_EXPLICIT_PREFIX_CHAR_LIMIT = 6000;
 const COPILOT_EXPLICIT_SUFFIX_CHAR_LIMIT = 1500;
 const COPILOT_AUTOMATIC_TIMEOUT_MS = 4000;
 const COPILOT_EXPLICIT_TIMEOUT_MS = 15000;
-const COPILOT_AUTOMATIC_COOLDOWN_MS = 2000;
+const COPILOT_AUTOMATIC_COOLDOWN_MS = 1000;
 const COPILOT_SENTENCE_CHAR_LIMIT = 120;
 
 function parseBracketedSuggestion(text: string): string {
@@ -121,12 +123,12 @@ function extractSuggestionFromCompletion(text: string): string {
 
 function sanitizeSuggestionText(text: string): string {
   const hasLeadingSpace = /^\s/.test(text);
+  const hasTrailingSpace = /\s$/.test(text);
   const normalized = text
     .replace(/[\r\n]+/g, ' ')
-    .replace(/\s*\/\s*/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  return hasLeadingSpace && normalized ? ` ${normalized}` : normalized;
+  return normalized ? `${hasLeadingSpace ? ' ' : ''}${normalized}${hasTrailingSpace ? ' ' : ''}` : '';
 }
 
 function takeSentenceSuggestion(text: string): string {
@@ -326,11 +328,9 @@ export function getCursorAwareContext(
     .filter(Boolean);
 
   const prefix = [...previousBlocks, currentBlockPrefix]
-    .filter(Boolean)
     .join('\n\n')
     .slice(-COPILOT_EXPLICIT_PREFIX_CHAR_LIMIT);
   const suffix = [currentBlockSuffix, ...nextBlocks]
-    .filter(Boolean)
     .join('\n\n')
     .slice(0, COPILOT_EXPLICIT_SUFFIX_CHAR_LIMIT);
 
@@ -576,7 +576,7 @@ function getClientCacheKey(
   chapterId: string | null,
   prefix: string,
   suffix: string,
-  explicit = false
+  { explicit = false, sceneId = null }: { explicit?: boolean; sceneId?: string | null } = {}
 ): string {
   const prefixLimit = explicit
     ? COPILOT_EXPLICIT_PREFIX_CHAR_LIMIT
@@ -586,6 +586,7 @@ function getClientCacheKey(
     : COPILOT_AUTOMATIC_SUFFIX_CHAR_LIMIT;
   return [
     chapterId ?? '',
+    sceneId ?? '',
     prefix.slice(-prefixLimit),
     suffix.slice(0, suffixLimit),
   ].join('\u0000');
@@ -612,7 +613,7 @@ const runCompletion = async (
       key: 'inlineSuggestion',
     });
 
-  const { chapterId, enabled } = getOptions();
+  const { chapterId, enabled, sceneId } = getOptions();
   if (!enabled) return;
   const currentBlockId = getCurrentBlockId(editor);
   if (!currentBlockId) return;
@@ -638,10 +639,16 @@ const runCompletion = async (
     chapterId,
     requestPrefix,
     requestSuffix,
-    Boolean(options.explicit)
+    { explicit: Boolean(options.explicit), sceneId }
   );
   const projectId = getProjectIdFromLocation();
   if (!projectId) return;
+  const waitMs = COPILOT_AUTOMATIC_COOLDOWN_MS - (Date.now() - lastAutomaticRequestAt);
+  if (waitMs > 0) {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => void runCompletion(editor, options), waitMs);
+    return;
+  }
   if (!options.explicit) {
     const cached = clientCompletionCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
@@ -676,13 +683,14 @@ const runCompletion = async (
 
   try {
     const requestStartedAt = Date.now();
-    if (!options.explicit) lastAutomaticRequestAt = requestStartedAt;
+    lastAutomaticRequestAt = requestStartedAt;
     const res = await fetch('/api/ai/copilot', {
       body: JSON.stringify({
         mode: 'inline-suggestion',
-        maxOutputTokens: options.explicit ? 96 : 32,
+        maxOutputTokens: options.explicit ? 96 : 64,
         projectId,
         chapterId,
+        sceneId,
         prompt: requestPrefix,
         prefix: requestPrefix,
         suffix: requestSuffix,
@@ -704,12 +712,12 @@ const runCompletion = async (
     }
 
     const data = (await res.json()) as {
-      skipped?: 'model_busy';
+      skipped?: 'model_busy' | 'rate_limited';
       text?: string;
     };
     const completion = data.text;
 
-    if (data.skipped === 'model_busy') {
+    if (data.skipped === 'model_busy' || data.skipped === 'rate_limited') {
       setOptions({ requestStatus: 'model_busy' });
       recordGhostTextMetric(
         projectId,
@@ -727,19 +735,19 @@ const runCompletion = async (
     const latestContext = getCursorAwareContext(editor);
     if (
       !isSuggestionAtSelection(editor.selection, requestedPoint) ||
+      getOptions().sceneId !== sceneId ||
       !latestContext ||
       getClientCacheKey(
         chapterId,
         latestContext.prefix,
         latestContext.suffix,
-        Boolean(options.explicit)
+        { explicit: Boolean(options.explicit), sceneId }
       ) !== cacheKey
     ) {
       return;
     }
 
-    const suggestion = trimContextEcho(context.prefix, completion);
-    const normalizedSuggestion = sanitizeSuggestionText(suggestion);
+    const normalizedSuggestion = sanitizeSuggestionText(completion);
     if (!hasMeaningfulSuggestionText(normalizedSuggestion)) return;
     if (isTooSimilarToContext(context.prefix, normalizedSuggestion)) return;
 
@@ -799,6 +807,13 @@ const triggerCompletion = (editor: PlateEditor, explicit = false) => {
 export const InlineSuggestionPlugin =
   createTPlatePlugin<InlineSuggestionConfig>({
     key: 'inlineSuggestion',
+    useHooks: ({ api }) => {
+      useEffect(() => {
+        const invalidate = () => { clientCompletionCache.clear(); explicitCandidateCache.clear(); api.inlineSuggestion.clearSuggestion(); };
+        window.addEventListener('muse-writing-context-changed', invalidate);
+        return () => window.removeEventListener('muse-writing-context-changed', invalidate);
+      }, [api]);
+    },
     decorate: ({ editor, entry }) => {
       const { getOptions } = getEditorPlugin<InlineSuggestionConfig>(editor, {
         key: 'inlineSuggestion',
@@ -833,6 +848,7 @@ export const InlineSuggestionPlugin =
     options: {
       abortController: null,
       chapterId: null,
+      sceneId: null,
       enabled: true,
       isAccepting: false,
       isLoading: false,

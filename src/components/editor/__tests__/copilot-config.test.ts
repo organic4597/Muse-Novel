@@ -32,8 +32,8 @@ describe('InlineSuggestionPlugin configuration', () => {
 
   it('keeps the first suggestion responsive while rate-limiting repeated requests', () => {
     expect(getAutomaticRequestDelay(10_000, 0, 350)).toBe(350);
-    expect(getAutomaticRequestDelay(10_000, 9000, 350)).toBe(1000);
-    expect(getAutomaticRequestDelay(10_000, 9900, 700)).toBe(1900);
+    expect(getAutomaticRequestDelay(10_000, 9000, 350)).toBe(350);
+    expect(getAutomaticRequestDelay(10_000, 9900, 700)).toBe(900);
   });
 
   it('does not decorate editor text while a suggestion is still loading', () => {

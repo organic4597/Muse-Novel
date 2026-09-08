@@ -48,6 +48,8 @@ export function buildInlineCompletionSystemPrompt(
     '목표: 작가가 쓰던 문장의 일부처럼 보이도록 커서 직전의 구문·주어·행동·호흡을 직접 이어 쓴다.',
     '선택 우선순위: ① 커서 바로 앞 구문의 문법적 결속 ② 직전 두 문장의 인과와 초점 ③ 시점·시제·인물 말투·문장 길이 ④ 장면의 작은 전진.',
     getContinuationInstruction(continuationMode),
+    '이것은 작가가 잠깐 멈춘 위치의 짧은 빈칸 채우기다. 긴장감·새 감각·새 사건을 추가하는 것을 목표로 삼지 않는다. 현재 동사와 수식 관계를 끝내는 최소한의 다음 구절을 우선한다.',
+    '열린 따옴표 안에서는 같은 화자의 대사를 이어 쓴다. 완성된 앞 문장이나 뒤 문장을 복사하지 않으며, 뒤 문장과 이미 연결된다면 억지로 장면을 늘리지 않는다.',
     continuationMode === 'continue_clause'
       ? '출력은 보통 4~60자의 문장 나머지 부분으로 한다.'
       : '출력은 보통 12~90자의 한 문장 또는 짧은 연결 구절로 한다.',
@@ -84,6 +86,7 @@ export function buildInlineCompletionUserPrompt(
     '<CURSOR>',
     formatPromptData('manuscript_after_cursor', input.suffix || '(없음)'),
     formatPromptData('cursor_mode', continuationMode),
+    formatPromptData('exact_cursor_boundary', JSON.stringify({ before: input.prefix.slice(-160), after: input.suffix.slice(0, 160) })),
     formatPromptData(
       'literal_join_check',
       `${input.prefix.slice(-120)}[출력은 이 위치부터 시작]${input.suffix.slice(0, 80)}`
@@ -183,8 +186,10 @@ function takeUsefulLength(value: string): string {
   return sliced.slice(0, boundary >= 40 ? boundary + 1 : MAX_SUGGESTION_CHARS).trimEnd();
 }
 
-function addInsertionSpacing(prefix: string, value: string): string {
-  if (!value || !prefix || /\s$/.test(prefix) || /^\s/.test(value)) return value;
+function addInsertionSpacing(prefix: string, value: string, suffix = ''): string {
+  if (!value) return value;
+  if (/^[\p{L}\p{N}]/u.test(suffix) && /[\p{L}\p{N}]$/u.test(value)) value += ' ';
+  if (!prefix || /[\s“「『]$/.test(prefix) || prefix.endsWith('"') || /^\s/.test(value)) return value;
   if (/^[,.;:!?…。！？，、)\]」』]/.test(value)) return value;
   return ` ${value}`;
 }
@@ -201,8 +206,10 @@ export function normalizeInlineCompletion(
     .replace(/^==|==$/g, '')
     .replace(/[\r\n]+/g, ' ')
     .replace(/\s+/g, ' ')
-    .replace(/^["“”]+|["“”]+$/g, '')
     .trim();
+
+  const insideDialogue = ((input.prefix.match(/"/g) ?? []).length % 2 === 1) || input.prefix.lastIndexOf('“') > input.prefix.lastIndexOf('”');
+  if (!insideDialogue && ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith('“') && value.endsWith('”')))) value = value.slice(1, -1);
 
   value = stripContextEcho(input.prefix, value);
   value = stripSuffixEcho(input.suffix, value);
@@ -213,7 +220,7 @@ export function normalizeInlineCompletion(
   if (ngramSimilarity(input.prefix, value) > 0.78) return '';
   if (input.suffix.trim()?.startsWith(value)) return '';
 
-  return addInsertionSpacing(input.prefix, value);
+  return addInsertionSpacing(input.prefix, value, input.suffix);
 }
 
 type CacheEntry = { text: string; expiresAt: number };

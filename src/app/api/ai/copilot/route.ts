@@ -30,12 +30,15 @@ import {
 } from '@/lib/db/queries/ai-settings';
 import { getGhostAISettings } from '@/lib/db/queries/ghost-ai-settings';
 import { getProject } from '@/lib/db/queries/projects';
+import { getWritingWorkbenchContext } from '@/lib/db/queries/writing-workbench';
+import { reserveGhostRequest } from '@/lib/ai/ghost-request-limit';
 import { getActiveWritingStyleProfile } from '@/lib/db/queries/writing-style-profiles';
 
 const requestSchema = z.object({
   mode: z.string().optional(),
   projectId: z.string().min(1).optional(),
   chapterId: z.string().nullable().optional(),
+  sceneId: z.string().uuid().nullable().optional(),
   prompt: z.string().default(''),
   prefix: z.string().optional(),
   suffix: z.string().optional(),
@@ -64,6 +67,7 @@ async function generateInlineCompletion({
   req,
   projectId,
   chapterId,
+  sceneId,
   prefix,
   suffix,
   explicit,
@@ -76,6 +80,7 @@ async function generateInlineCompletion({
   req: NextRequest;
   projectId: string;
   chapterId?: string | null;
+  sceneId?: string | null;
   prefix: string;
   suffix: string;
   explicit: boolean;
@@ -125,13 +130,14 @@ async function generateInlineCompletion({
     ),
   ]);
 
+  const confirmedScene = sceneId ? getWritingWorkbenchContext(db, projectId, { chapterId: chapterId ?? undefined, sceneId, compact: true }).scene : '';
   const cacheKey = getInlineCompletionCacheKey({
     providerId,
     projectId,
     chapterId: chapterId ?? undefined,
     prefix: boundedPrefix,
     suffix: boundedSuffix,
-    context: `${storyContext}\n${activeProfile?.description ?? ''}`,
+    context: `${confirmedScene}\n${storyContext}\n${activeProfile?.description ?? ''}`,
   });
   if (!explicit) {
     const cached = getCachedInlineCompletion(cacheKey);
@@ -148,7 +154,7 @@ async function generateInlineCompletion({
   const inlineInput = {
     prefix: boundedPrefix,
     suffix: boundedSuffix,
-    storyContext,
+    storyContext: [confirmedScene, storyContext].filter(Boolean).join('\n').slice(0, explicit ? 1800 : 1000),
     styleDescription: activeProfile?.description?.slice(0, explicit ? 1200 : 500),
     genre,
     explicit,
@@ -163,7 +169,7 @@ async function generateInlineCompletion({
   if (providerConfig.provider === 'qwen-local') {
     const response = await fetch(`${localRootUrl}/v1/chat/completions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(providerConfig.apiKey ? { Authorization: `Bearer ${providerConfig.apiKey}` } : {}) },
       body: JSON.stringify({
         model: providerConfig.modelId,
         messages: [
@@ -176,7 +182,7 @@ async function generateInlineCompletion({
             content: buildInlineCompletionUserPrompt(inlineInput),
           },
         ],
-        max_tokens: explicit ? 96 : 32,
+        max_tokens: explicit ? 96 : 64,
         temperature,
         repeat_penalty: 1.08,
         top_k: 32,
@@ -206,7 +212,7 @@ async function generateInlineCompletion({
   } else {
     const result = await generateText({
       abortSignal: req.signal,
-      maxOutputTokens: explicit ? 96 : 32,
+      maxOutputTokens: explicit ? 96 : 64,
       model,
       prompt: buildInlineCompletionUserPrompt(inlineInput),
       providerOptions: getProviderOptions(providerConfig),
@@ -214,6 +220,7 @@ async function generateInlineCompletion({
       temperature,
     });
     rawText = result.text;
+    finishReason = result.finishReason;
   }
 
   let text = normalizeInlineCompletion(rawText, inlineInput);
@@ -243,6 +250,7 @@ export async function POST(req: NextRequest) {
     mode,
     projectId,
     chapterId,
+    sceneId,
     prompt,
     prefix,
     suffix = '',
@@ -287,10 +295,13 @@ export async function POST(req: NextRequest) {
     const model = createProvider(providerConfig);
 
     if (isInlineSuggestion) {
-      return generateInlineCompletion({
+      const release = reserveGhostRequest(projectId);
+      if (!release) return NextResponse.json({ text: '', skipped: 'rate_limited', status: 'rate_limited' });
+      try { return await generateInlineCompletion({
         req,
         projectId,
         chapterId,
+        sceneId,
         prefix: prefix ?? prompt,
         suffix,
         explicit: trigger === 'explicit',
@@ -299,7 +310,7 @@ export async function POST(req: NextRequest) {
         providerId,
         model,
         genre: project.genre,
-      });
+      }); } finally { release(); }
     }
 
     let storyContext = '';

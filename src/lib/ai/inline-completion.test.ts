@@ -8,6 +8,13 @@ import {
 } from './inline-completion';
 
 describe('inline completion prompt and normalization', () => {
+  it('preserves exact cursor whitespace in the prompt and joins to a following word', () => {
+    expect(buildInlineCompletionUserPrompt({ prefix: '그는 \n', suffix: ' 걸었다.' })).toContain('그는 \\n');
+    expect(normalizeInlineCompletion('조심스럽게', { prefix: '그는 ', suffix: '걸었다.' })).toBe('조심스럽게 ');
+  });
+  it('keeps a closing quotation mark when completing dialogue', () => {
+    expect(normalizeInlineCompletion('돌아가자."', { prefix: '"이제 ', suffix: '' })).toBe('돌아가자."');
+  });
   it('includes both cursor prefix and suffix', () => {
     const prompt = buildInlineCompletionUserPrompt({
       prefix: '그녀는 문을 열었다.',
