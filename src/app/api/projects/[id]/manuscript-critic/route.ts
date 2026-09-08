@@ -77,7 +77,9 @@ export async function POST(
     });
     return NextResponse.json(report);
   } catch (error) {
-    console.warn('[manuscript-critic] analysis failed', error);
+    console.warn('[manuscript-critic] analysis failed', {
+      name: error instanceof Error ? error.name : 'UnknownError',
+    });
     if (isAIRequestQueueFullError(error)) {
       return NextResponse.json(
         { code: 'ai_queue_full', error: error.message },

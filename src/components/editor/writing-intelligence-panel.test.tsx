@@ -142,6 +142,8 @@ describe('WritingIntelligencePanel', () => {
               reason: '같은 의미가 반복되어 문장 리듬이 늘어집니다.',
               replacement: '그는 빠른 걸음으로 나아갔다.',
               scope: 'sentence',
+              contextBefore: '문밖에서 발소리가 들렸다. ',
+              contextAfter: ' 문은 열려 있었다.',
             },
           ],
           summary: '중복 표현 한 곳을 다듬을 수 있습니다.',
@@ -163,17 +165,31 @@ describe('WritingIntelligencePanel', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: '원고 비평' }));
 
-    expect(await screen.findByText('그는 빠른 걸음으로 나아갔다.')).toBeInTheDocument();
+    expect(await screen.findAllByText('그는 빠른 걸음으로 나아갔다.')).toHaveLength(2);
     expect(screen.getByText('행동이 같은 속도로 반복됩니다.')).toBeInTheDocument();
     const request = (vi.mocked(fetch).mock.calls[0]?.[1] ?? {}) as RequestInit;
     expect(JSON.parse(String(request.body))).toEqual(
       expect.objectContaining({ intensity: 'bold' })
     );
     expect(onReplace).not.toHaveBeenCalled();
+    expect(screen.queryByText(/확신 91/)).not.toBeInTheDocument();
+    expect(screen.getByText('앞뒤 문맥에 연결해서 보기')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '승인하고 교체' }));
     expect(onReplace).toHaveBeenCalledWith(
       '그는 빠르게 빠른 걸음으로 걸었다.',
       '그는 빠른 걸음으로 나아갔다.'
     );
+  });
+
+  it('never offers approval when contextual comparison is unavailable', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({
+      summary: '원고를 검토했습니다.', sceneNotes: [], suggestions: [], reviewedChars: 100,
+      truncated: false, qualityReview: { status: 'unavailable', evaluated: 3, withheld: 3 },
+    })));
+    render(<WritingIntelligencePanel chapterId="11111111-1111-4111-8111-111111111111"
+      projectId="project-1" getCurrentContentJson={() => '[]'} onApply={vi.fn()} onReplace={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '원고 비평' }));
+    expect(await screen.findByText(/문맥 비교를 완료하지 못했습니다/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '승인하고 교체' })).not.toBeInTheDocument();
   });
 });

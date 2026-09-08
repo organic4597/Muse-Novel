@@ -19,6 +19,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import type {
   ManuscriptCriticIntensity,
+  ManuscriptCriticReport,
   ManuscriptCriticSceneNote,
   ManuscriptCriticSuggestion,
 } from '@/lib/ai/manuscript-critic';
@@ -170,6 +171,7 @@ export function WritingIntelligencePanel({
   const [criticIntensity, setCriticIntensity] =
     useState<ManuscriptCriticIntensity>('bold');
   const [criticReport, setCriticReport] = useState<{
+    qualityReview?: ManuscriptCriticReport['qualityReview'];
     reviewedChars: number;
     sceneNotes: ManuscriptCriticSceneNote[];
     suggestions: ManuscriptCriticSuggestion[];
@@ -260,7 +262,7 @@ export function WritingIntelligencePanel({
   const runCritic = async () => {
     setCriticRunning(true);
     setCriticReport(null);
-    setCriticStatus('현재 원고의 문장과 표현을 검토하는 중...');
+    setCriticStatus('이야기 흐름을 검토하고 수정안을 앞뒤 원문과 비교하는 중...');
     try {
       const currentContentJson = await getCurrentContentJson();
       const response = await fetch(`/api/projects/${projectId}/manuscript-critic`, {
@@ -275,6 +277,7 @@ export function WritingIntelligencePanel({
       const data = (await response.json()) as {
         error?: string;
         reviewedChars?: number;
+        qualityReview?: ManuscriptCriticReport['qualityReview'];
         sceneNotes?: ManuscriptCriticSceneNote[];
         suggestions?: ManuscriptCriticSuggestion[];
         summary?: string;
@@ -282,6 +285,7 @@ export function WritingIntelligencePanel({
       };
       if (!response.ok) throw new Error(data.error ?? '문장 비평에 실패했습니다.');
       setCriticReport({
+        qualityReview: data.qualityReview,
         reviewedChars: data.reviewedChars ?? 0,
         sceneNotes: data.sceneNotes ?? [],
         suggestions: data.suggestions ?? [],
@@ -506,7 +510,9 @@ export function WritingIntelligencePanel({
           )}
           {criticReport.suggestions.length === 0 ? (
             <p className="rounded-xl bg-muted/40 p-3 text-sm text-muted-foreground">
-              원문으로 검증할 수 있는 수정 제안이 없습니다.
+              {criticReport.qualityReview?.status === 'unavailable'
+                ? '수정안의 문맥 비교를 완료하지 못했습니다. 검토되지 않은 교체안은 표시하지 않습니다. 다시 비평할 수 있습니다.'
+                : '앞뒤 문맥과 비교해 원문보다 낫다고 판단한 교체안이 없습니다. 현재 문장을 유지해도 좋습니다.'}
             </p>
           ) : (
             <div className="space-y-3">
@@ -517,7 +523,7 @@ export function WritingIntelligencePanel({
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground">
-                      {CRITIC_SCOPE_LABELS[suggestion.scope] ?? suggestion.scope} · {CRITIC_CATEGORY_LABELS[suggestion.category] ?? suggestion.category} · 확신 {Math.round(suggestion.confidence * 100)}%
+                      {CRITIC_SCOPE_LABELS[suggestion.scope] ?? suggestion.scope} · {CRITIC_CATEGORY_LABELS[suggestion.category] ?? suggestion.category}
                     </span>
                     <Button
                       onClick={() => applyCriticSuggestion(suggestion, index)}
@@ -542,6 +548,16 @@ export function WritingIntelligencePanel({
                   <p className="mt-2 text-xs leading-5 text-muted-foreground">
                     {suggestion.reason}
                   </p>
+                  {(suggestion.contextBefore || suggestion.contextAfter) && (
+                    <details className="mt-3 text-sm">
+                      <summary className="cursor-pointer text-muted-foreground">앞뒤 문맥에 연결해서 보기</summary>
+                      <p className="mt-2 whitespace-pre-wrap rounded-lg bg-muted/25 p-3 leading-7">
+                        <span className="text-muted-foreground">{suggestion.contextBefore}</span>
+                        <mark className="bg-primary/15 text-foreground">{suggestion.replacement}</mark>
+                        <span className="text-muted-foreground">{suggestion.contextAfter}</span>
+                      </p>
+                    </details>
+                  )}
                 </article>
               ))}
             </div>

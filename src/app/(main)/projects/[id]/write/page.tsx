@@ -389,6 +389,7 @@ export default function WritePage() {
               )}
               {isIntelligenceOpen && (
                 <WritingIntelligencePanel
+                  key={selectedChapter.id}
                   chapterId={selectedChapter.id}
                   getCurrentContentJson={async () => {
                     await editorRef.current?.flushProcessing();
