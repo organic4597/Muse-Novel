@@ -3,6 +3,7 @@ import {
   isAIRequestQueueFullError,
 } from '@/lib/ai/request-scheduler';
 import { analyzeStoryConsistency } from '@/lib/ai/story-consistency';
+import { longTaskResponse } from '@/lib/ai/long-task-stream';
 import { db } from '@/lib/db';
 import { getProject } from '@/lib/db/queries/projects';
 
@@ -15,6 +16,9 @@ export async function POST(
   const { id } = await params;
   if (!(await getProject(db, id))) {
     return NextResponse.json({ error: '프로젝트를 찾을 수 없습니다.' }, { status: 404 });
+  }
+  if (request.headers.get('accept')?.includes('text/event-stream')) {
+    return longTaskResponse(request, (signal, progress) => analyzeStoryConsistency({ db, projectId: id, signal, progress }));
   }
 
   const signal = AbortSignal.any([

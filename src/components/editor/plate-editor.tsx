@@ -35,12 +35,14 @@ export interface PlateEditorProps {
   onStatsChange?: (stats: EditorTextStats) => void;
   onValueChange?: (content: string) => void;
   ghostTextEnabled?: boolean;
+  sceneId?: string | null;
   ref?: Ref<PlateEditorHandle>;
 }
 
 export interface PlateEditorHandle {
   flushProcessing: () => Promise<void>;
   getCursorContext: () => { before: string; after: string };
+  getSelectedText: () => string;
   insertText: (text: string) => void;
   replaceText: (original: string, replacement: string) => boolean;
 }
@@ -118,6 +120,7 @@ export function PlateEditor({
   onStatsChange,
   onValueChange,
   ghostTextEnabled = true,
+  sceneId = null,
   ref,
 }: PlateEditorProps) {
   const initialEditorValue = useMemo(
@@ -149,6 +152,10 @@ export function PlateEditor({
     ref,
     () => ({
       flushProcessing: flush,
+      getSelectedText: () => {
+        const selection = editor.selection ?? lastSelectionRef.current;
+        return selection ? editor.api.string(selection) : '';
+      },
       getCursorContext: () => {
         const context = getCursorAwareContext(
           editor,
@@ -221,6 +228,7 @@ export function PlateEditor({
 
   useEffect(() => {
     editor.setOption(InlineSuggestionPlugin, 'chapterId', chapterId ?? null);
+    editor.setOption(InlineSuggestionPlugin, 'sceneId', sceneId);
     editor.setOption(InlineSuggestionPlugin, 'enabled', ghostTextEnabled);
     if (!ghostTextEnabled) editor.getApi(InlineSuggestionPlugin).inlineSuggestion.clearSuggestion();
 
@@ -233,7 +241,7 @@ export function PlateEditor({
         ...(chapterId ? { chapterId } : {}),
       },
     });
-  }, [chapterId, editor, ghostTextEnabled, projectId]);
+  }, [chapterId, editor, ghostTextEnabled, projectId, sceneId]);
 
   const handlePaste = useCallback(
     (event: ClipboardEvent<HTMLDivElement>) => {

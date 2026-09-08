@@ -40,6 +40,7 @@ type NotebookData = {
 };
 
 export type AuthorNotebookSidebarProps = {
+  onOpenExamples?: () => void;
   onSelectNote: (note: AuthorNotebookNote | null) => void;
   projectId: string;
   refreshToken?: number;
@@ -47,6 +48,7 @@ export type AuthorNotebookSidebarProps = {
 };
 
 export function AuthorNotebookSidebar({
+  onOpenExamples,
   onSelectNote,
   projectId,
   refreshToken = 0,
@@ -224,6 +226,7 @@ export function AuthorNotebookSidebar({
       </div>
       {expanded && (
         <div className="max-h-[38vh] space-y-2 overflow-y-auto p-3">
+          {onOpenExamples && <button onClick={onOpenExamples} type="button" className="w-full rounded-lg border border-border p-2 text-left text-xs text-primary">문체·편집 사례</button>}
           {data.folders.map((folder) => {
             const folderNotes = data.notes.filter((note) => note.folderId === folder.id);
             const isOpen = expandedFolders.has(folder.id);

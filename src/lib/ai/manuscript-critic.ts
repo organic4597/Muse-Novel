@@ -15,6 +15,7 @@ import { runAIRequest } from '@/lib/ai/request-scheduler';
 import { resolveProjectProvider } from '@/lib/ai/resolve-project-provider';
 import type { DB } from '@/lib/db';
 import { getActiveWritingStyleProfile } from '@/lib/db/queries/writing-style-profiles';
+import { getWritingWorkbenchContext } from '@/lib/db/queries/writing-workbench';
 
 const REVIEW_CHAR_LIMIT = 20_000;
 
@@ -457,6 +458,8 @@ export async function analyzeManuscript({
   projectId,
   requestId,
   signal,
+  sceneId,
+  progress,
 }: {
   chapterId?: string;
   currentProse: string;
@@ -465,6 +468,8 @@ export async function analyzeManuscript({
   projectId: string;
   requestId?: string;
   signal: AbortSignal;
+  sceneId?: string | null;
+  progress?: (message: string) => void;
 }): Promise<ManuscriptCriticReport> {
   const providerConfig = await resolveProjectProvider(db, projectId);
   if (!providerConfig) throw new Error('AI 제공자 설정이 없습니다.');
@@ -482,7 +487,10 @@ export async function analyzeManuscript({
       () => undefined
     ),
   ]);
-  const storyContext = filterManuscriptCriticContext(rawStoryContext);
+  const workbench = getWritingWorkbenchContext(db, projectId, { chapterId, sceneId, focus: prose.slice(-2000) });
+  const storyContext = [filterManuscriptCriticContext(rawStoryContext), workbench.scene,
+    workbench.examples ? formatPromptData('editorial_examples', workbench.examples) : ''].filter(Boolean).join('\n\n');
+  progress?.('회차 목적과 원고 흐름을 읽고 수정 후보를 생성하고 있습니다.');
   const model = createProvider(providerConfig);
   const result = await runAIRequest(
     providerConfig,
@@ -539,6 +547,7 @@ export async function analyzeManuscript({
     return { ...report, qualityReview: { status: 'checked' as const, evaluated: 0, withheld: 0 } };
   }
   try {
+    progress?.('원문과 수정문을 앞뒤 문맥에 연결해 비교하고 있습니다.');
     const comparisonResult = await runAIRequest(
       providerConfig,
       {

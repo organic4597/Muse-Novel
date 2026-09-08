@@ -22,6 +22,8 @@ import {
 import type { AuthorNotebookWorkspaceProps } from '@/components/editor/author-notebook-workspace';
 import { AutoSaveIndicator } from '@/components/editor/auto-save-indicator';
 import { ChapterReferenceBar } from '@/components/editor/chapter-reference-bar';
+import { SceneWorkbench } from '@/components/editor/scene-workbench';
+import type { ScenePlan } from '@/lib/writing-workbench';
 import type {
   PlateEditorHandle,
   PlateEditorProps,
@@ -106,6 +108,10 @@ export default function WritePage() {
   const editorRef = useRef<PlateEditorHandle>(null);
   const latestContentRef = useRef('');
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
+  const [sceneId, setSceneId] = useState<string | null>(null);
+  const [showSceneWorkbench, setShowSceneWorkbench] = useState(false);
+  const [examplesOnly, setExamplesOnly] = useState(false);
+  const [sceneProposal, setSceneProposal] = useState<{ sceneId: string; revision: number; plan: ScenePlan; reason: string } | null>(null);
   const [selectedAuthorNote, setSelectedAuthorNote] =
     useState<AuthorNotebookNote | null>(null);
   const [notebookRefreshToken, setNotebookRefreshToken] = useState(0);
@@ -158,6 +164,7 @@ export default function WritePage() {
   };
 
   const handleSelectChapter = async (chapter: Chapter | null) => {
+    if (chapter?.id !== selectedChapter?.id) { setSceneId(null); setSceneProposal(null); }
     setSelectedAuthorNote(null);
     // Finish worker serialization before flushing the current chapter save.
     if (selectedChapter) {
@@ -244,6 +251,7 @@ export default function WritePage() {
     <div className="grid min-h-[calc(100vh-12rem)] gap-5 lg:relative lg:left-1/2 lg:w-[calc(100vw-4rem)] lg:max-w-[118rem] lg:-translate-x-1/2 lg:grid-cols-[17rem_minmax(0,1fr)]">
       <aside className="min-w-0 space-y-4 self-start lg:sticky lg:top-[6.5rem] lg:max-h-[calc(100dvh-7.5rem)] lg:overflow-y-auto">
         <AuthorNotebookSidebar
+          onOpenExamples={() => { setSelectedAuthorNote(null); setExamplesOnly(true); setShowSceneWorkbench(true); }}
           onSelectNote={handleSelectAuthorNote}
           projectId={params.id}
           refreshToken={notebookRefreshToken}
@@ -282,6 +290,7 @@ export default function WritePage() {
                   </h2>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground">
+                  <Button onClick={() => { setExamplesOnly(false); setShowSceneWorkbench(open => !open); }} size="sm" variant={showSceneWorkbench ? 'secondary' : 'outline'}>장면 설계</Button>
                   <Button
                     aria-pressed={isWorldReferenceOpen}
                     onClick={() => setIsWorldReferenceOpen((open) => !open)}
@@ -351,6 +360,10 @@ export default function WritePage() {
                 </div>
               </header>
               <ChapterReferenceBar chapterId={selectedChapter.id} key={`references:${selectedChapter.id}`} projectId={params.id} />
+              {showSceneWorkbench && <SceneWorkbench key={`${selectedChapter.id}:${sceneProposal?.revision ?? 'saved'}`} proposal={sceneProposal} projectId={params.id} chapterId={selectedChapter.id}
+                sceneId={sceneId} onSceneChange={setSceneId} examplesOnly={examplesOnly}
+                getContent={async () => { await editorRef.current?.flushProcessing(); return latestContentRef.current; }}
+                getSelection={() => editorRef.current?.getSelectedText() ?? ''} />}
               {isAuthorNoteOpen && (
                 <div className="border-b border-primary/20 bg-primary/4 px-5 py-4 sm:px-7">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -389,6 +402,8 @@ export default function WritePage() {
               )}
               {isIntelligenceOpen && (
                 <WritingIntelligencePanel
+                  onSceneProposal={proposal => { setSceneId(proposal.sceneId); setSceneProposal(proposal); setExamplesOnly(false); setShowSceneWorkbench(true); }}
+                  sceneId={sceneId}
                   key={selectedChapter.id}
                   chapterId={selectedChapter.id}
                   getCurrentContentJson={async () => {
@@ -418,6 +433,7 @@ export default function WritePage() {
               )}
               <div className={`min-h-0 flex-1 bg-[color-mix(in_oklab,var(--card)_82%,var(--background))] ${isWorldReferenceOpen || isMapReferenceOpen ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_20rem]' : ''} ${isWorldReferenceOpen && isMapReferenceOpen ? '2xl:grid-cols-[minmax(0,1fr)_19rem_19rem]' : ''}`}>
                 <div className="min-w-0"><PlateEditor
+                    sceneId={sceneId}
                     chapterId={selectedChapter.id}
                     content={selectedChapter.contentJson}
                     ghostTextEnabled={ghostTextEnabled}

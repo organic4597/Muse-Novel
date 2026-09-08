@@ -6,6 +6,25 @@ import { WritingIntelligencePanel } from './writing-intelligence-panel';
 describe('WritingIntelligencePanel', () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it('sends only author-selected goals and the diagnosed snapshot for rewriting', async () => {
+    const goal = { action: 'compress', original: '그는 걸었다.', issue: '반복', objective: '반복만 압축' };
+    const fetchMock = vi.fn(async (_url, init: RequestInit) => {
+      const body = JSON.parse(String(init.body));
+      return Response.json(body.action === 'diagnose' ? { summary: '목표', goals: [goal, { ...goal, action: 'keep', original: '그는 멈췄다.' }], snapshot: 'a'.repeat(64), reviewedChars: 100, truncated: false }
+        : { summary: '비교 완료', suggestions: [], sceneNotes: [], reviewedChars: 100, truncated: false });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const onReplace = vi.fn();
+    render(<WritingIntelligencePanel projectId="project" chapterId="chapter" getCurrentContentJson={() => '[]'} onApply={vi.fn()} onReplace={onReplace} />);
+    fireEvent.click(screen.getByRole('button', { name: '편집 목표 찾기' }));
+    await screen.findByText('편집 목표 선택');
+    fireEvent.click(screen.getByLabelText('압축 · 반복'));
+    fireEvent.click(screen.getByRole('button', { name: '선택한 목표로 수정문 생성 (1/4)' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1].body))).toMatchObject({ action: 'rewrite', goals: [goal], snapshot: 'a'.repeat(64) });
+    expect(onReplace).not.toHaveBeenCalled();
+  });
+
   it('shows streamed output and applies the final revision at the cursor', async () => {
     const onApply = vi.fn();
     const events = [

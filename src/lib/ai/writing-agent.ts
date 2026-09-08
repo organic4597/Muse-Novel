@@ -1,4 +1,7 @@
-import { generateText, streamText } from 'ai';
+import { generateText, streamText, Output } from 'ai';
+import { z } from 'zod';
+import { scenePlanSchema } from '@/lib/writing-workbench';
+import { getScene } from '@/lib/db/queries/writing-workbench';
 
 import { buildStoryContext } from '@/lib/ai/build-story-context';
 import { formatPromptData } from '@/lib/ai/prompt-foundations';
@@ -6,6 +9,7 @@ import { createProvider } from '@/lib/ai/provider-factory';
 import { getProviderOptions } from '@/lib/ai/provider-options';
 import { runAIRequest } from '@/lib/ai/request-scheduler';
 import { resolveProjectProvider } from '@/lib/ai/resolve-project-provider';
+import { getWritingWorkbenchContext } from '@/lib/db/queries/writing-workbench';
 import type { DB } from '@/lib/db';
 import { runSemanticWritingKnowledgeAgent } from '@/lib/knowledge/writing-knowledge-semantic';
 import {
@@ -29,6 +33,8 @@ export type WritingAgentProgress = {
 };
 
 export type RunWritingAgentOptions = {
+  sceneId?: string | null;
+  mode?: 'continue' | 'scene';
   webSearchMode?: WebSearchMode;
   chapterId?: string;
   currentProse?: string;
@@ -244,10 +250,14 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
 
   onProgress?.({ message: '작품 기억을 동기화하고 관련 설정을 찾는 중...', stage: 'memory' });
   const index = await indexProjectMemory(db, projectId, signal);
-  const storyContext = await buildStoryContext(db, projectId, chapterId, {
+  const baseStoryContext = await buildStoryContext(db, projectId, chapterId, {
     focusText: `${instruction}\n${cursorBefore.slice(-2000) || currentProse.slice(-2000)}\n${cursorAfter.slice(0, 800)}`,
     maxChars: storyBudget,
   });
+  const workbench = getWritingWorkbenchContext(db, projectId, { chapterId, sceneId: options.sceneId, focus: `${instruction}\n${cursorBefore.slice(-1000)}` });
+  const storyContext = [baseStoryContext, workbench.scene,
+    options.mode === 'scene' ? '작업: 선택한 장면의 사건 순서에 따라 새 장면을 작성한다. 장면 설계는 계획이며 이미 일어난 일로 요약하지 않는다.' : '작업: 현재 커서의 앞뒤 원고에 바로 이어질 본문을 작성한다.',
+  ].filter(Boolean).join('\n\n');
   const retrievalQuery = [
     instruction,
     cursorBefore.slice(-Math.min(2500, proseTailBudget)) || currentProse.slice(-Math.min(2500, proseTailBudget)),
@@ -281,9 +291,33 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
     onStatus: (message) => onProgress?.({ message, stage: 'memory' }),
   });
   const webContext = formatWebResearch(research, Math.max(300, Math.floor(knowledgeBudget * 0.65)));
-  const researchKnowledge = webContext
+  const researchKnowledgeBase = webContext
     ? `${knowledge.context.slice(0, Math.max(0, knowledgeBudget - webContext.length - 2))}\n\n${webContext}`
     : knowledge.context;
+  const researchKnowledge = [researchKnowledgeBase, workbench.examples ? formatPromptData('author_selected_examples', workbench.examples) : ''].filter(Boolean).join('\n\n');
+
+  const reviewScenePlan = async (prose: string) => {
+    if (!options.sceneId || !chapterId) return null;
+    const scene = getScene(db, projectId, chapterId, options.sceneId);
+    if (scene.status !== 'confirmed') return null;
+    onProgress?.({ message: '생성 원고가 확정 장면 설계에 미치는 변화를 검토하고 있습니다.', stage: 'plan' });
+    try {
+      const checked = await runAIRequest(providerConfig, { priority: 'standard', projectId, signal }, abortSignal => generateText({
+        ...commonGenerationOptions, abortSignal, maxRetries: 0, maxOutputTokens: 2000, temperature: 0.1,
+        output: Output.object({ name: 'scene_plan_review', schema: z.object({ changed: z.boolean(), reason: z.string().max(300), plan: scenePlanSchema }) }),
+        prompt: [
+          '생성된 새 원고와 기존 장면 설계를 비교한다. 실제 진행이 달라졌다면 changed=true와 바뀐 설계 후보를 반환한다. 말투만 바꾸지 말고 실질적인 변경만 다룬다. 미래의 계획을 확정된 세계관 사실로 바꾸지 않는다.',
+          'changed=false이면 기존 plan을 그대로 반환한다. 결과는 작가 승인 전 제안이며 원고나 저장된 설계를 변경하지 않는다.',
+          formatPromptData('existing_scene', scene.planJson), formatPromptData('new_prose', prose),
+        ].join('\n\n'),
+      }));
+      return checked.output.changed ? { sceneId: scene.id, revision: scene.revision, plan: checked.output.plan, reason: checked.output.reason } : null;
+    } catch (error) {
+      if (signal.aborted) throw error;
+      onProgress?.({ message: '설계 변경 검토를 완료하지 못했습니다. 원고를 검토한 뒤 장면 설계를 직접 확인해주세요.', stage: 'plan' });
+      return null;
+    }
+  };
 
   const runStage = async (
     stage: 'plan' | 'draft' | 'critique',
@@ -323,10 +357,10 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
       0.3
     )
   ).text.trim();
+  if (workbench.scene) onProgress?.({ message: '확정한 장면 설계와 작가가 선택한 사례를 반영합니다.', stage: 'draft' });
 
   onProgress?.({ message: '장면 계획을 소설 본문으로 작성하는 중...', stage: 'draft' });
-  const draft = (
-    await runStage(
+  const draftResult = await runStage(
       'draft',
       buildAgentDraftPrompt({
         currentProse: currentProseTail,
@@ -340,8 +374,9 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
         targetLength,
       }),
       0.72
-    )
-  ).text.trim();
+    );
+  if (draftResult.finishReason === 'length') throw new Error('초안이 출력 한도에서 잘렸습니다. 목표 분량을 줄여 다시 요청해주세요.');
+  const draft = draftResult.text.trim();
 
   if (!review) {
     onDelta?.(draft);
@@ -357,6 +392,7 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
       memoryWarning: retrieval.warning,
       plan,
       text: draft,
+      sceneProposal: await reviewScenePlan(draft),
     };
   }
 
@@ -407,6 +443,7 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
         text += delta;
         onDelta?.(delta);
       }
+      if (await result.finishReason === 'length') throw new Error('수정 원고가 출력 한도에서 잘렸습니다. 목표 분량을 줄여 다시 요청해주세요.');
     }
   );
 
@@ -422,5 +459,6 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
     memoryWarning: retrieval.warning,
     plan,
     text: text.trim(),
+    sceneProposal: await reviewScenePlan(text.trim()),
   };
 }

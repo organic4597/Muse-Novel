@@ -8,6 +8,7 @@ import { runWritingAgent } from '@/lib/ai/writing-agent';
 import { db } from '@/lib/db';
 import { getChapter } from '@/lib/db/queries/chapters';
 import { getProject } from '@/lib/db/queries/projects';
+import { getScene } from '@/lib/db/queries/writing-workbench';
 import {
   extractBoundedPlateText,
   InvalidPlateContentError,
@@ -18,6 +19,8 @@ const REQUEST_TIMEOUT_MS = 600_000;
 const requestSchema = z.object({
   webSearchMode: z.enum(WEB_SEARCH_MODES).default('auto'),
   chapterId: z.string().uuid().optional(),
+  sceneId: z.string().uuid().nullable().optional(),
+  mode: z.enum(['continue', 'scene']).default('continue'),
   currentContentJson: z.string().max(300_000).optional(),
   cursorAfter: z.string().max(10_000).default(''),
   cursorBefore: z.string().max(20_000).default(''),
@@ -60,6 +63,7 @@ export async function POST(
 
   let currentProse: string;
   try {
+    if (parsed.data.sceneId) getScene(db, id, parsed.data.chapterId ?? '', parsed.data.sceneId);
     currentProse = extractBoundedPlateText(parsed.data.currentContentJson);
   } catch (error) {
     if (error instanceof InvalidPlateContentError) {
@@ -91,8 +95,11 @@ export async function POST(
           );
         }
       };
+      const heartbeat = setInterval(() => send('heartbeat', {}), 10_000);
       try {
         const result = await runWritingAgent({
+          sceneId: parsed.data.sceneId,
+          mode: parsed.data.mode,
           chapterId: parsed.data.chapterId,
           cursorAfter: parsed.data.cursorAfter,
           cursorBefore: parsed.data.cursorBefore,
@@ -130,6 +137,7 @@ export async function POST(
                 : '집필 에이전트 실행에 실패했습니다.',
         });
       } finally {
+        clearInterval(heartbeat);
         if (!streamClosed) {
           streamClosed = true;
           try {

@@ -6,6 +6,8 @@ import {
   MANUSCRIPT_CRITIC_INTENSITIES,
 } from '@/lib/ai/manuscript-critic';
 import { isAIRequestQueueFullError } from '@/lib/ai/request-scheduler';
+import { longTaskResponse } from '@/lib/ai/long-task-stream';
+import { getScene } from '@/lib/db/queries/writing-workbench';
 import { db } from '@/lib/db';
 import { getChapter } from '@/lib/db/queries/chapters';
 import { getProject } from '@/lib/db/queries/projects';
@@ -19,6 +21,7 @@ const requestSchema = z.object({
   chapterId: z.string().uuid(),
   currentContentJson: z.string().max(300_000),
   intensity: z.enum(MANUSCRIPT_CRITIC_INTENSITIES).default('bold'),
+  sceneId: z.string().uuid().nullable().optional(),
 });
 
 export async function POST(
@@ -63,7 +66,15 @@ export async function POST(
   }
 
   try {
+    if (parsed.data.sceneId) getScene(db, id, parsed.data.chapterId, parsed.data.sceneId);
+    if (request.headers.get('accept')?.includes('text/event-stream')) {
+      return longTaskResponse(request, (signal, progress) => analyzeManuscript({
+        chapterId: parsed.data.chapterId, currentProse, db, projectId: id,
+        intensity: parsed.data.intensity, sceneId: parsed.data.sceneId, signal, progress,
+      }));
+    }
     const report = await analyzeManuscript({
+      sceneId: parsed.data.sceneId,
       chapterId: parsed.data.chapterId,
       currentProse,
       db,

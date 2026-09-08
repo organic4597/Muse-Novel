@@ -17,6 +17,8 @@ import { WebResearchSources, WebSearchControl } from '@/components/ai/web-resear
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { readLongTask } from '@/lib/client/long-task';
+import { EDIT_LABELS, type EditDiagnosis, type ScenePlan } from '@/lib/writing-workbench';
 import type {
   ManuscriptCriticIntensity,
   ManuscriptCriticReport,
@@ -87,6 +89,8 @@ const CRITIC_SCENE_LABELS: Record<string, string> = {
 };
 
 export type WritingIntelligencePanelProps = {
+  onSceneProposal?: (proposal: { sceneId: string; revision: number; plan: ScenePlan; reason: string }) => void;
+  sceneId?: string | null;
   chapterId: string;
   getCurrentContentJson: () => Promise<string> | string;
   getCursorContext?: () => { before: string; after: string };
@@ -137,6 +141,8 @@ export async function consumeSSE(
 }
 
 export function WritingIntelligencePanel({
+  sceneId,
+  onSceneProposal,
   chapterId,
   getCurrentContentJson,
   getCursorContext,
@@ -161,6 +167,7 @@ export function WritingIntelligencePanel({
     memoryWarning?: string;
     plan?: string;
     critique?: string | null;
+    sceneProposal?: { sceneId: string; revision: number; plan: ScenePlan; reason: string } | null;
   } | null>(null);
   const [indexing, setIndexing] = useState(false);
   const [indexStatus, setIndexStatus] = useState('');
@@ -168,6 +175,12 @@ export function WritingIntelligencePanel({
   const [report, setReport] = useState<{ findings: Finding[]; summary: string } | null>(null);
   const [criticRunning, setCriticRunning] = useState(false);
   const [criticStatus, setCriticStatus] = useState('');
+  const [diagnosis, setDiagnosis] = useState<EditDiagnosis | null>(null);
+  const [selectedGoals, setSelectedGoals] = useState<number[]>([]);
+  const [supplement, setSupplement] = useState('');
+  const [saveExamples, setSaveExamples] = useState(false);
+  const [writeMode, setWriteMode] = useState<'continue' | 'scene'>('continue');
+  const utilityAbortRef = useRef<AbortController | null>(null);
   const [criticIntensity, setCriticIntensity] =
     useState<ManuscriptCriticIntensity>('bold');
   const [criticReport, setCriticReport] = useState<{
@@ -186,6 +199,7 @@ export function WritingIntelligencePanel({
   useEffect(
     () => () => {
       abortRef.current?.abort();
+      utilityAbortRef.current?.abort();
       if (outputTimerRef.current) clearTimeout(outputTimerRef.current);
     },
     []
@@ -241,10 +255,12 @@ export function WritingIntelligencePanel({
     setReport(null);
     setStatus('작품 전체의 연속성을 검사하는 중...');
     try {
+      utilityAbortRef.current = new AbortController();
       const response = await fetch(`/api/projects/${projectId}/consistency`, {
         method: 'POST',
+        headers: { Accept: 'text/event-stream' }, signal: utilityAbortRef.current.signal,
       });
-      const data = (await response.json()) as {
+      const data = (await readLongTask(response, setStatus)) as {
         error?: string;
         findings?: Finding[];
         summary?: string;
@@ -264,17 +280,20 @@ export function WritingIntelligencePanel({
     setCriticReport(null);
     setCriticStatus('이야기 흐름을 검토하고 수정안을 앞뒤 원문과 비교하는 중...');
     try {
+      utilityAbortRef.current = new AbortController();
       const currentContentJson = await getCurrentContentJson();
       const response = await fetch(`/api/projects/${projectId}/manuscript-critic`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        signal: utilityAbortRef.current.signal,
         body: JSON.stringify({
+          sceneId,
           chapterId,
           currentContentJson,
           intensity: criticIntensity,
         }),
       });
-      const data = (await response.json()) as {
+      const data = (await readLongTask(response, setCriticStatus)) as {
         error?: string;
         reviewedChars?: number;
         qualityReview?: ManuscriptCriticReport['qualityReview'];
@@ -302,7 +321,37 @@ export function WritingIntelligencePanel({
     }
   };
 
-  const applyCriticSuggestion = (
+  const runEditorial = async (action: 'diagnose' | 'rewrite') => {
+    setCriticRunning(true); setCriticReport(null); setCriticStatus('원고 확인 중...');
+    utilityAbortRef.current = new AbortController();
+    try {
+      const response = await fetch(`/api/projects/${projectId}/writing-workbench`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' }, signal: utilityAbortRef.current.signal,
+        body: JSON.stringify({ action, chapterId, sceneId, currentContentJson: await getCurrentContentJson(),
+          ...(action === 'rewrite' ? { snapshot: diagnosis?.snapshot, goals: selectedGoals.map(index => diagnosis?.goals[index]), supplement } : {}) }),
+      });
+      if (action === 'diagnose') {
+        const result = await readLongTask<EditDiagnosis>(response, setCriticStatus);
+        setDiagnosis(result); setSelectedGoals([]); setCriticStatus('필요한 편집 목표를 선택해주세요. 목표 문구도 직접 수정할 수 있습니다.');
+      } else {
+        const result = await readLongTask<ManuscriptCriticReport>(response, setCriticStatus);
+        setCriticReport(result); setCriticStatus('문맥 비교를 통과한 수정안을 검토해주세요.');
+      }
+    } catch (error) { setCriticStatus(error instanceof Error ? error.message : '작업에 실패했습니다.'); }
+    finally { setCriticRunning(false); }
+  };
+
+  const storeExample = async (suggestion: ManuscriptCriticSuggestion, verdict: 'accepted' | 'rejected', reason: string) => {
+    const response = await fetch(`/api/projects/${projectId}/writing-workbench`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'save-example', example: { kind: 'edit', verdict,
+        title: `${CRITIC_CATEGORY_LABELS[suggestion.category] ?? '편집'} ${verdict === 'accepted' ? '승인' : '거절'}`, original: suggestion.original,
+        replacement: suggestion.replacement, reason } }),
+    });
+    if (!response.ok) throw new Error('원고 처리는 완료했지만 사례 저장에 실패했습니다.');
+  };
+
+  const applyCriticSuggestion = async (
     suggestion: ManuscriptCriticSuggestion,
     index: number
   ) => {
@@ -323,6 +372,10 @@ export function WritingIntelligencePanel({
         : current
     );
     setCriticStatus('제안을 승인해 원고에 반영했습니다.');
+    if (saveExamples) {
+      try { await storeExample(suggestion, 'accepted', suggestion.reason); setCriticStatus('원고에 반영하고 승인 사례로 저장했습니다.'); }
+      catch (error) { setCriticStatus(error instanceof Error ? error.message : '사례 저장 실패'); }
+    }
   };
 
   const runAgent = async () => {
@@ -355,6 +408,8 @@ export function WritingIntelligencePanel({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          sceneId,
+          mode: writeMode,
           chapterId,
           currentContentJson,
           cursorAfter: cursorContext.after,
@@ -388,6 +443,7 @@ export function WritingIntelligencePanel({
           setOutput(String(data.text ?? ''));
           setOutputComplete(true);
           setAgentDetails({
+            sceneProposal: data.sceneProposal as { sceneId: string; revision: number; plan: ScenePlan; reason: string } | null,
             critique: typeof data.critique === 'string' ? data.critique : null,
             knowledgeMode: String(data.knowledgeMode ?? ''),
             knowledgeWarning:
@@ -435,6 +491,8 @@ export function WritingIntelligencePanel({
           </h3>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button disabled={criticRunning || running || indexing || checking} onClick={() => runEditorial('diagnose')} size="sm">편집 목표 찾기</Button>
+          {(criticRunning || checking) && <Button onClick={() => utilityAbortRef.current?.abort()} size="sm" variant="outline">검토 중단</Button>}
           <Button disabled={indexing || running || checking} onClick={indexMemory} size="sm" type="button" variant="outline">
             {indexing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
             기억 동기화
@@ -478,6 +536,7 @@ export function WritingIntelligencePanel({
 
       {criticReport && (
         <div className="space-y-3 rounded-2xl border border-border bg-card/80 p-4">
+          <label className="flex items-center gap-2 text-sm"><Checkbox checked={saveExamples} onCheckedChange={value => setSaveExamples(value === true)} />승인·거절 결과를 편집 사례로 저장</label>
           <div>
             <h4 className="flex items-center gap-2 font-semibold">
               <FileSearch2 className="size-4 text-primary" /> 원고 편집 제안
@@ -532,6 +591,17 @@ export function WritingIntelligencePanel({
                     >
                       승인하고 교체
                     </Button>
+                    <Button size="sm" variant="outline" onClick={async () => {
+                      let reason = suggestion.reason;
+                      if (saveExamples) {
+                        const response = window.prompt('거절 이유를 적어주세요 (다음 요청에서 참고합니다).', '문체가 맞지 않음');
+                        if (response === null) return;
+                        reason = response;
+                        try { await storeExample(suggestion, 'rejected', reason); }
+                        catch (error) { setCriticStatus(error instanceof Error ? error.message : '사례 저장 실패'); return; }
+                      }
+                      setCriticReport(current => current ? { ...current, suggestions: current.suggestions.filter((_s, i) => i !== index) } : current);
+                    }}>거절</Button>
                   </div>
                   <div className="mt-3 grid gap-2 text-sm md:grid-cols-2">
                     <div className="rounded-lg bg-destructive/5 p-3">
@@ -565,8 +635,27 @@ export function WritingIntelligencePanel({
         </div>
       )}
 
+      {diagnosis && <div className="space-y-3 rounded-xl border border-primary/20 bg-card p-4">
+        <h4 className="font-semibold">편집 목표 선택</h4><p className="text-sm leading-6">{diagnosis.summary}</p>
+        <p className="text-xs text-muted-foreground">{diagnosis.reviewedChars.toLocaleString()}자 검토{diagnosis.truncated ? ' · 최근 20,000자' : ''}</p>
+        {diagnosis.goals.map((goal, index) => <div key={`${index}-${goal.original}`} className="rounded-lg border border-border p-3">
+          <label className="flex items-start gap-2 text-sm"><Checkbox checked={selectedGoals.includes(index)} disabled={criticRunning || goal.action === 'keep'}
+            onCheckedChange={value => setSelectedGoals(current => value ? [...current, index].slice(0, 4) : current.filter(item => item !== index))} />
+            <span>{EDIT_LABELS[goal.action]} · {goal.issue}</span></label>
+          <blockquote className="my-2 whitespace-pre-wrap border-l-2 border-border pl-3 text-xs leading-6 text-muted-foreground">{goal.original}</blockquote>
+          <textarea aria-label={`편집 목표 ${index + 1}`} className="w-full rounded border border-border bg-background p-2 text-sm" value={goal.objective} disabled={criticRunning || goal.action === 'keep'}
+            onChange={event => setDiagnosis(current => current ? { ...current, goals: current.goals.map((item, i) => i === index ? { ...item, objective: event.target.value } : item) } : current)} />
+        </div>)}
+        {selectedGoals.some(index => diagnosis.goals[index]?.action === 'supplement') && <label className="block text-sm">작가가 허용할 보충 사실·연결 내용
+          <textarea aria-label="보충할 내용" className="mt-2 w-full rounded border border-border bg-background p-2" value={supplement} onChange={e => setSupplement(e.target.value)} placeholder="새로운 단서가 필요하다면 그 내용을 직접 정해주세요." /></label>}
+        <Button disabled={criticRunning || !selectedGoals.length} onClick={() => runEditorial('rewrite')}>선택한 목표로 수정문 생성 ({selectedGoals.length}/4)</Button>
+      </div>}
+
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_9rem_auto] lg:items-end">
         <div>
+          <select aria-label="작성 방식" className="mb-2 rounded border border-border bg-background p-2 text-sm" value={writeMode} onChange={e => setWriteMode(e.target.value as 'continue' | 'scene')} disabled={running}>
+            <option value="continue">현재 커서에서 이어쓰기</option><option value="scene" disabled={!sceneId}>선택한 장면 작성</option>
+          </select>
           <WebSearchControl disabled={running} onChange={setWebSearchMode} value={webSearchMode} />
           <label className="muse-field-label" htmlFor="writing-agent-instruction">작성 요청</label>
           <textarea
@@ -644,6 +733,10 @@ export function WritingIntelligencePanel({
               </div>
             </details>
           )}
+          {agentDetails?.sceneProposal && onSceneProposal && <div className="rounded-lg border border-primary/20 p-3 text-sm">
+            <p>장면 설계 변경 후보: {agentDetails.sceneProposal.reason}</p>
+            <Button size="sm" variant="outline" onClick={() => { if (agentDetails.sceneProposal) onSceneProposal(agentDetails.sceneProposal); }}>설계에서 검토하기</Button>
+          </div>}
         </div>
       )}
 

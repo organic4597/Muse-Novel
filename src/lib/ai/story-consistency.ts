@@ -277,11 +277,13 @@ export async function analyzeStoryConsistency({
   projectId,
   requestId,
   signal,
+  progress,
 }: {
   db: DB;
   projectId: string;
   requestId?: string;
   signal: AbortSignal;
+  progress?: (message: string) => void;
 }): Promise<ConsistencyReport> {
   const providerConfig = await resolveProjectProvider(db, projectId);
   if (!providerConfig) throw new Error('AI 제공자 설정이 없습니다.');
@@ -328,6 +330,7 @@ export async function analyzeStoryConsistency({
 
   const facts: ContinuityFact[] = [];
   for (const [index, batch] of sourceBatches.entries()) {
+    progress?.(`작품 자료에서 사실을 추출하고 있습니다 (${index + 1}/${sourceBatches.length}).`);
     const result = await runStage(
       buildFactExtractionPrompt(batch),
       `facts-${index}`,
@@ -346,6 +349,7 @@ export async function analyzeStoryConsistency({
   const auditBatches = buildFactAuditBatches(verifiedFacts, inputBudget);
   const findings: ConsistencyFinding[] = [];
   for (const [index, batch] of auditBatches.entries()) {
+    progress?.(`검증된 사실의 시간선과 인물 상태를 비교하고 있습니다 (${index + 1}/${auditBatches.length}).`);
     const result = await runStage(
       buildConsistencyPrompt(batch),
       `audit-${index}`,

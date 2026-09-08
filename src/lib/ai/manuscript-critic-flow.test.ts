@@ -5,6 +5,7 @@ vi.mock('./resolve-project-provider', () => ({ resolveProjectProvider: vi.fn(asy
 vi.mock('./provider-factory', () => ({ createProvider: vi.fn(() => ({})) }));
 vi.mock('./request-scheduler', () => ({ runAIRequest: vi.fn((_config, options, run) => run(options.signal)) }));
 vi.mock('@/lib/db/queries/writing-style-profiles', () => ({ getActiveWritingStyleProfile: vi.fn() }));
+vi.mock('@/lib/db/queries/writing-workbench', () => ({ getWritingWorkbenchContext: vi.fn(() => ({ scene: '', examples: '' })) }));
 import { generateText } from 'ai';
 import { analyzeManuscript } from './manuscript-critic';
 
