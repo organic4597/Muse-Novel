@@ -8,6 +8,7 @@ import {
   updateProject,
 } from '@/lib/db/queries/projects';
 import { removeMapImages } from '@/lib/map-images';
+import { removeAuthorNoteImages } from '@/lib/author-notebook-images';
 
 const updateProjectSchema = z
   .object({
@@ -81,7 +82,11 @@ export async function DELETE(
     );
   }
 
-  await removeMapImages(await deleteProject(db, id));
+  const mediaPaths = await deleteProject(db, id);
+  await Promise.all([
+    removeMapImages(mediaPaths),
+    removeAuthorNoteImages(mediaPaths),
+  ]);
 
   return NextResponse.json({ success: true });
 }

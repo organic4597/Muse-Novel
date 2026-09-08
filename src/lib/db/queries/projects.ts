@@ -4,6 +4,7 @@ import type { DB } from '@/lib/db';
 
 import {
   aiProviderSettings,
+  authorNoteAssets,
   chapters,
   characterEmotions,
   characterImages,
@@ -111,6 +112,11 @@ export async function updateProject(
 export async function deleteProject(db: DB, id: string) {
   const mapImages = db.select({ imagePath: worldMaps.imagePath, image2xPath: worldMaps.image2xPath, thumbnailPath: worldMaps.thumbnailPath })
     .from(worldMaps).where(eq(worldMaps.projectId, id)).all();
+  const noteImages = db
+    .select({ imagePath: authorNoteAssets.imagePath })
+    .from(authorNoteAssets)
+    .where(eq(authorNoteAssets.projectId, id))
+    .all();
   // 1. Get chapter and character ids for this project
   const projectChapters = db
     .select({ id: chapters.id })
@@ -155,5 +161,12 @@ export async function deleteProject(db: DB, id: string) {
 
   // 4. Delete the project
   db.delete(projects).where(eq(projects.id, id)).run();
-  return mapImages.flatMap((map) => [map.imagePath, map.image2xPath, map.thumbnailPath]);
+  return [
+    ...mapImages.flatMap((map) => [
+      map.imagePath,
+      map.image2xPath,
+      map.thumbnailPath,
+    ]),
+    ...noteImages.map((asset) => asset.imagePath),
+  ];
 }

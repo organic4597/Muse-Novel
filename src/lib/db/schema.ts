@@ -647,3 +647,81 @@ export const mapPins = sqliteTable('map_pins', {
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull().$defaultFn(() => new Date()),
 }, (table) => [index('map_pins_map_idx').on(table.mapId)]);
+
+// ─── Author Notebook ────────────────────────────────────────────────────────
+
+export const authorNoteFolders = sqliteTable(
+  'author_note_folders',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    order: integer('order').notNull().default(0),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('author_note_folders_project_name_idx').on(
+      table.projectId,
+      table.name
+    ),
+    index('author_note_folders_project_order_idx').on(
+      table.projectId,
+      table.order
+    ),
+  ]
+);
+
+export const authorNotes = sqliteTable(
+  'author_notes',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    folderId: text('folder_id').references(() => authorNoteFolders.id, {
+      onDelete: 'set null',
+    }),
+    title: text('title').notNull(),
+    kind: text('kind', { enum: ['text', 'mindmap'] }).notNull(),
+    contentJson: text('content_json').notNull(),
+    order: integer('order').notNull().default(0),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [
+    index('author_notes_project_folder_order_idx').on(
+      table.projectId,
+      table.folderId,
+      table.order
+    ),
+  ]
+);
+
+export const authorNoteAssets = sqliteTable(
+  'author_note_assets',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    noteId: text('note_id')
+      .notNull()
+      .references(() => authorNotes.id, { onDelete: 'cascade' }),
+    imagePath: text('image_path').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [index('author_note_assets_note_idx').on(table.noteId)],
+);
