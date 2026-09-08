@@ -4,7 +4,7 @@ import { StorylineChatPanel } from './storyline-chat-panel';
 
 describe('storyline chat panel', () => {
   afterEach(() => vi.unstubAllGlobals());
-  const props = { projectId: 'project', noteId: 'note', beforeSend: vi.fn(async () => true), onAppend: vi.fn(async () => true) };
+  const props = { projectId: 'project', noteId: 'note', beforeSend: vi.fn(async () => true), onAppend: vi.fn(async () => true), onApplyEdits: vi.fn(async () => true) };
   it('streams a reply, re-enables input, and changes notes only when explicitly approved', async () => {
     let controller!: ReadableStreamDefaultController<Uint8Array>;
     const response = new Response(new ReadableStream<Uint8Array>({ start(c) { controller = c; } }), { headers: { 'Content-Type': 'text/event-stream' } });
@@ -43,5 +43,24 @@ describe('storyline chat panel', () => {
     fireEvent.click(screen.getByRole('button', { name: '전송' }));
     await screen.findByText(/AI 환경을 설정해주세요/);
     expect(input).toBeEnabled(); expect(input).toHaveValue('인과를 검토해줘');
+  });
+  it('previews requested note edits and applies them only after approval', async () => {
+    const user = { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', role: 'user', text: '주인공의 소속을 소림으로 수정해줘.' };
+    const answer = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'assistant', text: '기존 설정을 소림 소속으로 바꾸는 방향입니다.' };
+    const plan = { summary: '주인공의 소속을 개방에서 소림으로 변경합니다.', edits: [{ original: '소속: 개방', replacement: '소속: 소림', reason: '작가가 소속 변경을 요청했습니다.' }], addition: '', warnings: [] };
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ messages: [user, answer], revision: 2, chapters: [] }))
+      .mockResolvedValueOnce(Response.json(plan));
+    vi.stubGlobal('fetch', fetchMock);
+    const onApplyEdits = vi.fn(async () => true);
+    render(<StorylineChatPanel {...props} onApplyEdits={onApplyEdits} />);
+    await screen.findByText(answer.text);
+    fireEvent.click(screen.getByRole('button', { name: '노트 수정안 만들기' }));
+    await screen.findByText('현재 내용');
+    expect(onApplyEdits).not.toHaveBeenCalled();
+    expect(screen.getByText('소속: 개방')).toBeInTheDocument();
+    expect(screen.getByText('소속: 소림')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '승인하고 반영' }));
+    await waitFor(() => expect(onApplyEdits).toHaveBeenCalledWith(expect.objectContaining(plan)));
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ messageId: answer.id, revision: 2 });
   });
 });

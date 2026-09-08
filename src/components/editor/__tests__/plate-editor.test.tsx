@@ -199,6 +199,33 @@ describe('PlateEditor content initialization', () => {
     expect(ref.current?.replaceText('반복 문장', '새 문장')).toBe(false);
   });
 
+  it('validates every storyline note edit before applying the approved batch', () => {
+    const ref = createRef<PlateEditorHandle>();
+    mocks.editor.api.nodes.mockReturnValue([
+      [{ text: '소속: 개방' }, [0, 0]],
+      [{ text: '직위: 객원' }, [1, 0]],
+    ] as never);
+    render(<PlateEditor documentId="note:1" ref={ref} />);
+    mocks.processValue.mockClear();
+
+    expect(ref.current?.applyTextEdits([
+      { original: '소속: 개방', replacement: '소속: 소림' },
+      { original: '직위: 객원', replacement: '직위: 명예장로' },
+    ], '### 변경 영향\n\n- 소림과의 관계를 다시 검토한다.')).toBe(true);
+    expect(mocks.editor.tf.select).toHaveBeenCalledTimes(2);
+    expect(mocks.editor.tf.insertText).toHaveBeenCalledWith('소속: 소림');
+    expect(mocks.editor.tf.insertText).toHaveBeenCalledWith('직위: 명예장로');
+    expect(mocks.editor.tf.insertNodes).toHaveBeenCalled();
+    expect(mocks.processValue).toHaveBeenCalledWith(mocks.editor.children);
+
+    mocks.editor.tf.select.mockClear();
+    expect(ref.current?.applyTextEdits([
+      { original: '존재하지 않는 설정', replacement: '새 설정' },
+      { original: '소속: 개방', replacement: '소속: 소림' },
+    ])).toBe(false);
+    expect(mocks.editor.tf.select).not.toHaveBeenCalled();
+  });
+
   it('maps an exact critic quote across formatted leaves and paragraphs', () => {
     const range = findUniqueEditorTextRange(
       [

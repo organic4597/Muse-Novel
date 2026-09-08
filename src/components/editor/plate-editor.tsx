@@ -43,6 +43,10 @@ export interface PlateEditorProps {
 }
 
 export interface PlateEditorHandle {
+  applyTextEdits: (
+    edits: Array<{ original: string; replacement: string }>,
+    addition?: string
+  ) => boolean;
   appendText?: (text: string) => void;
   flushProcessing: () => Promise<void>;
   getCursorContext: () => { before: string; after: string };
@@ -162,6 +166,54 @@ export function PlateEditor({
   useImperativeHandle(
     ref,
     () => ({
+      applyTextEdits: (edits, addition = '') => {
+        const entries: IndexedTextEntry[] = [];
+        for (const [node, path] of editor.api.nodes({
+          at: [],
+          match: (candidate) => TextApi.isText(candidate),
+        })) {
+          if (TextApi.isText(node)) entries.push([node, [...path]]);
+        }
+        const comparePoint = (left: TRange['anchor'], right: TRange['anchor']) => {
+          const length = Math.max(left.path.length, right.path.length);
+          for (let index = 0; index < length; index += 1) {
+            const difference = (left.path[index] ?? -1) - (right.path[index] ?? -1);
+            if (difference) return difference;
+          }
+          return left.offset - right.offset;
+        };
+        const planned = edits.map(edit => ({
+          ...edit,
+          range: findUniqueEditorTextRange(entries, edit.original),
+        }));
+        if (planned.some(edit => !edit.range)) return false;
+        const ranges = planned.map(edit => edit.range as TRange);
+        if (ranges.some((range, index) => ranges.some((other, otherIndex) =>
+          index !== otherIndex
+          && comparePoint(range.anchor, other.focus) < 0
+          && comparePoint(other.anchor, range.focus) < 0
+        ))) return false;
+        const insertReplacement = (range: TRange, replacement: string) => {
+          editor.tf.select(range);
+          editor.tf.delete();
+          if (!replacement) return;
+          if (!replacement.includes('\n')) { editor.tf.insertText(replacement); return; }
+          const fragment = editor.api.markdown.deserialize(replacement);
+          if (fragment.length) editor.tf.insertFragment(fragment);
+        };
+        planned.sort((left, right) => comparePoint(
+          (right.range as TRange).anchor,
+          (left.range as TRange).anchor
+        ));
+        for (const edit of planned) insertReplacement(edit.range as TRange, edit.replacement);
+        if (addition.trim()) {
+          const fragment = editor.api.markdown.deserialize(addition);
+          if (fragment.length) editor.tf.insertNodes(fragment, { at: [editor.children.length] });
+        }
+        editor.tf.focus();
+        processValue(editor.children);
+        return true;
+      },
       flushProcessing: flush,
       appendText: (text: string) => {
         if (!text.trim()) return;

@@ -6,7 +6,7 @@ import type { PlateEditorProps } from './plate-editor';
 const editorCalls = vi.hoisted(() => ({ props: [] as PlateEditorProps[] }));
 vi.mock('next/dynamic', () => ({ default: () => function MockNoteEditor(props: PlateEditorProps) {
   editorCalls.props.push(props);
-  useImperativeHandle(props.ref, () => ({ flushProcessing: async () => {}, getSelectedText: () => '', getCursorContext: () => ({ before: '', after: '' }), insertText: () => {}, replaceText: () => false }));
+  useImperativeHandle(props.ref, () => ({ applyTextEdits: () => false, flushProcessing: async () => {}, getSelectedText: () => '', getCursorContext: () => ({ before: '', after: '' }), insertText: () => {}, replaceText: () => false }));
   const initial = JSON.parse(props.content ?? '[]');
   return <textarea aria-label={props.ariaLabel} defaultValue={initial.map((node: { children: { text: string }[] }) => node.children.map(leaf => leaf.text).join('')).join('\n')}
     onChange={event => props.onValueChange?.(JSON.stringify([{ type: 'p', children: [{ text: event.target.value, bold: true }] }]))} />;

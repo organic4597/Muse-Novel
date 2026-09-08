@@ -218,6 +218,11 @@ export function AuthorNotebookWorkspace({
             await editorRef.current.flushProcessing();
             editorRef.current.appendText(text);
             return flushSave();
+          }} onApplyEdits={async plan => {
+            if (!editorRef.current) return false;
+            await editorRef.current.flushProcessing();
+            const applied = editorRef.current.applyTextEdits(plan.edits, plan.addition);
+            return applied ? flushSave() : false;
           }} />}
         </div>
       ) : note.kind === 'mindmap' && 'nodes' in content ? (

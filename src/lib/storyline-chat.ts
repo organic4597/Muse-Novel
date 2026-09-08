@@ -20,3 +20,19 @@ export const storylineNoteSummaryRequestSchema = z.object({
   messageId: z.string().uuid(),
   revision: z.number().int().nonnegative(),
 });
+
+export const storylineNoteEditSchema = z.object({
+  original: z.string().min(1).max(2000),
+  replacement: z.string().max(3000),
+  reason: z.string().trim().min(1).max(300),
+});
+
+export const storylineNoteEditPlanSchema = z.object({
+  summary: z.string().trim().min(1).max(500),
+  edits: z.array(storylineNoteEditSchema).max(8),
+  addition: z.string().max(4000),
+  warnings: z.array(z.string().trim().min(1).max(300)).max(6),
+});
+export type StorylineNoteEditPlan = z.infer<typeof storylineNoteEditPlanSchema>;
+
+export const storylineNoteEditRequestSchema = storylineNoteSummaryRequestSchema;
