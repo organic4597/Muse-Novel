@@ -1,4 +1,5 @@
 import type { ProviderType } from './types';
+import { getChatGPTAccount } from './chatgpt-account';
 
 const TIMEOUT_MS = 10_000;
 
@@ -115,6 +116,10 @@ export async function checkProviderHealth(
   const { baseUrl = '', apiKey = '' } = options;
 
   switch (providerType) {
+    case 'chatgpt': {
+      const account = await getChatGPTAccount();
+      return { status: account.connected ? 'ok' : 'error', message: account.connected ? 'ChatGPT 계정 연결됨' : account.error || 'ChatGPT 계정을 먼저 연결해주세요.', models: account.models.map(model => model.id) };
+    }
     case 'openai-compatible': {
       if (!baseUrl.trim()) return { status: 'error', message: 'API Base URL을 입력해주세요.' };
       const normalized = baseUrl.trim().replace(/\/+$/, '');
