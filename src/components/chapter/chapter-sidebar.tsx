@@ -228,7 +228,7 @@ export function ChapterSidebar({
   const visibleChapters = chapters.slice(0, visibleChapterCount);
 
   return (
-    <div className="muse-panel overflow-hidden lg:sticky lg:top-[6.5rem]">
+    <div className="muse-panel overflow-hidden">
       <div className="flex items-center justify-between border-b border-border/60 px-4 py-4">
         <div>
           <p className="muse-eyebrow flex items-center gap-1.5">
@@ -281,7 +281,7 @@ export function ChapterSidebar({
             value={visibleChapters}
           >
             <SortableContent asChild>
-              <ul className="max-h-52 space-y-1 overflow-y-auto pr-1 lg:max-h-[calc(100vh-16rem)]">
+              <ul className="max-h-52 space-y-1 overflow-y-auto pr-1 lg:max-h-[45vh]">
                 {visibleChapters.map((chapter) => (
                   <SortableItem
                     asChild

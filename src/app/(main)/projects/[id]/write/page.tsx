@@ -242,17 +242,17 @@ export default function WritePage() {
 
   return (
     <div className="grid min-h-[calc(100vh-12rem)] gap-5 lg:relative lg:left-1/2 lg:w-[calc(100vw-4rem)] lg:max-w-[118rem] lg:-translate-x-1/2 lg:grid-cols-[17rem_minmax(0,1fr)]">
-      <aside className="min-w-0 space-y-4">
-        <ChapterSidebar
-          active={!selectedAuthorNote}
-          onSelectChapter={handleSelectChapter}
-          selectedChapterId={selectedChapter?.id ?? null}
-        />
+      <aside className="min-w-0 space-y-4 self-start lg:sticky lg:top-[6.5rem] lg:max-h-[calc(100dvh-7.5rem)] lg:overflow-y-auto">
         <AuthorNotebookSidebar
           onSelectNote={handleSelectAuthorNote}
           projectId={params.id}
           refreshToken={notebookRefreshToken}
           selectedNoteId={selectedAuthorNote?.id ?? null}
+        />
+        <ChapterSidebar
+          active={!selectedAuthorNote}
+          onSelectChapter={handleSelectChapter}
+          selectedChapterId={selectedChapter?.id ?? null}
         />
       </aside>
       <div className="min-w-0">
