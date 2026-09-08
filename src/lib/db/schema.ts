@@ -732,6 +732,12 @@ export const authorNotes = sqliteTable(
   ]
 );
 
+export const authorNoteConversations = sqliteTable('author_note_conversations', {
+  noteId: text('note_id').primaryKey().references(() => authorNotes.id, { onDelete: 'cascade' }),
+  revision: integer('revision').notNull().default(0),
+  messagesJson: text('messages_json').notNull().default('[]'),
+});
+
 export const authorNoteAssets = sqliteTable(
   'author_note_assets',
   {

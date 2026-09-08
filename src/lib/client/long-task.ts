@@ -1,4 +1,4 @@
-export async function readLongTask<T>(response: Response, progress: (message: string) => void): Promise<T> {
+export async function readLongTask<T>(response: Response, progress: (message: string) => void, delta?: (text: string) => void): Promise<T> {
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(data.error || `요청에 실패했습니다 (${response.status}).`);
@@ -23,6 +23,7 @@ export async function readLongTask<T>(response: Response, progress: (message: st
         if (!raw) continue;
         const data = JSON.parse(raw);
         if (event === 'progress') progress(String(data.message ?? '처리 중...'));
+        if (event === 'delta' && typeof data.text === 'string') delta?.(data.text);
         if (event === 'error') throw new Error(data.message || 'AI 작업에 실패했습니다.');
         if (event === 'done') { result = data; completed = true; }
       }

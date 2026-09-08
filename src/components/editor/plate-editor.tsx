@@ -43,6 +43,7 @@ export interface PlateEditorProps {
 }
 
 export interface PlateEditorHandle {
+  appendText?: (text: string) => void;
   flushProcessing: () => Promise<void>;
   getCursorContext: () => { before: string; after: string };
   getSelectedText: () => string;
@@ -162,6 +163,16 @@ export function PlateEditor({
     ref,
     () => ({
       flushProcessing: flush,
+      appendText: (text: string) => {
+        if (!text.trim()) return;
+        const fragment = editor.api.markdown.deserialize(text);
+        if (fragment.length) {
+          editor.tf.insertNodes(fragment, { at: [editor.children.length] });
+          // Slate's change notification is deferred. Enqueue the actual value now
+          // so an immediate save/close waits for this insertion too.
+          processValue(editor.children);
+        }
+      },
       getSelectedText: () => {
         const selection = editor.selection ?? lastSelectionRef.current;
         return selection ? editor.api.string(selection) : '';
@@ -229,7 +240,7 @@ export function PlateEditor({
         return true;
       },
     }),
-    [editor, flush]
+    [editor, flush, processValue]
   );
 
   useEffect(() => {

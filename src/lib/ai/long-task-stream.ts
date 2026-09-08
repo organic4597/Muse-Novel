@@ -1,6 +1,6 @@
 // One shared SSE lifecycle for long-running non-inline tasks. Heartbeats keep
 // proxies active; cancellation and timeout reach inference as one signal.
-export function longTaskResponse(request: Request, run: (signal: AbortSignal, progress: (message: string) => void) => Promise<unknown>) {
+export function longTaskResponse(request: Request, run: (signal: AbortSignal, progress: (message: string) => void, delta: (text: string) => void) => Promise<unknown>) {
   const abort = new AbortController();
   const signal = AbortSignal.any([request.signal, abort.signal, AbortSignal.timeout(600_000)]);
   const encoder = new TextEncoder();
@@ -26,7 +26,7 @@ export function longTaskResponse(request: Request, run: (signal: AbortSignal, pr
       heartbeat = setInterval(() => send('heartbeat', {}), 10_000);
       send('progress', { message: '작업을 준비하고 있습니다.' });
       if (signal.aborted) { onAbort(); return; }
-      void run(signal, message => send('progress', { message })).then(result => {
+      void run(signal, message => send('progress', { message }), text => send('delta', { text })).then(result => {
         if (!signal.aborted) send('done', result);
       }).catch(error => {
         console.warn('[long-task] failed', { name: error instanceof Error ? error.name : 'Unknown' });

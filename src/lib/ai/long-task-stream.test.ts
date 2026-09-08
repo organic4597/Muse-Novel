@@ -26,4 +26,14 @@ describe('long task SSE lifecycle', () => {
     await response.body?.cancel();
     expect(observed?.aborted).toBe(true);
   });
+  it('forwards text deltas before final completion', async () => {
+    let finish!: () => void;
+    const response = longTaskResponse(new Request('http://localhost'), async (_signal, _progress, delta) => {
+      delta('다음 사건'); await new Promise<void>(resolve => { finish = resolve; }); return { ok: true };
+    });
+    const delta = vi.fn();
+    const reading = readLongTask(response, vi.fn(), delta);
+    await vi.waitFor(() => expect(delta).toHaveBeenCalledWith('다음 사건'));
+    finish(); expect(await reading).toEqual({ ok: true });
+  });
 });

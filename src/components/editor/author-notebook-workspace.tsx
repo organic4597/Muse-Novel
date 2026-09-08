@@ -17,6 +17,7 @@ import { type Ref, useCallback, useEffect, useImperativeHandle, useMemo, useRef,
 
 import type { AuthorNotebookNote } from '@/components/editor/author-notebook-sidebar';
 import type { PlateEditorHandle, PlateEditorProps } from '@/components/editor/plate-editor';
+import { StorylineChatPanel } from '@/components/editor/storyline-chat-panel';
 import { extractBoundedPlateText } from '@/lib/editor/bounded-plate-content';
 import { Button } from '@/components/ui/button';
 import {
@@ -68,6 +69,7 @@ export function AuthorNotebookWorkspace({
   );
   const [status, setStatus] = useState('저장됨');
   const [saving, setSaving] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestContentRef = useRef(content);
   const latestTitleRef = useRef(title);
@@ -187,13 +189,15 @@ export function AuthorNotebookWorkspace({
         <Button onClick={() => void flushSave()} size="sm" type="button" variant="outline">
           <Save /> 저장
         </Button>
+        {note.kind === 'text' && <Button aria-pressed={chatOpen} onClick={() => setChatOpen(open => !open)} size="sm" type="button" variant={chatOpen ? 'secondary' : 'outline'}>AI와 구상</Button>}
         <Button aria-label="작가 노트 닫기" onClick={async () => { if (await flushSave()) onClose(); }} size="icon-sm" type="button" variant="ghost">
           <X />
         </Button>
       </header>
 
       {note.kind === 'text' && 'text' in content ? (
-        <div className="min-h-[calc(100vh-18rem)] flex-1" onBlurCapture={() => {
+        <div className={chatOpen ? 'grid min-w-0 flex-1 xl:grid-cols-[minmax(0,1fr)_minmax(340px,40%)]' : 'min-w-0 flex-1'}>
+        <div className="min-h-[calc(100vh-18rem)] min-w-0" onBlurCapture={() => {
           void flushSave();
         }}>
           <NoteEditor
@@ -207,6 +211,14 @@ export function AuthorNotebookWorkspace({
               text: extractBoundedPlateText(editorJson, { maxTextChars: 500_000 }), editorJson,
             })}
           />
+        </div>
+        {chatOpen && <StorylineChatPanel key={note.id} projectId={projectId} noteId={note.id} beforeSend={flushSave}
+          onAppend={async text => {
+            if (!editorRef.current?.appendText) return false;
+            await editorRef.current.flushProcessing();
+            editorRef.current.appendText(text);
+            return flushSave();
+          }} />}
         </div>
       ) : note.kind === 'mindmap' && 'nodes' in content ? (
         <MindMapBoard

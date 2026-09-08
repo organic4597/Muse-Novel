@@ -4,7 +4,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   editor: {
+    children: [] as unknown[],
     api: {
+      markdown: { deserialize: vi.fn(() => [{ type: 'p', children: [{ text: 'AI 제안', bold: true }] }]) },
       isExpanded: vi.fn(() => false),
       nodes: vi.fn(() => []),
     },
@@ -16,6 +18,7 @@ const mocks = vi.hoisted(() => ({
       delete: vi.fn(),
       focus: vi.fn(),
       insertFragment: vi.fn(),
+      insertNodes: vi.fn(),
       insertText: vi.fn(),
       select: vi.fn(),
     },
@@ -131,6 +134,16 @@ describe('PlateEditor content initialization', () => {
     expect(mocks.normalizeNodeId).toHaveBeenCalledWith([
       { children: [{ text: '' }], type: 'p' },
     ]);
+  });
+  it('appends formatted chat proposals at the end and immediately queues serialization', () => {
+    const ref = createRef<PlateEditorHandle>();
+    render(<PlateEditor documentId="note:1" ref={ref} />);
+    mocks.processValue.mockClear();
+    ref.current?.appendText?.('**AI 제안**');
+    expect(mocks.editor.api.markdown.deserialize).toHaveBeenCalledWith('**AI 제안**');
+    expect(mocks.editor.tf.insertNodes).toHaveBeenCalledWith([{ type: 'p', children: [{ text: 'AI 제안', bold: true }] }], { at: [0] });
+    expect(mocks.processValue).toHaveBeenCalledWith(mocks.editor.children);
+    expect(mocks.editor.tf.focus).not.toHaveBeenCalled();
   });
 
   it('collapses a selection and inserts AI prose as plain paragraphs', () => {
