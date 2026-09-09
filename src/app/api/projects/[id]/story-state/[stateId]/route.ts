@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { getChapter } from '@/lib/db/queries/chapters';
 import { getCharacter } from '@/lib/db/queries/characters';
+import { getWorldEntry } from '@/lib/db/queries/world-entries';
 import {
   deleteStoryStateEntry,
   getStoryStateEntry,
@@ -16,7 +17,13 @@ const updateSchema = z
   .object({
     category: z.enum(STORY_STATE_CATEGORIES).optional(),
     chapterId: z.string().uuid().nullable().optional(),
+    endChapterId: z.string().uuid().nullable().optional(),
     characterId: z.string().uuid().nullable().optional(),
+    worldEntryId: z.string().uuid().nullable().optional(),
+    knowledgeScope: z.enum(['canon', 'reader', 'character']).optional(),
+    knowerCharacterId: z.string().uuid().nullable().optional(),
+    certainty: z.enum(['known', 'suspected', 'believed']).optional(),
+    evidence: z.string().trim().max(2000).nullable().optional(),
     details: z.string().trim().max(4000).nullable().optional(),
     isActive: z.boolean().optional(),
     isPinned: z.boolean().optional(),
@@ -43,21 +50,31 @@ export async function PUT(
   if (!parsed.success) {
     return NextResponse.json({ error: '수정 내용을 확인해주세요.' }, { status: 400 });
   }
-  const [character, chapter] = await Promise.all([
+  const [character, chapter, endChapter, worldEntry, knower] = await Promise.all([
     parsed.data.characterId
       ? getCharacter(db, parsed.data.characterId)
       : null,
     parsed.data.chapterId ? getChapter(db, parsed.data.chapterId) : null,
+    parsed.data.endChapterId ? getChapter(db, parsed.data.endChapterId) : null,
+    parsed.data.worldEntryId ? getWorldEntry(db, parsed.data.worldEntryId) : null,
+    parsed.data.knowerCharacterId ? getCharacter(db, parsed.data.knowerCharacterId) : null,
   ]);
   if (
     (parsed.data.characterId && character?.projectId !== id) ||
-    (parsed.data.chapterId && chapter?.projectId !== id)
+    (parsed.data.chapterId && chapter?.projectId !== id) ||
+    (parsed.data.endChapterId && endChapter?.projectId !== id) ||
+    (parsed.data.worldEntryId && worldEntry?.projectId !== id) ||
+    (parsed.data.knowerCharacterId && knower?.projectId !== id)
   ) {
     return NextResponse.json(
       { error: '다른 프로젝트의 인물이나 챕터는 연결할 수 없습니다.' },
       { status: 400 }
     );
   }
+  const existing = await getOwnedEntry(id, stateId);
+  const scope = parsed.data.knowledgeScope ?? existing?.knowledgeScope;
+  const knowerId = parsed.data.knowerCharacterId === undefined ? existing?.knowerCharacterId : parsed.data.knowerCharacterId;
+  if (scope === 'character' && !knowerId) return NextResponse.json({ error: '이 정보를 알고 있는 인물을 선택해주세요.' }, { status: 400 });
 
   const { isActive, isPinned, ...fields } = parsed.data;
   await updateStoryStateEntry(db, stateId, {

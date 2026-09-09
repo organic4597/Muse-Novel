@@ -49,6 +49,14 @@ export const chapters = sqliteTable(
     summary: text('summary'),
     memo: text('memo'),
     wordCount: integer('word_count').default(0),
+    storyYear: integer('story_year'),
+    storyMonth: integer('story_month'),
+    storyDay: integer('story_day'),
+    storyTimeLabel: text('story_time_label'),
+    storyDatePrecision: text('story_date_precision', {
+      enum: ['none', 'year', 'month', 'day', 'time', 'relative'],
+    }).notNull().default('none'),
+    storyDateLabel: text('story_date_label'),
     createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(
       () => new Date()
     ),
@@ -155,6 +163,20 @@ export const storyStateEntries = sqliteTable(
     chapterId: text('chapter_id').references(() => chapters.id, {
       onDelete: 'set null',
     }),
+    endChapterId: text('end_chapter_id').references(() => chapters.id, {
+      onDelete: 'set null',
+    }),
+    worldEntryId: text('world_entry_id'),
+    knowledgeScope: text('knowledge_scope', {
+      enum: ['canon', 'reader', 'character'],
+    }).notNull().default('canon'),
+    knowerCharacterId: text('knower_character_id').references(() => characters.id, {
+      onDelete: 'set null',
+    }),
+    certainty: text('certainty', {
+      enum: ['known', 'suspected', 'believed'],
+    }).notNull().default('known'),
+    evidence: text('evidence'),
     category: text('category').notNull(),
     label: text('label').notNull(),
     value: text('value').notNull(),
@@ -180,6 +202,16 @@ export const storyStateEntries = sqliteTable(
       table.category
     ),
     index('story_state_chapter_id_idx').on(table.chapterId),
+    index('story_state_time_range_idx').on(
+      table.projectId,
+      table.chapterId,
+      table.endChapterId
+    ),
+    index('story_state_knowledge_idx').on(
+      table.projectId,
+      table.knowledgeScope,
+      table.knowerCharacterId
+    ),
   ]
 );
 
@@ -432,6 +464,56 @@ export const aiProviderSettings = sqliteTable(
     ),
   ]
 );
+
+// ─── Plot causality timeline ────────────────────────────────────────────────
+
+export const plotNodes = sqliteTable('plot_nodes', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  chapterId: text('chapter_id').references(() => chapters.id, { onDelete: 'set null' }),
+  kind: text('kind', { enum: ['event', 'choice', 'consequence', 'foreshadow', 'reminder', 'payoff', 'reveal', 'state'] }).notNull(),
+  status: text('status', { enum: ['draft', 'confirmed'] }).notNull().default('draft'),
+  title: text('title').notNull(),
+  description: text('description'),
+  lane: text('lane'),
+  storyYear: integer('story_year'),
+  storyMonth: integer('story_month'),
+  storyDay: integer('story_day'),
+  storyTimeLabel: text('story_time_label'),
+  storyDatePrecision: text('story_date_precision', { enum: ['none', 'year', 'month', 'day', 'time', 'relative'] }).notNull().default('none'),
+  storyDateLabel: text('story_date_label'),
+  evidence: text('evidence'),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull().$defaultFn(() => new Date()),
+}, table => [
+  index('plot_nodes_project_order_idx').on(table.projectId, table.storyYear, table.storyMonth, table.storyDay, table.sortOrder),
+  index('plot_nodes_chapter_idx').on(table.projectId, table.chapterId),
+]);
+
+export const plotEdges = sqliteTable('plot_edges', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  fromNodeId: text('from_node_id').notNull().references(() => plotNodes.id, { onDelete: 'cascade' }),
+  toNodeId: text('to_node_id').notNull().references(() => plotNodes.id, { onDelete: 'cascade' }),
+  type: text('type', { enum: ['causes', 'enables', 'motivates', 'prevents', 'reveals', 'pays_off'] }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().$defaultFn(() => new Date()),
+}, table => [
+  uniqueIndex('plot_edges_unique_idx').on(table.fromNodeId, table.toNodeId, table.type),
+  index('plot_edges_project_idx').on(table.projectId),
+]);
+
+export const chapterCloseouts = sqliteTable('chapter_closeouts', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  chapterId: text('chapter_id').notNull().references(() => chapters.id, { onDelete: 'cascade' }),
+  snapshotHash: text('snapshot_hash').notNull(),
+  appliedJson: text('applied_json').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().$defaultFn(() => new Date()),
+}, table => [
+  uniqueIndex('chapter_closeouts_snapshot_idx').on(table.chapterId, table.snapshotHash),
+  index('chapter_closeouts_project_idx').on(table.projectId, table.chapterId),
+]);
 
 /**
  * Optional project-level endpoint for latency-sensitive inline completion.

@@ -17,6 +17,7 @@ import {
   getWritingBlueprint,
   updateWritingBlueprintSettings,
 } from '@/lib/ai/writing-blueprint';
+import { getStoryCalendar, updateStoryCalendarSettings } from '@/lib/story-timeline';
 
 type Project = {
   id: string;
@@ -31,6 +32,7 @@ type Project = {
 export function ProjectEditForm({ project }: { project: Project }) {
   const router = useRouter();
   const initialBlueprint = getWritingBlueprint(project.settingsJson);
+  const initialCalendar = getStoryCalendar(project.settingsJson);
   const [title, setTitle] = useState(project.title);
   const [genre, setGenre] = useState(project.genre ?? '');
   const [synopsis, setSynopsis] = useState(project.synopsis ?? '');
@@ -61,6 +63,10 @@ export function ProjectEditForm({ project }: { project: Project }) {
   const [authorNote, setAuthorNote] = useState(
     initialBlueprint.authorNote ?? ''
   );
+  const [calendarEra, setCalendarEra] = useState(initialCalendar.era);
+  const [monthsPerYear, setMonthsPerYear] = useState(String(initialCalendar.monthsPerYear));
+  const [daysPerMonth, setDaysPerMonth] = useState(String(initialCalendar.daysPerMonth));
+  const [timeLabels, setTimeLabels] = useState(initialCalendar.timeLabels.join(', '));
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [feedback, setFeedback] = useState('');
@@ -79,7 +85,7 @@ export function ProjectEditForm({ project }: { project: Project }) {
           title: title.trim(),
           genre: genre.trim() || null,
           synopsis: synopsis.trim() || null,
-          settingsJson: updateWritingBlueprintSettings(project.settingsJson, {
+          settingsJson: updateStoryCalendarSettings(updateWritingBlueprintSettings(project.settingsJson, {
             authorNote,
             contentBoundaries,
             endingDirection,
@@ -89,6 +95,11 @@ export function ProjectEditForm({ project }: { project: Project }) {
             storyPromise,
             targetAudience,
             writingStyle,
+          }), {
+            era: calendarEra.trim() || '작품력',
+            monthsPerYear: Math.max(1, Math.min(24, Number.parseInt(monthsPerYear, 10) || 12)),
+            daysPerMonth: Math.max(1, Math.min(100, Number.parseInt(daysPerMonth, 10) || 30)),
+            timeLabels: timeLabels.split(',').map(value => value.trim()).filter(Boolean).slice(0, 24),
           }),
         }),
       });
@@ -218,6 +229,19 @@ export function ProjectEditForm({ project }: { project: Project }) {
               이어쓰기와 Ghost Text가 작품 전체에서 계속 유지할 기준입니다.
             </p>
           </div>
+
+          <div className="border-t border-border/70 pt-6">
+            <p className="muse-eyebrow">Story calendar</p>
+            <h2 className="mt-2 font-heading text-xl font-semibold">작품 시간</h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">회차 상태와 복선·사건 보드에서 사용할 단일 연호와 달력입니다.</p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="space-y-2.5"><label className="muse-field-label" htmlFor="calendarEra">연호</label><Input id="calendarEra" maxLength={80} onChange={event => setCalendarEra(event.target.value)} placeholder="예: 천무력" value={calendarEra} /></div>
+            <div className="space-y-2.5"><label className="muse-field-label" htmlFor="monthsPerYear">1년의 개월 수</label><Input id="monthsPerYear" min={1} max={24} onChange={event => setMonthsPerYear(event.target.value)} type="number" value={monthsPerYear} /></div>
+            <div className="space-y-2.5"><label className="muse-field-label" htmlFor="daysPerMonth">한 달의 일수</label><Input id="daysPerMonth" min={1} max={100} onChange={event => setDaysPerMonth(event.target.value)} type="number" value={daysPerMonth} /></div>
+          </div>
+          <div className="space-y-2.5"><label className="muse-field-label" htmlFor="timeLabels">시간 명칭</label><Input id="timeLabels" maxLength={500} onChange={event => setTimeLabels(event.target.value)} placeholder="예: 자시, 축시, 인시, 묘시" value={timeLabels} /><p className="text-xs text-muted-foreground">쉼표로 구분합니다. 비워두면 자유 입력만 사용합니다.</p></div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2.5">

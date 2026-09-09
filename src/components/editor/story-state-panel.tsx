@@ -19,15 +19,18 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   STORY_STATE_CATEGORIES,
+  isStoryStateEffectiveAt,
   type StoryStateCategory,
   type StoryStateEntry,
 } from '@/lib/story-state';
 import { cn } from '@/lib/utils';
 
 type CharacterOption = { id: string; name: string };
+type WorldOption = { id: string; title: string };
 
 export type StoryStatePanelProps = {
   chapterId: string;
+  chapterOrder: number;
   chapterTitle: string;
   onClose?: () => void;
   projectId: string;
@@ -36,6 +39,12 @@ export type StoryStatePanelProps = {
 type FormState = {
   category: StoryStateCategory;
   characterId: string;
+  worldEntryId: string;
+  targetType: 'project' | 'character' | 'world';
+  knowledgeScope: 'canon' | 'reader' | 'character';
+  knowerCharacterId: string;
+  certainty: 'known' | 'suspected' | 'believed';
+  evidence: string;
   details: string;
   isPinned: boolean;
   label: string;
@@ -46,6 +55,12 @@ type FormState = {
 const INITIAL_FORM: FormState = {
   category: '위치',
   characterId: '',
+  worldEntryId: '',
+  targetType: 'project',
+  knowledgeScope: 'canon',
+  knowerCharacterId: '',
+  certainty: 'known',
+  evidence: '',
   details: '',
   isPinned: false,
   label: '',
@@ -101,12 +116,14 @@ function readError(data: unknown, fallback: string) {
 
 export function StoryStatePanel({
   chapterId,
+  chapterOrder,
   chapterTitle,
   onClose,
   projectId,
 }: StoryStatePanelProps) {
   const [entries, setEntries] = useState<StoryStateEntry[]>([]);
   const [characters, setCharacters] = useState<CharacterOption[]>([]);
+  const [worldEntries, setWorldEntries] = useState<WorldOption[]>([]);
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -128,10 +145,12 @@ export function StoryStatePanel({
       fetch(`/api/projects/${projectId}/characters`, {
         signal: controller.signal,
       }),
+      fetch(`/api/projects/${projectId}/world-entries`, { signal: controller.signal }),
     ])
-      .then(async ([stateResponse, charactersResponse]) => {
+      .then(async ([stateResponse, charactersResponse, worldResponse]) => {
         const stateData: unknown = await stateResponse.json();
         const charactersData: unknown = await charactersResponse.json();
+        const worldData: unknown = await worldResponse.json();
         if (!stateResponse.ok) {
           throw new Error(readError(stateData, '상태 메모를 불러오지 못했습니다.'));
         }
@@ -140,6 +159,7 @@ export function StoryStatePanel({
             readError(charactersData, '등장인물을 불러오지 못했습니다.')
           );
         }
+        if (!worldResponse.ok) throw new Error(readError(worldData, '세계관 항목을 불러오지 못했습니다.'));
         setEntries(sortEntries(stateData as StoryStateEntry[]));
         setCharacters(
           (charactersData as CharacterOption[]).map(({ id, name }) => ({
@@ -147,6 +167,7 @@ export function StoryStatePanel({
             name,
           }))
         );
+        setWorldEntries((worldData as WorldOption[]).map(({ id, title }) => ({ id, title })));
       })
       .catch((error: unknown) => {
         if (error instanceof Error && error.name === 'AbortError') return;
@@ -164,11 +185,12 @@ export function StoryStatePanel({
   const visibleEntries = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase('ko-KR');
     return entries.filter((entry) => {
-      if (!showHistory && !entry.isActive) return false;
+      if (!showHistory && !isStoryStateEffectiveAt(entry, chapterOrder)) return false;
       if (!normalizedQuery) return true;
       return [
         entry.category,
         entry.characterName ?? '작품 전체',
+        entry.worldEntryTitle ?? '', entry.knowerCharacterName ?? '', entry.evidence ?? '',
         entry.label,
         entry.value,
         entry.previousValue ?? '',
@@ -178,7 +200,7 @@ export function StoryStatePanel({
         .toLocaleLowerCase('ko-KR')
         .includes(normalizedQuery);
     });
-  }, [entries, query, showHistory]);
+  }, [chapterOrder, entries, query, showHistory]);
 
   const resetForm = () => {
     setEditingId(null);
@@ -190,6 +212,12 @@ export function StoryStatePanel({
     setForm({
       category: entry.category,
       characterId: entry.characterId ?? '',
+      worldEntryId: entry.worldEntryId ?? '',
+      targetType: entry.characterId ? 'character' : entry.worldEntryId ? 'world' : 'project',
+      knowledgeScope: entry.knowledgeScope,
+      knowerCharacterId: entry.knowerCharacterId ?? '',
+      certainty: entry.certainty,
+      evidence: entry.evidence ?? '',
       details: entry.details ?? '',
       isPinned: Boolean(entry.isPinned),
       label: entry.label,
@@ -204,6 +232,12 @@ export function StoryStatePanel({
       setMessage('항목 이름과 현재 값을 입력해주세요.');
       return;
     }
+    if ((form.targetType === 'character' && !form.characterId) || (form.targetType === 'world' && !form.worldEntryId)) {
+      setMessage('상태를 연결할 대상을 선택해주세요.'); return;
+    }
+    if (form.knowledgeScope === 'character' && !form.knowerCharacterId) {
+      setMessage('이 정보를 알고 있거나 믿는 인물을 선택해주세요.'); return;
+    }
     setSaving(true);
     setMessage('');
     try {
@@ -217,7 +251,12 @@ export function StoryStatePanel({
           body: JSON.stringify({
             ...form,
             chapterId,
-            characterId: form.characterId || null,
+            characterId: form.targetType === 'character' ? form.characterId || null : null,
+            worldEntryId: form.targetType === 'world' ? form.worldEntryId || null : null,
+            knowledgeScope: form.knowledgeScope,
+            knowerCharacterId: form.knowledgeScope === 'character' ? form.knowerCharacterId || null : null,
+            certainty: form.certainty,
+            evidence: form.evidence.trim() || null,
             details: form.details.trim() || null,
             label: form.label.trim(),
             previousValue: form.previousValue.trim() || null,
@@ -250,7 +289,7 @@ export function StoryStatePanel({
 
   const patchEntry = async (
     entry: StoryStateEntry,
-    patch: { isActive?: boolean; isPinned?: boolean }
+    patch: { endChapterId?: string | null; isActive?: boolean; isPinned?: boolean }
   ) => {
     setBusyId(entry.id);
     setMessage('');
@@ -372,26 +411,31 @@ export function StoryStatePanel({
               </select>
             </label>
             <label className="space-y-1 text-xs font-medium text-muted-foreground">
-              대상
+              대상 종류
               <select
                 className={fieldClassName}
                 onChange={(event) =>
                   setForm((current) => ({
                     ...current,
-                    characterId: event.target.value,
+                    targetType: event.target.value as FormState['targetType'],
+                    characterId: '', worldEntryId: '',
                   }))
                 }
-                value={form.characterId}
+                value={form.targetType}
               >
-                <option value="">작품 전체</option>
-                {characters.map((character) => (
-                  <option key={character.id} value={character.id}>
-                    {character.name}
-                  </option>
-                ))}
+                <option value="project">작품 전체</option><option value="character">인물</option><option value="world">세계관 항목</option>
               </select>
             </label>
           </div>
+
+          {form.targetType === 'character' && <label className="block space-y-1 text-xs font-medium text-muted-foreground">대상 인물<select className={fieldClassName} onChange={event => setForm(current => ({ ...current, characterId: event.target.value }))} value={form.characterId}><option value="">인물 선택</option>{characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}</select></label>}
+          {form.targetType === 'world' && <label className="block space-y-1 text-xs font-medium text-muted-foreground">대상 세계관 항목<select className={fieldClassName} onChange={event => setForm(current => ({ ...current, worldEntryId: event.target.value }))} value={form.worldEntryId}><option value="">항목 선택</option>{worldEntries.map(entry => <option key={entry.id} value={entry.id}>{entry.title}</option>)}</select></label>}
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className="space-y-1 text-xs font-medium text-muted-foreground">정보 구분<select className={fieldClassName} onChange={event => setForm(current => ({ ...current, knowledgeScope: event.target.value as FormState['knowledgeScope'], knowerCharacterId: '' }))} value={form.knowledgeScope}><option value="canon">실제 사실</option><option value="reader">독자에게 공개</option><option value="character">인물이 아는 정보</option></select></label>
+            <label className="space-y-1 text-xs font-medium text-muted-foreground">확신 정도<select className={fieldClassName} disabled={form.knowledgeScope === 'canon'} onChange={event => setForm(current => ({ ...current, certainty: event.target.value as FormState['certainty'] }))} value={form.certainty}><option value="known">알고 있음</option><option value="suspected">의심함</option><option value="believed">그렇게 믿음</option></select></label>
+          </div>
+          {form.knowledgeScope === 'character' && <label className="block space-y-1 text-xs font-medium text-muted-foreground">정보를 가진 인물<select className={fieldClassName} onChange={event => setForm(current => ({ ...current, knowerCharacterId: event.target.value }))} value={form.knowerCharacterId}><option value="">인물 선택</option>{characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}</select></label>}
 
           <label className="block space-y-1 text-xs font-medium text-muted-foreground">
             항목 이름
@@ -435,6 +479,11 @@ export function StoryStatePanel({
               />
             </label>
           </div>
+
+          <label className="block space-y-1 text-xs font-medium text-muted-foreground">
+            원고 근거 <span className="font-normal opacity-70">(선택)</span>
+            <textarea className={textareaClassName} maxLength={2000} onChange={event => setForm(current => ({ ...current, evidence: event.target.value }))} placeholder="해당 변화나 정보 공개가 드러난 원고 문장" value={form.evidence} />
+          </label>
 
           <label className="block space-y-1 text-xs font-medium text-muted-foreground">
             작가 참고 사항 <span className="font-normal opacity-70">(선택)</span>
@@ -483,7 +532,7 @@ export function StoryStatePanel({
             <div>
               <h4 className="text-sm font-semibold">현재 참조 정보</h4>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                활성 {entries.filter((entry) => entry.isActive).length}개
+                이 회차에 유효 {entries.filter((entry) => isStoryStateEffectiveAt(entry, chapterOrder)).length}개
                 {entries.some((entry) => !entry.isActive)
                   ? ` · 기록 종료 ${entries.filter((entry) => !entry.isActive).length}개`
                   : ''}
@@ -562,12 +611,13 @@ export function StoryStatePanel({
                               <Pin className="size-3" /> 고정
                             </span>
                           ) : null}
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-[0.65rem] text-muted-foreground">{entry.knowledgeScope === 'canon' ? '실제 사실' : entry.knowledgeScope === 'reader' ? '독자 공개' : `${entry.knowerCharacterName ?? '인물'} · ${entry.certainty === 'known' ? '인지' : entry.certainty === 'suspected' ? '의심' : '믿음'}`}</span>
                           {entry.isActive ? null : (
                             <span className="text-[0.65rem] text-muted-foreground">종료된 기록</span>
                           )}
                         </div>
                         <h5 className="mt-1.5 truncate text-sm font-semibold">
-                          {entry.characterName ?? '작품 전체'} · {entry.label}
+                          {entry.characterName ?? entry.worldEntryTitle ?? '작품 전체'} · {entry.label}
                         </h5>
                       </div>
                       <div className="flex shrink-0 items-center gap-0.5">
@@ -623,16 +673,19 @@ export function StoryStatePanel({
                           {entry.details}
                         </p>
                       ) : null}
+                      {entry.evidence ? <details className="mt-2 text-xs text-muted-foreground"><summary className="cursor-pointer">원고 근거</summary><p className="mt-1 whitespace-pre-wrap border-l-2 border-primary/30 pl-2">{entry.evidence}</p></details> : null}
                     </div>
 
                     <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/60 pt-2">
                       <span className="truncate text-[0.65rem] text-muted-foreground">
-                        {entry.chapterTitle ?? '시점 미지정'}부터
+                        {entry.chapterTitle ?? '시점 미지정'}부터{entry.endChapterTitle ? ` · ${entry.endChapterTitle} 전까지` : ''}
                       </span>
                       <Button
                         disabled={busy}
                         onClick={() =>
-                          void patchEntry(entry, { isActive: !entry.isActive })
+                            void patchEntry(entry, entry.isActive
+                              ? { isActive: false, endChapterId: chapterId }
+                              : { isActive: true, endChapterId: null })
                         }
                         size="sm"
                         type="button"

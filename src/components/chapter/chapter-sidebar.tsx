@@ -30,6 +30,7 @@ import {
   SortableOverlay,
 } from '@/components/ui/sortable';
 import { cn } from '@/lib/utils';
+import type { StoryDatePrecision } from '@/lib/story-timeline';
 
 interface Chapter {
   id: string;
@@ -41,6 +42,12 @@ interface Chapter {
   summary: string | null;
   memo: string | null;
   wordCount: number | null;
+  storyYear: number | null;
+  storyMonth: number | null;
+  storyDay: number | null;
+  storyTimeLabel: string | null;
+  storyDatePrecision: StoryDatePrecision;
+  storyDateLabel: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -16,6 +16,12 @@ type UpdateChapterData = Partial<{
   summary: string;
   memo: string;
   wordCount: number;
+  storyYear: number | null;
+  storyMonth: number | null;
+  storyDay: number | null;
+  storyTimeLabel: string | null;
+  storyDatePrecision: 'none' | 'year' | 'month' | 'day' | 'time' | 'relative';
+  storyDateLabel: string | null;
 }>;
 
 export async function createChapter(db: DB, data: CreateChapterData) {

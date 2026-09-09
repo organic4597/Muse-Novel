@@ -23,6 +23,7 @@ import {
 import type { AuthorNotebookWorkspaceProps, AuthorNotebookWorkspaceHandle } from '@/components/editor/author-notebook-workspace';
 import { AutoSaveIndicator } from '@/components/editor/auto-save-indicator';
 import { ChapterReferenceBar } from '@/components/editor/chapter-reference-bar';
+import { ChapterStoryDateBar, type ChapterStoryDate } from '@/components/editor/chapter-story-date-bar';
 import { SceneWorkbench } from '@/components/editor/scene-workbench';
 import type { ScenePlan } from '@/lib/writing-workbench';
 import { isGhostProviderType, isLocalGhostBaseUrl } from '@/lib/ai/ghost-provider-policy';
@@ -82,7 +83,7 @@ const WritingReferencePanel = dynamic<WritingReferencePanelProps>(
   { ssr: false }
 );
 
-interface Chapter {
+interface Chapter extends ChapterStoryDate {
   id: string;
   projectId: string;
   title: string;
@@ -417,6 +418,8 @@ export default function WritePage() {
                 </div>
               </header>
               <ChapterReferenceBar chapterId={selectedChapter.id} key={`references:${selectedChapter.id}`} projectId={params.id} />
+              <ChapterStoryDateBar chapter={selectedChapter} projectId={params.id} settingsJson={projectSettingsJson}
+                onChange={updated => setSelectedChapter(current => current?.id === updated.id ? { ...current, ...updated } : current)} />
               {showSceneWorkbench && <SceneWorkbench key={`${selectedChapter.id}:${sceneProposal?.revision ?? 'saved'}`} proposal={sceneProposal} projectId={params.id} chapterId={selectedChapter.id}
                 sceneId={sceneId} onSceneChange={setSceneId} examplesOnly={examplesOnly}
                 getContent={async () => { await editorRef.current?.flushProcessing(); return latestContentRef.current; }}
@@ -483,6 +486,7 @@ export default function WritePage() {
               {isStoryStateOpen && (
                 <StoryStatePanel
                   chapterId={selectedChapter.id}
+                  chapterOrder={selectedChapter.order}
                   chapterTitle={selectedChapter.title}
                   onClose={() => setIsStoryStateOpen(false)}
                   projectId={params.id}

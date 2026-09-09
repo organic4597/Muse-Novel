@@ -25,18 +25,29 @@ describe('StoryStatePanel', () => {
               category: '소지품',
               chapterId: '11111111-1111-4111-8111-111111111111',
               chapterTitle: '3장 소림 입문',
+              chapterOrder: 0,
+              endChapterId: null,
+              endChapterTitle: null,
+              endChapterOrder: null,
               characterId: '22222222-2222-4222-8222-222222222222',
               characterName: '검은 토끼',
               createdAt: new Date().toISOString(),
               details: null,
+              evidence: null,
               id: '33333333-3333-4333-8333-333333333333',
               isActive: 1,
               isPinned: 0,
+              knowledgeScope: 'canon',
+              knowerCharacterId: null,
+              knowerCharacterName: null,
+              certainty: 'known',
               label: '공청석유',
               previousValue: '바위 틈에 숨김',
               projectId: 'project-1',
               updatedAt: new Date().toISOString(),
               value: '품에 소지',
+              worldEntryId: null,
+              worldEntryTitle: null,
             },
             { status: 201 }
           );
@@ -49,6 +60,7 @@ describe('StoryStatePanel', () => {
     render(
       <StoryStatePanel
         chapterId="11111111-1111-4111-8111-111111111111"
+        chapterOrder={0}
         chapterTitle="3장 소림 입문"
         projectId="project-1"
       />
@@ -60,7 +72,10 @@ describe('StoryStatePanel', () => {
     fireEvent.change(screen.getByLabelText('분류'), {
       target: { value: '소지품' },
     });
-    fireEvent.change(screen.getByLabelText('대상'), {
+    fireEvent.change(screen.getByLabelText('대상 종류'), {
+      target: { value: 'character' },
+    });
+    fireEvent.change(screen.getByLabelText('대상 인물'), {
       target: { value: '22222222-2222-4222-8222-222222222222' },
     });
     fireEvent.change(screen.getByLabelText('항목 이름'), {

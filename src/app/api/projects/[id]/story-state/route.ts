@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { getChapter } from '@/lib/db/queries/chapters';
 import { getCharacter } from '@/lib/db/queries/characters';
+import { getWorldEntry } from '@/lib/db/queries/world-entries';
 import { getProject } from '@/lib/db/queries/projects';
 import {
   createStoryStateEntry,
@@ -14,7 +15,13 @@ import { STORY_STATE_CATEGORIES } from '@/lib/story-state';
 const createSchema = z.object({
   category: z.enum(STORY_STATE_CATEGORIES),
   chapterId: z.string().uuid().nullable().optional(),
+  endChapterId: z.string().uuid().nullable().optional(),
   characterId: z.string().uuid().nullable().optional(),
+  worldEntryId: z.string().uuid().nullable().optional(),
+  knowledgeScope: z.enum(['canon', 'reader', 'character']).default('canon'),
+  knowerCharacterId: z.string().uuid().nullable().optional(),
+  certainty: z.enum(['known', 'suspected', 'believed']).default('known'),
+  evidence: z.string().trim().max(2000).nullable().optional(),
   details: z.string().trim().max(4000).nullable().optional(),
   isActive: z.boolean().default(true),
   isPinned: z.boolean().default(false),
@@ -26,14 +33,23 @@ const createSchema = z.object({
 async function validateReferences(
   projectId: string,
   characterId?: string | null,
-  chapterId?: string | null
+  chapterId?: string | null,
+  endChapterId?: string | null,
+  worldEntryId?: string | null,
+  knowerCharacterId?: string | null
 ) {
-  const [character, chapter] = await Promise.all([
+  const [character, chapter, endChapter, worldEntry, knower] = await Promise.all([
     characterId ? getCharacter(db, characterId) : null,
     chapterId ? getChapter(db, chapterId) : null,
+    endChapterId ? getChapter(db, endChapterId) : null,
+    worldEntryId ? getWorldEntry(db, worldEntryId) : null,
+    knowerCharacterId ? getCharacter(db, knowerCharacterId) : null,
   ]);
   if (characterId && character?.projectId !== projectId) return false;
   if (chapterId && chapter?.projectId !== projectId) return false;
+  if (endChapterId && endChapter?.projectId !== projectId) return false;
+  if (worldEntryId && worldEntry?.projectId !== projectId) return false;
+  if (knowerCharacterId && knower?.projectId !== projectId) return false;
   return true;
 }
 
@@ -70,7 +86,10 @@ export async function POST(
     !(await validateReferences(
       id,
       parsed.data.characterId,
-      parsed.data.chapterId
+      parsed.data.chapterId,
+      parsed.data.endChapterId,
+      parsed.data.worldEntryId,
+      parsed.data.knowerCharacterId
     ))
   ) {
     return NextResponse.json(
@@ -78,10 +97,14 @@ export async function POST(
       { status: 400 }
     );
   }
+  if (parsed.data.knowledgeScope === 'character' && !parsed.data.knowerCharacterId) {
+    return NextResponse.json({ error: '이 정보를 알고 있는 인물을 선택해주세요.' }, { status: 400 });
+  }
 
   const created = await createStoryStateEntry(db, {
     ...parsed.data,
     details: parsed.data.details || null,
+    evidence: parsed.data.evidence || null,
     isActive: parsed.data.isActive ? 1 : 0,
     isPinned: parsed.data.isPinned ? 1 : 0,
     previousValue: parsed.data.previousValue || null,

@@ -22,6 +22,8 @@ import {
   resolveEmbeddingServiceConfig,
 } from '@/lib/memory/embedding-client';
 import { splitResearchContent } from '@/lib/web-research/content';
+import { isStoryStateEffectiveAt } from '@/lib/story-state';
+import { formatStoryDate, getStoryCalendar } from '@/lib/story-timeline';
 
 const DEFAULT_CHUNK_SIZE = 1_200;
 const DEFAULT_CHUNK_OVERLAP = 160;
@@ -146,6 +148,7 @@ export async function collectProjectMemorySources(
     listStoryStateEntries(db, projectId),
   ]);
   if (!project) return [];
+  const storyCalendar = getStoryCalendar(project.settingsJson);
 
   const charactersById = new Map<string, { name: string }>(
     characters.map((character) => [character.id, { name: character.name }])
@@ -200,6 +203,7 @@ export async function collectProjectMemorySources(
     sources.push({
       content: [
         `챕터 ${chapter.order + 1}: ${chapter.title}`,
+        chapter.storyDatePrecision !== 'none' && `작품 시점: ${formatStoryDate(storyCalendar, chapter)}`,
         chapter.outline && `개요: ${chapter.outline}`,
         chapter.summary && `요약: ${chapter.summary}`,
         chapter.memo && `메모: ${chapter.memo}`,
@@ -272,15 +276,22 @@ export async function collectProjectMemorySources(
   }
 
   for (const entry of stateEntries) {
-    const subject = entry.characterName ?? '작품 전체';
+    const subject = entry.characterName ?? entry.worldEntryTitle ?? '작품 전체';
+    const knowledge = entry.knowledgeScope === 'canon'
+      ? '실제 정전 사실'
+      : entry.knowledgeScope === 'reader'
+        ? `독자 공개 정보 (${entry.certainty === 'known' ? '확정 공개' : entry.certainty === 'suspected' ? '의심 가능' : '그렇게 믿도록 제시'})`
+        : `${entry.knowerCharacterName ?? '지정 인물'}의 정보 (${entry.certainty === 'known' ? '알고 있음' : entry.certainty === 'suspected' ? '의심함' : '사실 여부와 무관하게 믿고 있음'})`;
     sources.push({
       content: [
         `지속 상태 메모 [${entry.category}]`,
         `대상: ${subject}`,
+        `정보 구분: ${knowledge}`,
         `항목: ${entry.label}`,
         entry.previousValue && `이전 값: ${entry.previousValue}`,
         `현재 값: ${entry.value}`,
         entry.chapterTitle && `반영 시점: ${entry.chapterTitle}부터`,
+        entry.endChapterTitle && `종료 시점: ${entry.endChapterTitle}부터 사용 금지`,
         `기록 상태: ${
           entry.isActive
             ? '현재 유효한 정전'
@@ -288,6 +299,7 @@ export async function collectProjectMemorySources(
         }`,
         entry.isPinned ? '중요도: 작가 고정' : '',
         entry.details && `작가 참고: ${entry.details}`,
+        entry.evidence && `원고 근거: ${entry.evidence}`,
       ]
         .filter(Boolean)
         .join('\n'),
@@ -499,8 +511,11 @@ export async function retrieveProjectMemory(
     const currentOrder = chapterRows.find((chapter) => chapter.id === options.chapterId)?.order;
     if (currentOrder !== undefined) {
       const orderByChapter = new Map(chapterRows.map((chapter) => [chapter.id, chapter.order]));
-      const allowedStates = new Set(stateRows.filter((state) => !state.chapterId ||
-        ((orderByChapter.get(state.chapterId) ?? Number.MAX_SAFE_INTEGER) <= currentOrder)).map((state) => state.id));
+      const allowedStates = new Set(stateRows.filter((state) => isStoryStateEffectiveAt({
+        ...state,
+        chapterOrder: state.chapterId ? orderByChapter.get(state.chapterId) ?? null : null,
+        endChapterOrder: state.endChapterId ? orderByChapter.get(state.endChapterId) ?? null : null,
+      }, currentOrder)).map((state) => state.id));
       const allowedChapters = new Set(chapterRows.filter((chapter) => chapter.order <= currentOrder).map((chapter) => chapter.id));
       rows = rows.filter((row) => row.sourceType === 'chapter' ? allowedChapters.has(row.sourceId)
         : row.sourceType === 'state' ? allowedStates.has(row.sourceId) : true);
