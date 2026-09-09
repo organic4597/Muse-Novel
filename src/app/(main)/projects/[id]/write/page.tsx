@@ -4,6 +4,7 @@ import {
   BookOpenText,
   BrainCircuit,
   ClipboardList,
+  ClipboardCheck,
   Feather,
   LoaderCircle,
   Map as MapIcon,
@@ -26,6 +27,7 @@ import { ChapterReferenceBar } from '@/components/editor/chapter-reference-bar';
 import { ChapterStoryDateBar, type ChapterStoryDate } from '@/components/editor/chapter-story-date-bar';
 import { SceneWorkbench } from '@/components/editor/scene-workbench';
 import type { ScenePlan } from '@/lib/writing-workbench';
+import type { ChapterCloseoutPanelProps } from '@/components/editor/chapter-closeout-panel';
 import { isGhostProviderType, isLocalGhostBaseUrl } from '@/lib/ai/ghost-provider-policy';
 import type {
   PlateEditorHandle,
@@ -67,6 +69,11 @@ const StoryStatePanel = dynamic<StoryStatePanelProps>(
     import('@/components/editor/story-state-panel').then(
       (module) => module.StoryStatePanel
     ),
+  { ssr: false }
+);
+
+const ChapterCloseoutPanel = dynamic<ChapterCloseoutPanelProps>(
+  () => import('@/components/editor/chapter-closeout-panel').then(module => module.ChapterCloseoutPanel),
   { ssr: false }
 );
 
@@ -127,6 +134,7 @@ export default function WritePage() {
   const [isAuthorNoteOpen, setIsAuthorNoteOpen] = useState(false);
   const [isIntelligenceOpen, setIsIntelligenceOpen] = useState(false);
   const [isStoryStateOpen, setIsStoryStateOpen] = useState(false);
+  const [isCloseoutOpen, setIsCloseoutOpen] = useState(false);
   const [ghostTextEnabled, setGhostTextEnabled] = useState(true);
   const [ghostProviderConfigured, setGhostProviderConfigured] = useState<boolean | null>(null);
   const [ruledLines, setRuledLines] = useState(true);
@@ -408,6 +416,7 @@ export default function WritePage() {
                     <ClipboardList />
                     상태 메모
                   </Button>
+                  <Button aria-pressed={isCloseoutOpen} onClick={() => setIsCloseoutOpen(open => !open)} size="sm" type="button" variant={isCloseoutOpen ? 'secondary' : 'outline'}><ClipboardCheck />이번 화 마감</Button>
                   <span className="rounded-full border border-border/70 bg-background/55 px-3 py-1.5 tabular-nums">
                     {textStats.characterCount.toLocaleString()}자
                   </span>
@@ -420,6 +429,14 @@ export default function WritePage() {
               <ChapterReferenceBar chapterId={selectedChapter.id} key={`references:${selectedChapter.id}`} projectId={params.id} />
               <ChapterStoryDateBar chapter={selectedChapter} projectId={params.id} settingsJson={projectSettingsJson}
                 onChange={updated => setSelectedChapter(current => current?.id === updated.id ? { ...current, ...updated } : current)} />
+              {isCloseoutOpen && <ChapterCloseoutPanel chapterId={selectedChapter.id} projectId={params.id} onClose={() => setIsCloseoutOpen(false)}
+                beforeAnalyze={async () => {
+                  await editorRef.current?.flushProcessing();
+                  const response = await fetch(`/api/projects/${params.id}/chapters/${selectedChapter.id}/content`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contentJson: latestContentRef.current }),
+                  });
+                  return response.ok;
+                }} onApplied={chapter => setSelectedChapter(current => current ? { ...current, ...chapter } as Chapter : current)} />}
               {showSceneWorkbench && <SceneWorkbench key={`${selectedChapter.id}:${sceneProposal?.revision ?? 'saved'}`} proposal={sceneProposal} projectId={params.id} chapterId={selectedChapter.id}
                 sceneId={sceneId} onSceneChange={setSceneId} examplesOnly={examplesOnly}
                 getContent={async () => { await editorRef.current?.flushProcessing(); return latestContentRef.current; }}

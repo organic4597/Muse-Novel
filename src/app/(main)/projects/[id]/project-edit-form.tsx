@@ -230,19 +230,6 @@ export function ProjectEditForm({ project }: { project: Project }) {
             </p>
           </div>
 
-          <div className="border-t border-border/70 pt-6">
-            <p className="muse-eyebrow">Story calendar</p>
-            <h2 className="mt-2 font-heading text-xl font-semibold">작품 시간</h2>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">회차 상태와 복선·사건 보드에서 사용할 단일 연호와 달력입니다.</p>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="space-y-2.5"><label className="muse-field-label" htmlFor="calendarEra">연호</label><Input id="calendarEra" maxLength={80} onChange={event => setCalendarEra(event.target.value)} placeholder="예: 천무력" value={calendarEra} /></div>
-            <div className="space-y-2.5"><label className="muse-field-label" htmlFor="monthsPerYear">1년의 개월 수</label><Input id="monthsPerYear" min={1} max={24} onChange={event => setMonthsPerYear(event.target.value)} type="number" value={monthsPerYear} /></div>
-            <div className="space-y-2.5"><label className="muse-field-label" htmlFor="daysPerMonth">한 달의 일수</label><Input id="daysPerMonth" min={1} max={100} onChange={event => setDaysPerMonth(event.target.value)} type="number" value={daysPerMonth} /></div>
-          </div>
-          <div className="space-y-2.5"><label className="muse-field-label" htmlFor="timeLabels">시간 명칭</label><Input id="timeLabels" maxLength={500} onChange={event => setTimeLabels(event.target.value)} placeholder="예: 자시, 축시, 인시, 묘시" value={timeLabels} /><p className="text-xs text-muted-foreground">쉼표로 구분합니다. 비워두면 자유 입력만 사용합니다.</p></div>
-
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2.5">
               <label className="muse-field-label" htmlFor="targetAudience">주요 독자층</label>
@@ -339,6 +326,19 @@ export function ProjectEditForm({ project }: { project: Project }) {
               현재 생성에서 강하게 반영됩니다. 장면의 목적이 바뀌면 짧게 갱신하세요.
             </p>
           </div>
+
+          <div className="border-t border-border/70 pt-6">
+            <p className="muse-eyebrow">Story calendar</p>
+            <h2 className="mt-2 font-heading text-xl font-semibold">작품 시간</h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">회차 상태와 복선·사건 보드에서 사용할 단일 연호와 달력입니다.</p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="space-y-2.5"><label className="muse-field-label" htmlFor="calendarEra">연호</label><Input id="calendarEra" maxLength={80} onChange={event => setCalendarEra(event.target.value)} placeholder="예: 천무력" value={calendarEra} /></div>
+            <div className="space-y-2.5"><label className="muse-field-label" htmlFor="monthsPerYear">1년의 개월 수</label><Input id="monthsPerYear" min={1} max={24} onChange={event => setMonthsPerYear(event.target.value)} type="number" value={monthsPerYear} /></div>
+            <div className="space-y-2.5"><label className="muse-field-label" htmlFor="daysPerMonth">한 달의 일수</label><Input id="daysPerMonth" min={1} max={100} onChange={event => setDaysPerMonth(event.target.value)} type="number" value={daysPerMonth} /></div>
+          </div>
+          <div className="space-y-2.5"><label className="muse-field-label" htmlFor="timeLabels">시간 명칭</label><Input id="timeLabels" maxLength={500} onChange={event => setTimeLabels(event.target.value)} placeholder="예: 자시, 축시, 인시, 묘시" value={timeLabels} /><p className="text-xs text-muted-foreground">쉼표로 구분합니다. 비워두면 자유 입력만 사용합니다.</p></div>
 
           {feedback && (
             <p className="rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground" role="status">

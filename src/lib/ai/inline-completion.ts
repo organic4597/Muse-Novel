@@ -56,6 +56,7 @@ export function buildInlineCompletionSystemPrompt(
     getContinuationInstruction(continuationMode),
     '최소한의 빈칸만 채운다. 같은 장소로 들어가기를 반복하거나, 하나의 행동을 다른 말로 두 번 쓰거나, 아직 일어나지 않은 장면 계획을 여기서 전부 실행하지 않는다.',
     '열린 따옴표 안에서는 같은 화자의 대사를 이어 쓴다. 따옴표 밖의 서술을 대사 안에 넣지 않는다.',
+    'story_bible에 실제 사실과 인물의 지식이 구분되어 있으면 현재 화자가 모르는 사실을 대사나 생각으로 드러내지 않는다.',
     continuationMode === 'bridge' && !/[.!?…。！？]["”’」』]*\s*$/u.test(input.prefix)
       ? '뒤 원문의 서술어까지 이어져야 하는 미완성 문장이다. 삽입 구절에 마침표를 넣어 문장을 중간에서 끊지 않는다.'
       : '한 문장보다 길게 새 장면을 전개하지 않는다.',
