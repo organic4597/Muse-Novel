@@ -12,6 +12,7 @@ import {
   replaceSemanticMemorySources,
 } from '@/lib/db/queries/semantic-memory';
 import { listStoryStateEntries } from '@/lib/db/queries/story-state';
+import { listPlotBoard } from '@/lib/db/queries/plot-board';
 import { listWorldEntriesWithTags } from '@/lib/db/queries/world-entries';
 import { convertToPlainText } from '@/lib/export/export-text';
 import {
@@ -24,6 +25,7 @@ import {
 import { splitResearchContent } from '@/lib/web-research/content';
 import { isStoryStateEffectiveAt } from '@/lib/story-state';
 import { formatStoryDate, getStoryCalendar } from '@/lib/story-timeline';
+import { PLOT_EDGE_LABELS, PLOT_NODE_LABELS } from '@/lib/plot-board';
 
 const DEFAULT_CHUNK_SIZE = 1_200;
 const DEFAULT_CHUNK_OVERLAP = 160;
@@ -34,7 +36,8 @@ export type ProjectMemorySourceType =
   | 'chapter'
   | 'character'
   | 'world'
-  | 'state';
+  | 'state'
+  | 'plot';
 
 export type ProjectMemorySource = {
   content: string;
@@ -138,6 +141,7 @@ export async function collectProjectMemorySources(
     relationships,
     emotions,
     stateEntries,
+    plotBoard,
   ] = await Promise.all([
     getProject(db, projectId),
     listChapters(db, projectId),
@@ -146,6 +150,7 @@ export async function collectProjectMemorySources(
     listRelationshipsForProject(db, projectId),
     listEmotionsForProject(db, projectId),
     listStoryStateEntries(db, projectId),
+    listPlotBoard(db, projectId),
   ]);
   if (!project) return [];
   const storyCalendar = getStoryCalendar(project.settingsJson);
@@ -307,6 +312,29 @@ export async function collectProjectMemorySources(
       title: `${subject} · ${entry.label}`,
       type: 'state',
       updatedAt: entry.updatedAt,
+    });
+  }
+
+  const plotNodeById = new Map<string, { title: string }>(
+    plotBoard.nodes.map(node => [node.id, { title: node.title }])
+  );
+  for (const node of plotBoard.nodes.filter(node => node.status === 'confirmed')) {
+    const incoming = plotBoard.edges.filter(edge => edge.toNodeId === node.id).map(edge =>
+      `${plotNodeById.get(edge.fromNodeId)?.title ?? '이전 사건'} → ${PLOT_EDGE_LABELS[edge.type]}`);
+    const outgoing = plotBoard.edges.filter(edge => edge.fromNodeId === node.id).map(edge =>
+      `${PLOT_EDGE_LABELS[edge.type]} → ${plotNodeById.get(edge.toNodeId)?.title ?? '후속 사건'}`);
+    sources.push({
+      content: [
+        `확정된 복선·인과 노드 [${PLOT_NODE_LABELS[node.kind]}]: ${node.title}`,
+        node.chapterTitle && `회차: ${node.chapterTitle}`,
+        node.storyDatePrecision !== 'none' && `작품 시점: ${formatStoryDate(storyCalendar, node)}`,
+        node.lane && `흐름: ${node.lane}`,
+        node.description,
+        incoming.length && `선행 연결:\n${incoming.map(value => `- ${value}`).join('\n')}`,
+        outgoing.length && `후속 연결:\n${outgoing.map(value => `- ${value}`).join('\n')}`,
+        node.evidence && `원고 근거: ${node.evidence}`,
+      ].filter(Boolean).join('\n'),
+      id: node.id, title: node.title, type: 'plot', updatedAt: node.updatedAt,
     });
   }
 
@@ -505,8 +533,8 @@ export async function retrieveProjectMemory(
 ): Promise<ProjectMemoryRetrievalResult> {
   let rows = await listSemanticMemoryChunks(db, projectId);
   if (options.chapterId) {
-    const [chapterRows, stateRows] = await Promise.all([
-      listChapters(db, projectId), listStoryStateEntries(db, projectId),
+    const [chapterRows, stateRows, plotBoard] = await Promise.all([
+      listChapters(db, projectId), listStoryStateEntries(db, projectId), listPlotBoard(db, projectId),
     ]);
     const currentOrder = chapterRows.find((chapter) => chapter.id === options.chapterId)?.order;
     if (currentOrder !== undefined) {
@@ -517,8 +545,11 @@ export async function retrieveProjectMemory(
         endChapterOrder: state.endChapterId ? orderByChapter.get(state.endChapterId) ?? null : null,
       }, currentOrder)).map((state) => state.id));
       const allowedChapters = new Set(chapterRows.filter((chapter) => chapter.order <= currentOrder).map((chapter) => chapter.id));
+      const allowedPlot = new Set(plotBoard.nodes.filter(node => node.status === 'confirmed' &&
+        (!node.chapterId || (orderByChapter.get(node.chapterId) ?? Number.MAX_SAFE_INTEGER) <= currentOrder)).map(node => node.id));
       rows = rows.filter((row) => row.sourceType === 'chapter' ? allowedChapters.has(row.sourceId)
-        : row.sourceType === 'state' ? allowedStates.has(row.sourceId) : true);
+        : row.sourceType === 'state' ? allowedStates.has(row.sourceId)
+          : row.sourceType === 'plot' ? allowedPlot.has(row.sourceId) : true);
     }
   }
   const limit = Math.max(1, Math.min(options.limit ?? 8, 24));

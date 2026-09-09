@@ -1,12 +1,13 @@
 'use client';
 
-import { BookOpenText, Globe2, Info, Map as MapIcon, UsersRound } from 'lucide-react';
+import { BookOpenText, GitBranch, Globe2, Info, Map as MapIcon, UsersRound } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
 
 const TABS = [
   { href: '', icon: Info, label: '작품 정보', exact: true },
   { href: '/write', icon: BookOpenText, label: '집필' },
+  { href: '/plot', icon: GitBranch, label: '복선·인과' },
   { href: '/characters', icon: UsersRound, label: '캐릭터' },
   { href: '/world', icon: Globe2, label: '세계관' },
   { href: '/maps', icon: MapIcon, label: '지도' },
