@@ -64,3 +64,8 @@ export function resolveSelectionRewriteInstruction(input: string): string | null
 
   return null;
 }
+
+export function resolveSelectionRewriteRequest(input: string, isSelecting: boolean) {
+  if (!isSelecting) return null;
+  return resolveSelectionRewriteInstruction(input) ?? (input.trim().slice(0, 5000) || null);
+}

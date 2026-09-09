@@ -105,7 +105,7 @@ export function buildAgentDraftPrompt({
 }) {
   return [
     '역할: 한국어 장르소설 작가. 계획을 자연스러운 소설 본문으로 구현한다.',
-    `목표 분량은 약 ${targetLength}자다. 장면의 필요에 따라 조금 짧거나 길어도 된다.`,
+    `새로 출력할 본문은 공백을 포함해 ${targetLength}자의 90~110% 범위로 완성한다. 요약본으로 일찍 끝내지 말고 장면의 행동·반응·대사·결과를 충분히 전개한다.`,
     cursorBefore || cursorAfter
       ? '현재 커서 앞 문맥과 뒤 문맥 사이에 삽입할 새 본문만 출력한다. 앞뒤 원문을 반복하거나 다시 출력하지 않는다.'
       : '현재 원고의 마지막 문장 뒤에 바로 붙을 새 본문만 출력한다.',
@@ -163,6 +163,7 @@ export function buildAgentRevisionPrompt({
   knowledge,
   memory,
   storyContext,
+  targetLength,
 }: {
   critique: string;
   currentProse: string;
@@ -173,10 +174,12 @@ export function buildAgentRevisionPrompt({
   knowledge: string;
   memory: string;
   storyContext: string;
+  targetLength: number;
 }) {
   return [
     '역할: 한국어 장르소설 책임 작가. 편집 비평을 반영해 초안을 한 번만 정교하게 수정한다.',
     '비평이 잘못되었거나 작품 정전과 충돌하면 해당 지시는 무시한다.',
+    `초안의 사건과 밀도를 유지하며 최종 본문도 공백 포함 ${targetLength}자의 90~110% 범위로 쓴다. 비평을 반영한다는 이유로 장면을 요약하거나 대폭 축약하지 않는다.`,
     cursorBefore || cursorAfter
       ? '현재 커서 앞뒤 문맥 사이에 삽입할 완성 본문만 출력한다. 앞뒤 원문을 반복하지 않는다. 설명, 제목, 비평, 코드블록은 금지한다.'
       : '현재 원고 뒤에 바로 삽입할 완성 본문만 출력한다. 설명, 제목, 비평, 코드블록은 금지한다.',
@@ -194,6 +197,69 @@ export function buildAgentRevisionPrompt({
     formatPromptData('draft', draft),
     formatPromptData('editor_critique', critique),
   ].join('\n\n');
+}
+
+export function joinWritingContinuation(base: string, continuation: string) {
+  const left = base.trimEnd();
+  let right = continuation.trimStart();
+  if (!right) return left;
+  const ceiling = Math.min(600, left.length, right.length);
+  for (let size = ceiling; size >= 6; size -= 1) {
+    if (left.endsWith(right.slice(0, size))) { right = right.slice(size).trimStart(); break; }
+  }
+  if (!right) return left;
+  const separator = /\n$/u.test(base) || /^[,.;:!?…。，、！？'”’」』)]/u.test(right) ? '' : '\n\n';
+  return `${left}${separator}${right}`;
+}
+
+export function buildAgentContinuationPrompt({
+  currentText,
+  cursorAfter,
+  plan,
+  remainingLength,
+  targetLength,
+  instruction = '',
+  continuityContext = '',
+}: {
+  currentText: string;
+  cursorAfter: string;
+  plan: string;
+  remainingLength: number;
+  targetLength: number;
+  instruction?: string;
+  continuityContext?: string;
+}) {
+  return [
+    '역할: 한국어 장르소설 작가. 이미 생성한 본문의 마지막에서 직접 이어질 추가 본문만 쓴다.',
+    `전체 목표는 공백 포함 ${targetLength}자이며 현재 약 ${currentText.length}자다. 추가 본문은 약 ${Math.max(200, remainingLength)}자로 써서 장면을 목표 범위까지 완성한다.`,
+    '이미 쓴 문장, 제목, 설명, 계획을 반복하지 않는다. 사건을 건너뛰어 요약하지 말고 행동→반응→결과를 전개한다.',
+    cursorAfter ? '추가 본문의 마지막은 cursor_after의 기존 원고로 자연스럽게 이어져야 한다.' : '장면의 현재 목표가 진행되거나 작은 결과가 생기는 지점에서 마친다.',
+    instruction && formatPromptData('author_request', instruction),
+    continuityContext && formatPromptData('continuity_context', continuityContext.slice(-6000)),
+    formatPromptData('scene_plan', plan),
+    formatPromptData('generated_text_tail', currentText.slice(-6000)),
+    ...(cursorAfter ? [formatPromptData('cursor_after', cursorAfter.slice(0, 1000))] : []),
+    '바로 이어 붙일 소설 본문만 출력한다:',
+  ].join('\n\n');
+}
+
+export async function extendWritingToTarget(options: {
+  initialText: string;
+  targetLength: number;
+  generate: (currentText: string, remainingLength: number, pass: number) => Promise<string>;
+  onAppend?: (text: string) => void;
+}) {
+  const minimumLength = Math.floor(options.targetLength * 0.9);
+  let completed = options.initialText.trim();
+  for (let pass = 1; completed.length < minimumLength && pass <= 4; pass += 1) {
+    const beforeLength = completed.length;
+    const continuation = await options.generate(completed, options.targetLength - beforeLength, pass);
+    const combined = joinWritingContinuation(completed, continuation);
+    if (combined.length <= beforeLength + 10) break;
+    options.onAppend?.(combined.slice(completed.trimEnd().length));
+    completed = combined;
+  }
+  return completed;
 }
 
 export async function runWritingAgent(options: RunWritingAgentOptions) {
@@ -359,6 +425,16 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
       0.3
     )
   ).text.trim();
+  const minimumLength = Math.floor(targetLength * 0.9);
+  const extendToTarget = (initialText: string, streamAdditions = false) => extendWritingToTarget({
+    initialText, targetLength,
+    generate: async (currentText, remainingLength, pass) => {
+      onProgress?.({ message: `목표 분량까지 부족한 ${Math.max(0, remainingLength)}자를 이어 작성하는 중 (${pass}/4)...`, stage: 'draft' });
+      return (await runStage('draft', buildAgentContinuationPrompt({ currentText, cursorAfter, plan, remainingLength, targetLength,
+        instruction, continuityContext: `${storyContext}\n${memory}` }), 0.68)).text;
+    },
+    ...(streamAdditions ? { onAppend: (addition: string) => onDelta?.(addition) } : {}),
+  });
   if (workbench.scene) onProgress?.({ message: '확정한 장면 설계와 작가가 선택한 사례를 반영합니다.', stage: 'draft' });
 
   onProgress?.({ message: '장면 계획을 소설 본문으로 작성하는 중...', stage: 'draft' });
@@ -377,8 +453,8 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
       }),
       0.72
     );
-  if (draftResult.finishReason === 'length') throw new Error('초안이 출력 한도에서 잘렸습니다. 목표 분량을 줄여 다시 요청해주세요.');
-  const draft = draftResult.text.trim();
+  if (!draftResult.text.trim()) throw new Error('초안을 생성하지 못했습니다.');
+  const draft = await extendToTarget(draftResult.text);
 
   if (!review) {
     onDelta?.(draft);
@@ -395,6 +471,9 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
       plan,
       text: draft,
       sceneProposal: await reviewScenePlan(draft),
+      targetLength,
+      actualLength: draft.length,
+      lengthSatisfied: draft.length >= minimumLength && draft.length <= Math.ceil(targetLength * 1.15),
     };
   }
 
@@ -438,6 +517,7 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
           knowledge: researchKnowledge,
           memory,
           storyContext,
+          targetLength,
         }),
         temperature: 0.62,
       });
@@ -445,9 +525,11 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
         text += delta;
         onDelta?.(delta);
       }
-      if (await result.finishReason === 'length') throw new Error('수정 원고가 출력 한도에서 잘렸습니다. 목표 분량을 줄여 다시 요청해주세요.');
+      await result.finishReason;
     }
   );
+
+  text = await extendToTarget(text, true);
 
   return {
     research,
@@ -462,5 +544,8 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
     plan,
     text: text.trim(),
     sceneProposal: await reviewScenePlan(text.trim()),
+    targetLength,
+    actualLength: text.trim().length,
+    lengthSatisfied: text.trim().length >= minimumLength && text.trim().length <= Math.ceil(targetLength * 1.15),
   };
 }

@@ -9,7 +9,7 @@ import * as React from 'react';
 
 import { aiChatPlugin } from '@/components/editor/plugins/ai-kit';
 import { useWritingKnowledgeWorker } from '@/hooks/use-writing-knowledge-worker';
-import { resolveSelectionRewriteInstruction } from '@/lib/ai/selection-rewrite-prompts';
+import { resolveSelectionRewriteRequest } from '@/lib/ai/selection-rewrite-prompts';
 
 const PROJECT_PATH_REGEX = /\/projects\/([^/]+)/;
 
@@ -57,7 +57,7 @@ export const useChat = () => {
               .map((part) => part.text)
               .join('')
           : '';
-        const rewriteInstruction = resolveSelectionRewriteInstruction(lastUserText);
+        const rewriteInstruction = resolveSelectionRewriteRequest(lastUserText, editor.api.isExpanded());
         let knowledgeDocumentIds: string[] | undefined;
         if (lastUserText.trim()) {
           try {

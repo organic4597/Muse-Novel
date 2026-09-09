@@ -12,10 +12,6 @@ import {
   isMultiBlocks,
 } from './utils';
 
-function stripSelectionTags(text: string): string {
-  return text.replaceAll('<Selection>', '').replaceAll('</Selection>', '');
-}
-
 export function getChooseToolPrompt({ messages }: { messages: ChatMessage[] }) {
   return buildStructuredPrompt({
     examples: [
@@ -52,7 +48,7 @@ export function getGeneratePrompt(
 
     const contextualBackground = [
       before && `...(preceding context)\n${before}`,
-      stripSelectionTags(selectingMarkdown),
+      selectingMarkdown,
       after && `${after}\n...(following context)`,
     ]
       .filter(Boolean)
@@ -68,9 +64,12 @@ export function getGeneratePrompt(
         - Selection/XML 태그, 코드 울타리, 라벨, 목록, 예시, 설명을 출력하지 않는다.
         - 선택된 원문만 교체하고 주변 문맥은 출력하지 않는다.
         - 의미 변경이 요청되지 않았다면 핵심 의미와 사실을 보존한다.
+        - 사용자가 어조, 감정, 묘사, 구조, 시점 또는 분량의 변화를 요청했다면 그 차이가 분명하게 느껴지도록 다시 쓴다.
+        - 구체적인 변경 요청을 단순한 동의어 교체나 맞춤법 수정으로 축소하지 않는다.
       `,
       task: dedent`
         다음 지시에 따라 선택된 소설 원문을 고쳐라: ${rewriteInstruction}
+        <Selection> 안의 전체 원문에 지시를 적용하되, 인물·사건·고유명사 등 요청하지 않은 사실은 보존하라.
         주변 단락에 바로 연결할 수 있는 깨끗한 교체문만 출력하라.
       `,
     });

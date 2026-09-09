@@ -167,6 +167,9 @@ export function WritingIntelligencePanel({
     memoryWarning?: string;
     plan?: string;
     critique?: string | null;
+    actualLength?: number;
+    targetLength?: number;
+    lengthSatisfied?: boolean;
     sceneProposal?: { sceneId: string; revision: number; plan: ScenePlan; reason: string } | null;
   } | null>(null);
   const [indexing, setIndexing] = useState(false);
@@ -445,6 +448,9 @@ export function WritingIntelligencePanel({
           setAgentDetails({
             sceneProposal: data.sceneProposal as { sceneId: string; revision: number; plan: ScenePlan; reason: string } | null,
             critique: typeof data.critique === 'string' ? data.critique : null,
+            actualLength: typeof data.actualLength === 'number' ? data.actualLength : undefined,
+            targetLength: typeof data.targetLength === 'number' ? data.targetLength : undefined,
+            lengthSatisfied: typeof data.lengthSatisfied === 'boolean' ? data.lengthSatisfied : undefined,
             knowledgeMode: String(data.knowledgeMode ?? ''),
             knowledgeWarning:
               typeof data.knowledgeWarning === 'string'
@@ -457,7 +463,9 @@ export function WritingIntelligencePanel({
                 : undefined,
             plan: typeof data.plan === 'string' ? data.plan : undefined,
           });
-          setStatus('완성된 원고를 검토한 뒤 원하는 위치에 적용하세요.');
+          setStatus(typeof data.actualLength === 'number' && typeof data.targetLength === 'number'
+            ? `생성 ${data.actualLength.toLocaleString()}자 / 목표 ${data.targetLength.toLocaleString()}자. 검토한 뒤 원하는 위치에 적용하세요.`
+            : '완성된 원고를 검토한 뒤 원하는 위치에 적용하세요.');
         } else if (event === 'error') {
           throw new Error(String(data.message ?? '집필 에이전트 실행에 실패했습니다.'));
         }
@@ -714,7 +722,7 @@ export function WritingIntelligencePanel({
         <div className="space-y-3 rounded-2xl border border-primary/20 bg-card/85 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h4 className="flex items-center gap-2 font-semibold"><WandSparkles className="size-4 text-primary" />생성 원고</h4>
-            <Button disabled={running || !outputComplete} onClick={() => onApply(output)} size="sm" type="button">현재 커서에 삽입</Button>
+            <div className="flex items-center gap-2">{agentDetails?.actualLength !== undefined && <span className={`text-xs ${agentDetails.lengthSatisfied ? 'text-emerald-600' : 'text-amber-600'}`}>{agentDetails.actualLength.toLocaleString()} / {agentDetails.targetLength?.toLocaleString()}자</span>}<Button disabled={running || !outputComplete} onClick={() => onApply(output)} size="sm" type="button">현재 커서에 삽입</Button></div>
           </div>
           <pre className="max-h-80 overflow-auto whitespace-pre-wrap font-sans text-sm leading-7">{output}</pre>
           <WebResearchSources research={research} />

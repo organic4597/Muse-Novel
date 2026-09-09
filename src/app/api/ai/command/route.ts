@@ -59,8 +59,11 @@ export async function POST(req: NextRequest) {
     knowledgeDocumentIds: rawKnowledgeDocumentIds,
     projectId,
     provider: providerName,
-    rewriteInstruction,
+    rewriteInstruction: rawRewriteInstruction,
   } = await req.json();
+  const rewriteInstruction = typeof rawRewriteInstruction === 'string'
+    ? rawRewriteInstruction.trim().slice(0, 5000) || null
+    : null;
 
   if (!ctx) {
     return NextResponse.json(

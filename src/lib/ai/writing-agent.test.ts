@@ -1,10 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   buildAgentCritiquePrompt,
   buildAgentDraftPrompt,
   buildAgentPlanPrompt,
   buildAgentRevisionPrompt,
+  buildAgentContinuationPrompt,
+  joinWritingContinuation,
+  extendWritingToTarget,
 } from './writing-agent';
 
 describe('writing agent prompts', () => {
@@ -29,7 +32,7 @@ describe('writing agent prompts', () => {
       storyContext: '3인칭 과거형',
       targetLength: 1500,
     });
-    expect(draft).toContain('약 1500자');
+    expect(draft).toContain('1500자의 90~110%');
     expect(draft).toContain('새 본문만 출력');
     expect(draft).toContain('검은 분실 상태다.');
     expect(draft).toContain('cursor_before');
@@ -56,7 +59,20 @@ describe('writing agent prompts', () => {
         knowledge: '작법',
         memory: '정전',
         storyContext: '문맥',
+        targetLength: 1500,
       })
     ).toContain('앞뒤 문맥 사이에 삽입할 완성 본문만 출력');
+    expect(buildAgentContinuationPrompt({ currentText: '문을 열었다.', cursorAfter: '', plan: '안으로 간다.', remainingLength: 800, targetLength: 1500 })).toContain('약 800자');
+  });
+
+  it('joins continuation without repeating the model-overlapped boundary', () => {
+    expect(joinWritingContinuation('그는 문을 열었다.', '그는 문을 열었다. 안으로 들어갔다.')).toBe('그는 문을 열었다.\n\n안으로 들어갔다.');
+  });
+
+  it('requests bounded continuation passes until generated prose reaches the target range', async () => {
+    const generate = vi.fn().mockResolvedValueOnce('나'.repeat(320)).mockResolvedValueOnce('다'.repeat(320));
+    const result = await extendWritingToTarget({ initialText: '가'.repeat(400), targetLength: 1000, generate });
+    expect(result.length).toBeGreaterThanOrEqual(900);
+    expect(generate).toHaveBeenCalledTimes(2);
   });
 });
