@@ -38,6 +38,7 @@ export type RunWritingAgentOptions = {
   webSearchMode?: WebSearchMode;
   chapterId?: string;
   currentProse?: string;
+  pendingDraft?: string;
   cursorAfter?: string;
   cursorBefore?: string;
   db: DB;
@@ -266,6 +267,7 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
   const {
     chapterId,
     currentProse = '',
+    pendingDraft = '',
     cursorAfter = '',
     cursorBefore = '',
     db,
@@ -315,20 +317,26 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
   const memoryBudget = Math.min(10_000, Math.floor(inputBudget * 0.28));
   const knowledgeBudget = Math.min(3500, Math.floor(inputBudget * 0.13));
   const proseTailBudget = Math.min(8000, Math.floor(inputBudget * 0.24));
+  const pendingTail = pendingDraft.slice(-Math.min(20_000, inputBudget));
+  const effectiveCursorBefore = pendingTail
+    ? `${cursorBefore}\n\n${pendingTail}`.slice(-20_000)
+    : cursorBefore;
+  const effectiveCurrentProse = pendingTail ? `${currentProse}\n\n${pendingTail}` : currentProse;
 
   onProgress?.({ message: '작품 기억을 동기화하고 관련 설정을 찾는 중...', stage: 'memory' });
   const index = await indexProjectMemory(db, projectId, signal);
   const baseStoryContext = await buildStoryContext(db, projectId, chapterId, {
-    focusText: `${instruction}\n${cursorBefore.slice(-2000) || currentProse.slice(-2000)}\n${cursorAfter.slice(0, 800)}`,
+    focusText: `${instruction}\n${effectiveCursorBefore.slice(-2000) || effectiveCurrentProse.slice(-2000)}\n${cursorAfter.slice(0, 800)}`,
     maxChars: storyBudget,
   });
   const workbench = getWritingWorkbenchContext(db, projectId, { chapterId, sceneId: options.sceneId, focus: `${instruction}\n${cursorBefore.slice(-1000)}` });
   const storyContext = [baseStoryContext, workbench.scene,
     options.mode === 'scene' ? '작업: 선택한 장면의 사건 순서에 따라 새 장면을 작성한다. 장면 설계는 계획이며 이미 일어난 일로 요약하지 않는다.' : '작업: 현재 커서의 앞뒤 원고에 바로 이어질 본문을 작성한다.',
+    pendingTail && '직전 AI 생성 결과는 아직 원고에 삽입하지 않은 임시 초안이다. 정전으로 확정하지 말고 그 마지막 문장에서 자연스럽게 계속 작성한다.',
   ].filter(Boolean).join('\n\n');
   const retrievalQuery = [
     instruction,
-    cursorBefore.slice(-Math.min(2500, proseTailBudget)) || currentProse.slice(-Math.min(2500, proseTailBudget)),
+    effectiveCursorBefore.slice(-Math.min(2500, proseTailBudget)) || effectiveCurrentProse.slice(-Math.min(2500, proseTailBudget)),
     cursorAfter.slice(0, 800),
     storyContext.slice(-1200),
   ]
@@ -341,7 +349,7 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
     signal,
   });
   const memory = formatMemoryContext(retrieval.matches, memoryBudget);
-  const currentProseTail = currentProse.slice(-proseTailBudget);
+  const currentProseTail = effectiveCurrentProse.slice(-proseTailBudget);
   const genre = storyContext.match(/^장르:\s*(.+)$/mu)?.[1]?.trim() ?? '';
   const knowledge = await runSemanticWritingKnowledgeAgent({
     db,
@@ -415,8 +423,8 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
     await runStage(
       'plan',
       buildAgentPlanPrompt({
-        instruction: cursorBefore || cursorAfter
-          ? `${instruction}\n\n현재 커서 앞 문맥: ${cursorBefore.slice(-2000) || '(없음)'}\n현재 커서 뒤 문맥: ${cursorAfter.slice(0, 800) || '(없음)'}`
+        instruction: effectiveCursorBefore || cursorAfter
+          ? `${instruction}\n\n현재 커서 앞 문맥: ${effectiveCursorBefore.slice(-2000) || '(없음)'}\n현재 커서 뒤 문맥: ${cursorAfter.slice(0, 800) || '(없음)'}`
           : instruction,
         knowledge: researchKnowledge,
         memory,
@@ -443,7 +451,7 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
       buildAgentDraftPrompt({
         currentProse: currentProseTail,
         cursorAfter,
-        cursorBefore,
+        cursorBefore: effectiveCursorBefore,
         instruction,
         knowledge: researchKnowledge,
         memory,
@@ -511,7 +519,7 @@ export async function runWritingAgent(options: RunWritingAgentOptions) {
           critique,
           currentProse: currentProseTail,
           cursorAfter,
-          cursorBefore,
+          cursorBefore: effectiveCursorBefore,
           draft,
           instruction,
           knowledge: researchKnowledge,

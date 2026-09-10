@@ -170,6 +170,8 @@ export function WritingIntelligencePanel({
     actualLength?: number;
     targetLength?: number;
     lengthSatisfied?: boolean;
+    cumulativeLength?: number;
+    continued?: boolean;
     sceneProposal?: { sceneId: string; revision: number; plan: ScenePlan; reason: string } | null;
   } | null>(null);
   const [indexing, setIndexing] = useState(false);
@@ -381,17 +383,19 @@ export function WritingIntelligencePanel({
     }
   };
 
-  const runAgent = async () => {
+  const runAgent = async (continueFromOutput = false) => {
     if (instruction.trim().length < 3) {
       setStatus('작성할 장면이나 수정 방향을 3자 이상 입력해주세요.');
       return;
     }
 
+    const priorOutput = continueFromOutput ? output.trim() : '';
+    if (continueFromOutput && (!priorOutput || !outputComplete)) return;
     const controller = new AbortController();
     abortRef.current = controller;
     setRunning(true);
     setResearch(undefined);
-    setOutput('');
+    setOutput(priorOutput);
     setOutputComplete(false);
     pendingOutputRef.current = '';
     setAgentDetails(null);
@@ -415,6 +419,7 @@ export function WritingIntelligencePanel({
           mode: writeMode,
           chapterId,
           currentContentJson,
+          continuationText: priorOutput,
           cursorAfter: cursorContext.after,
           cursorBefore: cursorContext.before,
           instruction,
@@ -430,6 +435,7 @@ export function WritingIntelligencePanel({
         const data = (await response.json()) as { error?: string };
         throw new Error(data.error ?? '집필 에이전트를 시작하지 못했습니다.');
       }
+      if (priorOutput) setOutput(`${priorOutput}\n\n`);
 
       await consumeSSE(response, (event, data) => {
         if (event === 'progress') {
@@ -439,11 +445,13 @@ export function WritingIntelligencePanel({
           queueOutput(String(data.text ?? ''));
         } else if (event === 'done') {
           receivedDone = true;
+          const generated = String(data.text ?? '');
+          const combinedOutput = priorOutput ? `${priorOutput}\n\n${generated}` : generated;
           setResearch(data.research as WebResearch | undefined);
           if (outputTimerRef.current) clearTimeout(outputTimerRef.current);
           outputTimerRef.current = null;
           pendingOutputRef.current = '';
-          setOutput(String(data.text ?? ''));
+          setOutput(combinedOutput);
           setOutputComplete(true);
           setAgentDetails({
             sceneProposal: data.sceneProposal as { sceneId: string; revision: number; plan: ScenePlan; reason: string } | null,
@@ -451,6 +459,8 @@ export function WritingIntelligencePanel({
             actualLength: typeof data.actualLength === 'number' ? data.actualLength : undefined,
             targetLength: typeof data.targetLength === 'number' ? data.targetLength : undefined,
             lengthSatisfied: typeof data.lengthSatisfied === 'boolean' ? data.lengthSatisfied : undefined,
+            cumulativeLength: combinedOutput.length,
+            continued: Boolean(priorOutput),
             knowledgeMode: String(data.knowledgeMode ?? ''),
             knowledgeWarning:
               typeof data.knowledgeWarning === 'string'
@@ -464,7 +474,9 @@ export function WritingIntelligencePanel({
             plan: typeof data.plan === 'string' ? data.plan : undefined,
           });
           setStatus(typeof data.actualLength === 'number' && typeof data.targetLength === 'number'
-            ? `생성 ${data.actualLength.toLocaleString()}자 / 목표 ${data.targetLength.toLocaleString()}자. 검토한 뒤 원하는 위치에 적용하세요.`
+            ? priorOutput
+              ? `추가 생성 ${data.actualLength.toLocaleString()}자 / 목표 ${data.targetLength.toLocaleString()}자 · 누적 ${combinedOutput.length.toLocaleString()}자. 검토한 뒤 적용하세요.`
+              : `생성 ${data.actualLength.toLocaleString()}자 / 목표 ${data.targetLength.toLocaleString()}자. 검토한 뒤 원하는 위치에 적용하세요.`
             : '완성된 원고를 검토한 뒤 원하는 위치에 적용하세요.');
         } else if (event === 'error') {
           throw new Error(String(data.message ?? '집필 에이전트 실행에 실패했습니다.'));
@@ -474,6 +486,11 @@ export function WritingIntelligencePanel({
         throw new Error('응답이 완료되기 전에 연결이 끊겼습니다. 부분 출력은 원고에 적용할 수 없습니다.');
       }
     } catch (error) {
+      if (priorOutput) {
+        if (outputTimerRef.current) clearTimeout(outputTimerRef.current);
+        outputTimerRef.current = null; pendingOutputRef.current = '';
+        setOutput(priorOutput); setOutputComplete(true);
+      }
       if (error instanceof Error && error.name === 'AbortError') {
         setStatus('집필 작업을 중단했습니다.');
       } else {
@@ -701,7 +718,7 @@ export function WritingIntelligencePanel({
             <Square /> 중단
           </Button>
         ) : (
-          <Button onClick={runAgent} type="button">
+          <Button onClick={() => void runAgent()} type="button">
             <Play /> 에이전트 실행
           </Button>
         )}
@@ -722,7 +739,7 @@ export function WritingIntelligencePanel({
         <div className="space-y-3 rounded-2xl border border-primary/20 bg-card/85 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h4 className="flex items-center gap-2 font-semibold"><WandSparkles className="size-4 text-primary" />생성 원고</h4>
-            <div className="flex items-center gap-2">{agentDetails?.actualLength !== undefined && <span className={`text-xs ${agentDetails.lengthSatisfied ? 'text-emerald-600' : 'text-amber-600'}`}>{agentDetails.actualLength.toLocaleString()} / {agentDetails.targetLength?.toLocaleString()}자</span>}<Button disabled={running || !outputComplete} onClick={() => onApply(output)} size="sm" type="button">현재 커서에 삽입</Button></div>
+            <div className="flex flex-wrap items-center gap-2">{agentDetails?.actualLength !== undefined && <span className={`text-xs ${agentDetails.lengthSatisfied ? 'text-emerald-600' : 'text-amber-600'}`}>{agentDetails.continued ? `최근 +${agentDetails.actualLength.toLocaleString()} / ${agentDetails.targetLength?.toLocaleString()}자 · 누적 ${agentDetails.cumulativeLength?.toLocaleString()}자` : `${agentDetails.actualLength.toLocaleString()} / ${agentDetails.targetLength?.toLocaleString()}자`}</span>}<Button disabled={running || !outputComplete} onClick={() => void runAgent(true)} size="sm" type="button" variant="outline">이 결과에서 계속 작성</Button><Button disabled={running || !outputComplete} onClick={() => onApply(output)} size="sm" type="button">현재 커서에 삽입</Button></div>
           </div>
           <pre className="max-h-80 overflow-auto whitespace-pre-wrap font-sans text-sm leading-7">{output}</pre>
           <WebResearchSources research={research} />

@@ -139,6 +139,25 @@ describe('WritingIntelligencePanel', () => {
     );
   });
 
+  it('continues an uninserted generated draft and applies the combined result once', async () => {
+    const first = 'event: done\ndata: {"text":"첫 생성 문단.","actualLength":7,"targetLength":600,"lengthSatisfied":false}\n\n';
+    const second = 'event: done\ndata: {"text":"이어진 두 번째 문단.","actualLength":11,"targetLength":600,"lengthSatisfied":false}\n\n';
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(first, { headers: { 'Content-Type': 'text/event-stream' } }))
+      .mockResolvedValueOnce(new Response(second, { headers: { 'Content-Type': 'text/event-stream' } }));
+    vi.stubGlobal('fetch', fetchMock); const onApply = vi.fn();
+    render(<WritingIntelligencePanel chapterId="11111111-1111-4111-8111-111111111111" getCurrentContentJson={() => '[]'} onApply={onApply} onReplace={vi.fn()} projectId="project-1" />);
+    fireEvent.change(screen.getByLabelText('작성 요청'), { target: { value: '장면을 이어 써줘' } });
+    fireEvent.change(screen.getByLabelText('목표 글자 수'), { target: { value: '600' } });
+    fireEvent.click(screen.getByRole('button', { name: '에이전트 실행' }));
+    await screen.findByText('첫 생성 문단.');
+    fireEvent.click(screen.getByRole('button', { name: '이 결과에서 계속 작성' }));
+    expect(await screen.findByText(/첫 생성 문단\.\s+이어진 두 번째 문단\./)).toBeInTheDocument();
+    const secondBody = JSON.parse(String(fetchMock.mock.calls[1][1].body));
+    expect(secondBody).toMatchObject({ continuationText: '첫 생성 문단.', targetLength: 600 });
+    fireEvent.click(screen.getByRole('button', { name: '현재 커서에 삽입' }));
+    expect(onApply).toHaveBeenCalledWith('첫 생성 문단.\n\n이어진 두 번째 문단.');
+  });
+
   it('applies a verified critic suggestion only after approval', async () => {
     const onReplace = vi.fn(() => true);
     vi.stubGlobal(
