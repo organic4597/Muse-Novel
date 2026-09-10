@@ -163,7 +163,8 @@ describe('WritingIntelligencePanel', () => {
   });
 
   it('continues an uninserted generated draft and applies the combined result once', async () => {
-    const first = 'event: done\ndata: {"text":"첫 생성 문단.","actualLength":7,"targetLength":600,"lengthSatisfied":false}\n\n';
+    const approvedPlan = { viewpoint: '', location: '', goal: '계속 전진한다', obstacle: '', participants: '', dialoguePurpose: '', beats: '다음 단서를 찾는다', outcome: '', turningPoint: '', reveal: '', conceal: '', preserve: '', openQuestions: '' };
+    const first = `event: done\ndata: ${JSON.stringify({ text: '첫 생성 문단.', actualLength: 7, targetLength: 600, lengthSatisfied: false, planData: approvedPlan })}\n\n`;
     const second = 'event: done\ndata: {"text":"이어진 두 번째 문단.","actualLength":11,"targetLength":600,"lengthSatisfied":false}\n\n';
     const fetchMock = vi.fn().mockResolvedValueOnce(new Response(first, { headers: { 'Content-Type': 'text/event-stream' } }))
       .mockResolvedValueOnce(new Response(second, { headers: { 'Content-Type': 'text/event-stream' } }));
@@ -176,7 +177,7 @@ describe('WritingIntelligencePanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '이 결과에서 계속 작성' }));
     expect(await screen.findByText(/첫 생성 문단\.\s+이어진 두 번째 문단\./)).toBeInTheDocument();
     const secondBody = JSON.parse(String(fetchMock.mock.calls[1][1].body));
-    expect(secondBody).toMatchObject({ continuationText: '첫 생성 문단.', targetLength: 600 });
+    expect(secondBody).toMatchObject({ continuationText: '첫 생성 문단.', targetLength: 600, approvedPlan });
     fireEvent.click(screen.getByRole('button', { name: '현재 커서에 삽입' }));
     expect(onApply).toHaveBeenCalledWith('첫 생성 문단.\n\n이어진 두 번째 문단.');
   });

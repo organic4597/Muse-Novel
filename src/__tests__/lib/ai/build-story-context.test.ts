@@ -95,6 +95,10 @@ vi.mock('@/lib/db/queries/character-affiliations', () => ({
   getAffiliationSummariesAt: vi.fn(() => new Map()),
 }));
 
+vi.mock('@/lib/db/queries/plot-board', () => ({
+  listPlotBoard: vi.fn(() => Promise.resolve({ nodes: [], edges: [] })),
+}));
+
 import type { DB } from '@/lib/db';
 import { getChapterReferences } from '@/lib/db/queries/chapter-references';
 import {
@@ -144,8 +148,8 @@ describe('buildStoryContext', () => {
     vi.mocked(getChapterSummary).mockResolvedValue(mockChapter());
     vi.mocked(listChapterSummaries).mockResolvedValue([mockChapter(), mockChapter({ id: 'chap-2', title: '승진', order: 1 })]);
     vi.mocked(listStoryStateEntries).mockResolvedValue([
-      { id: 'past', projectId: 'proj-1', chapterId: 'chap-1', chapterTitle: '여행의 시작', characterId: null, characterName: null, category: '목표', label: '여행', value: '시작', previousValue: null, details: null, isActive: 1, isPinned: 0, createdAt: null, updatedAt: null },
-      { id: 'future', projectId: 'proj-1', chapterId: 'chap-2', chapterTitle: '승진', characterId: null, characterName: null, category: '기타', label: '직위', value: '장로', previousValue: null, details: null, isActive: 1, isPinned: 0, createdAt: null, updatedAt: null },
+      { id: 'past', projectId: 'proj-1', chapterId: 'chap-1', chapterTitle: '여행의 시작', chapterOrder: 0, endChapterId: null, endChapterTitle: null, endChapterOrder: null, characterId: null, characterName: null, category: '목표', label: '여행', value: '시작', previousValue: null, details: null, isActive: 1, isPinned: 0, createdAt: null, updatedAt: null },
+      { id: 'future', projectId: 'proj-1', chapterId: 'chap-2', chapterTitle: '승진', chapterOrder: 1, endChapterId: null, endChapterTitle: null, endChapterOrder: null, characterId: null, characterName: null, category: '기타', label: '직위', value: '장로', previousValue: null, details: null, isActive: 1, isPinned: 0, createdAt: null, updatedAt: null },
     ] as never);
     const result = await buildStoryContext(fakeDb, 'proj-1', 'chap-1');
     expect(result).toContain('여행: 시작');
@@ -352,8 +356,6 @@ describe('buildStoryContext', () => {
     expect(result.length).toBeLessThanOrEqual(260);
     expect(result).toContain('## 지속 상태 메모');
     expect(result).toContain('청룡검');
-    expect(listStoryStateEntries).toHaveBeenCalledWith(fakeDb, 'proj-1', {
-      activeOnly: true,
-    });
+    expect(listStoryStateEntries).toHaveBeenCalledWith(fakeDb, 'proj-1');
   });
 });

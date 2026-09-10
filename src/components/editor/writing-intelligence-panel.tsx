@@ -212,6 +212,11 @@ export function WritingIntelligencePanel({
     []
   );
 
+  useEffect(() => {
+    setSceneContract(null);
+    setAgentDetails(null);
+  }, [chapterId, sceneId]);
+
   const flushOutput = () => {
     outputTimerRef.current = null;
     if (!pendingOutputRef.current) return;
@@ -396,6 +401,8 @@ export function WritingIntelligencePanel({
 
     const priorOutput = continueFromOutput ? output.trim() : '';
     if (continueFromOutput && (!priorOutput || !outputComplete)) return;
+    const effectiveApprovedPlan = approvedPlan ??
+      (continueFromOutput ? agentDetails?.planData : undefined);
     const controller = new AbortController();
     abortRef.current = controller;
     setRunning(true);
@@ -404,7 +411,7 @@ export function WritingIntelligencePanel({
     setOutputComplete(false);
     pendingOutputRef.current = '';
     setAgentDetails(null);
-    if (!approvedPlan) setSceneContract(null);
+    if (!effectiveApprovedPlan) setSceneContract(null);
     setStage('memory');
     setStatus('작품 기억을 준비하는 중...');
     let receivedDone = false;
@@ -426,7 +433,7 @@ export function WritingIntelligencePanel({
           chapterId,
           currentContentJson,
           continuationText: priorOutput,
-          approvedPlan,
+          approvedPlan: effectiveApprovedPlan,
           cursorAfter: cursorContext.after,
           cursorBefore: cursorContext.before,
           instruction,
@@ -721,7 +728,7 @@ export function WritingIntelligencePanel({
             className="mt-2 min-h-24 w-full resize-y rounded-xl border border-border bg-card px-3 py-2 text-sm leading-6 outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
             disabled={running}
             id="writing-agent-instruction"
-            onChange={(event) => setInstruction(event.target.value)}
+            onChange={(event) => { setInstruction(event.target.value); setSceneContract(null); }}
             placeholder="예: 주인공이 장로의 거짓말을 눈치채지만 모른 척하는 대화 장면을 이어 써줘."
             value={instruction}
           />
@@ -736,6 +743,7 @@ export function WritingIntelligencePanel({
             onChange={(event) => {
               targetLengthRef.current = event.target.value;
               setTargetLength(event.target.value);
+              setSceneContract(null);
             }}
             type="number"
             value={targetLength}
