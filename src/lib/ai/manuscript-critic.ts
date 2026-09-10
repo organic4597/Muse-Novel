@@ -16,8 +16,13 @@ import { resolveProjectProvider } from '@/lib/ai/resolve-project-provider';
 import type { DB } from '@/lib/db';
 import { getActiveWritingStyleProfile } from '@/lib/db/queries/writing-style-profiles';
 import { getWritingWorkbenchContext } from '@/lib/db/queries/writing-workbench';
+import { getProject } from '@/lib/db/queries/projects';
+import { runWritingKnowledgeAgent } from '@/lib/knowledge/writing-knowledge';
 
-const REVIEW_CHAR_LIMIT = 20_000;
+function getReviewCharLimit(contextSize?: number) {
+  const tokens = contextSize ?? 32_768;
+  return Math.max(20_000, Math.min(40_000, Math.floor((tokens - 8000) * 1.2)));
+}
 
 export const MANUSCRIPT_CRITIC_INTENSITIES = ['balanced', 'bold'] as const;
 export type ManuscriptCriticIntensity =
@@ -80,17 +85,17 @@ const manuscriptCriticGenerationSchema = z.object({
       issue: z.string().max(300),
       recommendation: z.string().max(400),
     })
-  ).max(3),
+  ).max(4),
   suggestions: z.array(
     z.object({
       category: z.string().max(80),
       confidence: z.number(),
-      original: z.string().max(1000),
+      original: z.string().max(2000),
       reason: z.string().max(300),
-      replacement: z.string().max(1000),
+      replacement: z.string().max(3000),
       scope: z.string().max(20),
     })
-  ).max(4),
+  ).max(8),
   summary: z.string().max(500),
 });
 
@@ -118,7 +123,7 @@ export type ManuscriptCriticReport = z.infer<
 > & {
   reviewedChars: number;
   truncated: boolean;
-  qualityReview?: { status: 'checked' | 'unavailable'; evaluated: number; withheld: number };
+  qualityReview?: { status: 'checked' | 'partial' | 'unavailable'; evaluated: number; withheld: number };
 };
 
 function normalizeEnumValue<T extends string>(
@@ -320,14 +325,17 @@ export function filterManuscriptCriticContext(context: string) {
     '## 집필 기준',
     '## 현재 챕터',
     '## 이전 챕터 요약',
+    '## 등장인물',
+    '## 세계관',
     '## 이번 화 등장 항목 (작가 지정)',
     '## 지속 상태 메모 (현재 회차에 유효)',
+    '## 확정 복선·사건 인과',
     '## 현재 작가 노트',
   ]);
-  const safeProjectLines = ['제목:', '장르:'];
-  const safeBlueprintLines = ['서술 시점:', '서술 시제:', '문체 규칙:'];
+  const safeProjectLines = ['제목:', '장르:', '줄거리:', '초기 아이디어:'];
+  const safeBlueprintLines = ['핵심 재미/감정 약속:', '톤:', '서술 시점:', '서술 시제:', '문체 규칙:', '소재/수위 경계:'];
 
-  return context
+  const filtered = context
     .split(/\n(?=## )/u)
     .flatMap((section) => {
       const lines = section.split('\n');
@@ -349,9 +357,16 @@ export function filterManuscriptCriticContext(context: string) {
       }
       return [section];
     })
-    .filter((section) => section.split('\n').length > 1)
-    .join('\n\n')
-    .slice(0, 3200);
+    .filter((section) => section.split('\n').length > 1);
+  const priorityHeadings = ['## 현재 작가 노트', '## 현재 챕터', '## 집필 기준', '## 지속 상태 메모 (현재 회차에 유효)',
+    '## 이번 화 등장 항목 (작가 지정)', '## 확정 복선·사건 인과'];
+  const priority = priorityHeadings.flatMap(heading => filtered.filter(section => section.startsWith(heading)));
+  const base = filtered.filter(section => !priority.some(selected => selected === section));
+  const priorityContext = priority.join('\n\n');
+  const maxChars = 8000;
+  if (priorityContext.length >= maxChars) return priorityContext.slice(0, maxChars);
+  const baseBudget = Math.max(0, maxChars - priorityContext.length - 2);
+  return [base.join('\n\n').slice(0, baseBudget), priorityContext].filter(Boolean).join('\n\n');
 }
 
 export function buildManuscriptCriticTonePrompt(report: {
@@ -414,6 +429,7 @@ export function buildManuscriptCriticPrompt({
     intensity === 'bold'
       ? [
           '적극적 편집: 문제를 해결하는 데 필요하면 문장 병합·분할, 문단의 압축·재배열까지 제안할 수 있다. 크게 고치는 것은 권한이지 목표가 아니다.',
+          '적극적 편집에서는 한 문장만 고쳐 앞뒤가 어색해지는 경우 서로 붙어 있는 문장이나 최대 두 문단을 하나의 장면 단위로 다시 쓸 수 있다.',
         ]
       : [
           '비평 강도는 균형 편집이다. 원래 문체와 문장 구조를 최대한 보존하면서 명확한 개선 효과가 있는 문장 단위 수정을 제안한다.',
@@ -429,12 +445,16 @@ export function buildManuscriptCriticPrompt({
     'original은 manuscript에 연속해서 정확히 존재하는 원문을 글자·공백·문장부호까지 그대로 복사한다(최대 1000자). 앞뒤 인용 부호·문장부호를 확인하고 교체한 원고를 통째로 읽어 자연스럽게 연결되는 범위를 고른다.',
     'replacement는 앞뒤 문맥에 바로 교체할 수 있어야 한다. 불필요한 문장은 빈 문자열로 삭제해도 된다. 설정·사건 결과·고유명사는 새로 만들지 않는다.',
     'replacement에는 실제 소설 본문만 쓴다. 인용 부호 안의 대사 일부를 골랐다면 대사 안에 행동·심리 서술을 집어넣지 않는다. 대사의 화자, 인물의 행동, 사건 순서와 정보 공개 시점은 유지한다.',
-    'replacement는 원문의 핵심 의미를 유지하며 대체로 원문과 비슷하거나 더 짧게 쓴다. 원문에 없던 행동과 감각을 반복해서 덧붙여 분량을 늘리지 않는다.',
+    intensity === 'bold'
+      ? 'replacement는 원문의 사건과 사실을 보존하면서 필요한 반응·대사의 속뜻·전환을 보충할 수 있다. 분위기를 살린다는 이유로 근거 없는 감각이나 행동을 덧붙이지 않는다.'
+      : 'replacement는 원문의 핵심 의미를 유지하며 대체로 원문과 비슷하거나 더 짧게 쓴다. 원문에 없던 행동과 감각을 반복해서 덧붙여 분량을 늘리지 않는다.',
     '뒤 문단의 정보·행동·감각을 가져와 중복하지 않는다. 여러 제안이 같은 감각이나 동기를 반복해서 추가해서도 안 된다. 같은 낱말이 있다는 이유만으로 다른 장소의 사건을 섞지 않는다.',
-    'scope는 phrase, sentence, paragraph 중 하나다. 문제를 해결하는 데 필요한 최소 범위를 선택한다.',
+    intensity === 'bold'
+      ? 'scope는 phrase, sentence, paragraph 중 하나다. 문장 하나만 바꾸면 주변 호흡이나 감정 인과가 끊기는 경우 연결된 문단 전체를 선택한다.'
+      : 'scope는 phrase, sentence, paragraph 중 하나다. 문제를 해결하는 데 필요한 최소 범위를 선택한다.',
     'category와 scope에는 허용된 값 중 정확히 하나만 쓴다. |, 쉼표, 슬래시로 여러 값을 합치지 않는다.',
     '직접 교체하기 어려운 장면 전체의 문제는 sceneNotes에 문제와 구체적인 수정 방향으로 남긴다.',
-    '원문+앞뒤 문장과 수정문+앞뒤 문장을 비교해 수정이 분명히 나을 때만 제안한다. 더 좋은 표현이 없으면 suggestions를 빈 배열로 반환한다. 개수 채우기나 단순 동의어 치환은 하지 않는다. 최대 3건의 서로 겹치지 않는 교체와 2건의 장면 메모를 반환한다.',
+    `원문+앞뒤 문장과 수정문+앞뒤 문장을 비교해 수정이 분명히 나을 때만 제안한다. 더 좋은 표현이 없으면 suggestions를 빈 배열로 반환한다. 개수 채우기나 단순 동의어 치환은 하지 않는다. ${intensity === 'bold' ? '최대 8건의 서로 겹치지 않는 교체와 4건의 장면 메모' : '최대 4건의 서로 겹치지 않는 교체와 3건의 장면 메모'}를 반환한다.`,
     'summary·issue·recommendation·reason은 각각 1~2문장으로 간결하게 쓴다. 같은 문제를 다른 항목에서 반복하지 않는다.',
     '모든 설명은 작가에게 조언하는 자연스러운 한국어 존댓말 완결문장으로 쓴다. 키워드를 쉼표로 나열하거나 “부재”, “결여”, “강화해야 함” 같은 메모식 명사문으로 끝내지 않는다.',
     'summary는 실제 원고의 흐름과 장점을 평가한다. 아직 적용하지 않은 수정 효과를 이미 좋아진 것처럼 설명하지 않는다. issue는 해당 원고 구절을 짚고, recommendation은 구체적인 개선 방향을 말한다. 취향이나 추측은 단정하지 않는다.',
@@ -443,7 +463,7 @@ export function buildManuscriptCriticPrompt({
     `교체 category 허용값: ${MANUSCRIPT_CRITIC_CATEGORIES.join(', ')}. 장면 메모 category 허용값: ${MANUSCRIPT_CRITIC_SCENE_CATEGORIES.join(', ')}.`,
     '{"summary":"원고 전체 흐름 평가","sceneNotes":[],"suggestions":[{"category":"rhythm","scope":"sentence","confidence":0.0,"original":"정확한 원문","replacement":"앞뒤에 연결되는 수정문","reason":"실제 구문 변화와 개선 근거"}]}',
     formatPromptData('story_context', storyContext || '설정 없음'),
-    styleGuide ? formatPromptData('style_guide', styleGuide.slice(0, 1800)) : '',
+    styleGuide ? formatPromptData('style_guide', styleGuide.slice(0, 3500)) : '',
     formatPromptData('manuscript', prose),
   ]
     .filter(Boolean)
@@ -474,22 +494,32 @@ export async function analyzeManuscript({
   const providerConfig = await resolveProjectProvider(db, projectId);
   if (!providerConfig) throw new Error('AI 제공자 설정이 없습니다.');
 
-  const truncated = currentProse.length > REVIEW_CHAR_LIMIT;
+  const reviewCharLimit = getReviewCharLimit(providerConfig.contextSize);
+  const truncated = currentProse.length > reviewCharLimit;
   const prose = truncated
-    ? currentProse.slice(-REVIEW_CHAR_LIMIT)
+    ? currentProse.slice(-reviewCharLimit)
     : currentProse;
-  const [rawStoryContext, styleProfile] = await Promise.all([
+  const [rawStoryContext, styleProfile, project] = await Promise.all([
     buildStoryContext(db, projectId, chapterId, {
       focusText: prose.slice(-2500),
-      maxChars: 6000,
+      maxChars: 11_000,
     }),
     Promise.resolve(getActiveWritingStyleProfile(db, projectId)).catch(
       () => undefined
     ),
+    getProject(db, projectId),
   ]);
   const workbench = getWritingWorkbenchContext(db, projectId, { chapterId, sceneId, focus: prose.slice(-2000) });
-  const storyContext = [filterManuscriptCriticContext(rawStoryContext), workbench.scene,
-    workbench.examples ? formatPromptData('editorial_examples', workbench.examples) : ''].filter(Boolean).join('\n\n');
+  const filteredStoryContext = filterManuscriptCriticContext(rawStoryContext);
+  const writingKnowledge = runWritingKnowledgeAgent({
+    genre: project?.genre ?? '', instruction: '현재 작품의 분위기와 장면 목적에 맞춘 문단 리라이트, 감정 인과, 대사 속뜻, 정보 공개, 장면 전환과 리듬',
+    maxChars: 2200, storyContext: filteredStoryContext,
+  }).context;
+  const storyContext = [filteredStoryContext, workbench.scene,
+    workbench.examples ? formatPromptData('author_approved_and_rejected_edit_examples', workbench.examples) : '',
+    writingKnowledge ? formatPromptData('writing_reference_not_story_canon', writingKnowledge) : ''].filter(Boolean).join('\n\n');
+  const styleGuide = [styleProfile?.description, project?.writingStyleDescription,
+    project?.writingStyleSample ? `작가 문체 예문:\n${project.writingStyleSample}` : ''].filter(Boolean).join('\n\n');
   progress?.('회차 목적과 원고 흐름을 읽고 수정 후보를 생성하고 있습니다.');
   const model = createProvider(providerConfig);
   const result = await runAIRequest(
@@ -506,7 +536,7 @@ export async function analyzeManuscript({
         maxRetries: 0,
         system: '주어진 원고와 회차 지침에 근거한 한국어 소설 편집자입니다. 수정할 이유가 구체적이고 수정문이 문맥상 더 나을 때만 제안합니다.',
         frequencyPenalty: 0.25,
-        maxOutputTokens: 1800,
+        maxOutputTokens: 4200,
         model,
         output: Output.object({
           description:
@@ -518,7 +548,7 @@ export async function analyzeManuscript({
           intensity,
           prose,
           storyContext,
-          styleGuide: styleProfile?.description,
+          styleGuide,
         }),
         providerOptions: getProviderOptions(providerConfig, {
           disableReasoning: providerConfig.provider === 'qwen-local',
@@ -546,52 +576,40 @@ export async function analyzeManuscript({
   if (!pairs.length) {
     return { ...report, qualityReview: { status: 'checked' as const, evaluated: 0, withheld: 0 } };
   }
-  try {
-    progress?.('원문과 수정문을 앞뒤 문맥에 연결해 비교하고 있습니다.');
-    const comparisonResult = await runAIRequest(
-      providerConfig,
-      {
-        priority: 'standard',
-        projectId,
-        requestId: requestId ? `${requestId}:manuscript-critic-comparison` : undefined,
-        signal,
-      },
-      (abortSignal) =>
-        generateText({
-          abortSignal,
-          maxRetries: 0,
-          frequencyPenalty: 0.18,
-          maxOutputTokens: 1200,
-          model,
-          output: Output.object({
-            description: '앞뒤 문맥에 삽입한 두 원고 버전의 비교 판단',
-            name: 'manuscript_critic_comparison',
-            schema: criticComparisonSchema,
-          }),
-          system: '독립적인 원고 비교 검토자입니다. 문체의 취향보다 사건·화자·주변 문맥 보존과 읽기 흐름을 우선합니다. 동등하거나 불확실하면 tie를 선택합니다.',
-          prompt: buildCriticComparisonPrompt(prose, storyContext, pairs),
-          providerOptions: getProviderOptions(providerConfig, {
-            disableReasoning: providerConfig.provider === 'qwen-local',
-          }),
+  const suggestions: ManuscriptCriticSuggestion[] = [];
+  let failedComparisons = 0;
+  for (let offset = 0; offset < pairs.length; offset += 4) {
+    const batch = pairs.slice(offset, offset + 4);
+    try {
+      progress?.(`원문과 수정문을 앞뒤 문맥에 연결해 비교하고 있습니다 (${Math.floor(offset / 4) + 1}/${Math.ceil(pairs.length / 4)}).`);
+      const comparisonResult = await runAIRequest(
+        providerConfig,
+        {
+          priority: 'standard', projectId,
+          requestId: requestId ? `${requestId}:manuscript-critic-comparison:${Math.floor(offset / 4) + 1}` : undefined,
+          signal,
+        },
+        (abortSignal) => generateText({
+          abortSignal, maxRetries: 0, frequencyPenalty: 0.18, maxOutputTokens: 1400, model,
+          output: Output.object({ description: '앞뒤 문맥에 삽입한 두 원고 버전의 비교 판단', name: 'manuscript_critic_comparison', schema: criticComparisonSchema }),
+          system: '독립적인 원고 비교 검토자입니다. 작품의 분위기와 문체를 포함해 사건·화자·인물 지식·주변 문맥이 보존되는지 비교합니다. 동등하거나 불확실하면 tie를 선택합니다.',
+          prompt: buildCriticComparisonPrompt(prose, storyContext, batch),
+          providerOptions: getProviderOptions(providerConfig, { disableReasoning: providerConfig.provider === 'qwen-local' }),
           temperature: 0.1,
         })
-    );
-    const suggestions = selectComparedSuggestions(pairs, comparisonResult.output);
-    return {
-      ...report,
-      suggestions,
-      qualityReview: { status: 'checked' as const, evaluated: pairs.length, withheld: pairs.length - suggestions.length },
-    };
-  } catch (error) {
-    if (signal.aborted) throw error;
-    // SDK errors can contain the entire manuscript and provider credentials.
-    console.warn('[manuscript-critic] comparison unavailable', {
-      name: error instanceof Error ? error.name : 'UnknownError',
-    });
-    return {
-      ...report,
-      suggestions: [],
-      qualityReview: { status: 'unavailable' as const, evaluated: pairs.length, withheld: pairs.length },
-    };
+      );
+      suggestions.push(...selectComparedSuggestions(batch, comparisonResult.output));
+    } catch (error) {
+      if (signal.aborted) throw error;
+      failedComparisons += batch.length;
+      console.warn('[manuscript-critic] comparison batch unavailable', { name: error instanceof Error ? error.name : 'UnknownError' });
+    }
   }
+  const status = failedComparisons === pairs.length ? 'unavailable' as const
+    : failedComparisons > 0 ? 'partial' as const : 'checked' as const;
+  return {
+    ...report,
+    suggestions,
+    qualityReview: { status, evaluated: pairs.length, withheld: pairs.length - suggestions.length },
+  };
 }

@@ -8,12 +8,16 @@ import { getAffiliationSummariesAt } from '@/lib/db/queries/character-affiliatio
 import { listCharacters } from '@/lib/db/queries/characters';
 import { getProject } from '@/lib/db/queries/projects';
 import { listStoryStateEntries } from '@/lib/db/queries/story-state';
+import { listPlotBoard } from '@/lib/db/queries/plot-board';
 import { listWorldEntries } from '@/lib/db/queries/world-entries';
 import { splitResearchContent } from '@/lib/web-research/content';
 import {
   getInitialStoryIdea,
   getWritingBlueprint,
 } from './writing-blueprint';
+import { isStoryStateEffectiveAt } from '@/lib/story-state';
+import { formatStoryDate, getStoryCalendar } from '@/lib/story-timeline';
+import { PLOT_NODE_LABELS } from '@/lib/plot-board';
 
 const BACKSTORY_LIMIT = 300;
 const CONTENT_LIMIT = 300;
@@ -50,6 +54,7 @@ export async function buildStoryContext(
   if (!project) {
     return '';
   }
+  const storyCalendar = getStoryCalendar(project.settingsJson);
 
   const sections: string[] = [];
   const relevanceText = focusText;
@@ -99,6 +104,9 @@ export async function buildStoryContext(
       if (chapter.summary) {
         chapterLines.push(`요약: ${chapter.summary}`);
       }
+      if (chapter.storyDatePrecision !== 'none') {
+        chapterLines.push(`작품 시점: ${formatStoryDate(storyCalendar, chapter)}`);
+      }
 
       sections.push(`## 현재 챕터\n${chapterLines.join('\n')}`);
 
@@ -121,20 +129,19 @@ export async function buildStoryContext(
   }
 
   // ── 등장인물 ────────────────────────────────────────────────────────────────
-  const [characterList, worldEntryList, storyStateList, chapterReferences, timelineChapters] = await Promise.all([
+  const [characterList, worldEntryList, storyStateList, chapterReferences, timelineChapters, plotBoard] = await Promise.all([
     listCharacters(db, projectId),
     listWorldEntries(db, projectId),
-    listStoryStateEntries(db, projectId, { activeOnly: true }),
+    listStoryStateEntries(db, projectId),
     chapterId ? getChapterReferences(db, projectId, chapterId) : null,
     listChapterSummaries(db, projectId),
+    listPlotBoard(db, projectId),
   ]);
   const currentChapterOrder = chapterId ? timelineChapters.find((chapter) => chapter.id === chapterId)?.order : undefined;
   const chapterOrderById = new Map(timelineChapters.map((chapter) => [chapter.id, chapter.order]));
-  const effectiveStoryStates = currentChapterOrder === undefined ? storyStateList : storyStateList.filter((entry) => {
-    if (!entry.chapterId) return true;
-    const order = chapterOrderById.get(entry.chapterId);
-    return order !== undefined && order !== null && order <= currentChapterOrder;
-  });
+  const effectiveStoryStates = currentChapterOrder === undefined
+    ? storyStateList.filter((entry) => entry.isActive)
+    : storyStateList.filter((entry) => isStoryStateEffectiveAt(entry, currentChapterOrder));
   const affiliationsByCharacter = chapterId
     ? getAffiliationSummariesAt(db, projectId, characterList.map((character) => character.id), chapterId)
     : new Map();
@@ -216,7 +223,7 @@ export async function buildStoryContext(
         })
         .slice(0, 30)
         .map((entry) => {
-          const subject = entry.characterName ?? '작품 전체';
+          const subject = entry.characterName ?? entry.worldEntryTitle ?? '작품 전체';
           const transition = entry.previousValue
             ? `${entry.previousValue} → ${entry.value}`
             : entry.value;
@@ -226,9 +233,29 @@ export async function buildStoryContext(
           const effectiveFrom = entry.chapterTitle
             ? ` / ${entry.chapterTitle}부터`
             : '';
-          return `- [${entry.category}] ${subject} · ${entry.label}: ${transition}${effectiveFrom}${details}`;
+          const knowledge = entry.knowledgeScope === 'canon'
+            ? '실제 사실'
+            : entry.knowledgeScope === 'reader'
+              ? `독자 ${entry.certainty === 'known' ? '인지' : entry.certainty === 'suspected' ? '의심' : '믿음'}`
+              : `${entry.knowerCharacterName ?? '지정 인물'} ${entry.certainty === 'known' ? '인지' : entry.certainty === 'suspected' ? '의심' : '믿음'}`;
+          return `- [${entry.category} / ${knowledge}] ${subject} · ${entry.label}: ${transition}${effectiveFrom}${details}`;
         })
         .join('\n')}`
+    : '';
+  const plotLines = plotBoard.nodes
+    .filter((node) => node.status === 'confirmed' && (!node.chapterId || currentChapterOrder === undefined || (node.chapterOrder ?? Number.MAX_SAFE_INTEGER) <= currentChapterOrder))
+    .sort((left, right) => {
+      const leftRelevant = relevanceText.includes(left.title) || Boolean(left.lane && relevanceText.includes(left.lane));
+      const rightRelevant = relevanceText.includes(right.title) || Boolean(right.lane && relevanceText.includes(right.lane));
+      return Number(rightRelevant) - Number(leftRelevant) || (right.chapterOrder ?? -1) - (left.chapterOrder ?? -1);
+    })
+    .slice(0, 16)
+    .map((node) => {
+      const location = [node.chapterTitle, node.storyDatePrecision !== 'none' ? formatStoryDate(storyCalendar, node) : '', node.lane ? `흐름: ${node.lane}` : ''].filter(Boolean).join(' / ');
+      return `- [${PLOT_NODE_LABELS[node.kind]}] ${node.title}${location ? ` / ${location}` : ''}${node.description ? `: ${truncate(node.description, 220)}` : ''}`;
+    });
+  const plotBoardSection = plotLines.length > 0
+    ? `## 확정 복선·사건 인과\n${plotLines.join('\n')}`
     : '';
 
   // ── 최종 조합 및 truncation ─────────────────────────────────────────────────
@@ -236,7 +263,7 @@ export async function buildStoryContext(
   const authorNoteSection = blueprint.authorNote
     ? `## 현재 작가 노트\n${blueprint.authorNote}`
     : '';
-  const canonSection = [referenceSection, stateSection].filter(Boolean).join('\n\n');
+  const canonSection = [referenceSection, stateSection, plotBoardSection].filter(Boolean).join('\n\n');
   const priorityContext = [canonSection, authorNoteSection]
     .filter(Boolean)
     .join('\n\n');

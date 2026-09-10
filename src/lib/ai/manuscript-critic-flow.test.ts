@@ -6,6 +6,8 @@ vi.mock('./provider-factory', () => ({ createProvider: vi.fn(() => ({})) }));
 vi.mock('./request-scheduler', () => ({ runAIRequest: vi.fn((_config, options, run) => run(options.signal)) }));
 vi.mock('@/lib/db/queries/writing-style-profiles', () => ({ getActiveWritingStyleProfile: vi.fn() }));
 vi.mock('@/lib/db/queries/writing-workbench', () => ({ getWritingWorkbenchContext: vi.fn(() => ({ scene: '', examples: '' })) }));
+vi.mock('@/lib/db/queries/projects', () => ({ getProject: vi.fn(async () => ({ genre: '무협', writingStyleDescription: '건조한 문체', writingStyleSample: '바람이 불었다.' })) }));
+vi.mock('@/lib/knowledge/writing-knowledge', () => ({ runWritingKnowledgeAgent: vi.fn(() => ({ context: '장면 목적과 감정 인과를 함께 본다.' })) }));
 import { generateText } from 'ai';
 import { analyzeManuscript } from './manuscript-critic';
 
@@ -36,5 +38,21 @@ describe('critic end-to-end quality gate', () => {
     expect(report.qualityReview?.withheld).toBe(1);
     expect(vi.mocked(generateText).mock.calls[1][0].prompt).toContain('그들의 대화를 엿들었다');
     expect(generateText).toHaveBeenCalledTimes(2);
+  });
+  it('compares every generated edit in bounded batches instead of dropping edits after the fourth', async () => {
+    const sentences = Array.from({ length: 5 }, (_, index) => `원문 문장 ${index + 1}은 길게 이어졌다.`);
+    const reasons = ['중복 주어를 합쳐 행동을 빠르게 보이게 합니다.', '모호한 화자를 밝혀 대화의 주체를 분명히 합니다.',
+      '정보 공개 순서를 조정해 반전의 효과를 보존합니다.', '감정 반응의 원인을 앞선 행동에 연결합니다.', '장면 전환 위치를 나눠 시간의 경과를 명확히 합니다.'];
+    const suggestions = sentences.map((original, index) => ({ category: 'rhythm', scope: 'sentence', confidence: 0.9,
+      original, replacement: `다듬은 문장 ${index + 1}.`, reason: reasons[index] }));
+    const decision = (index: number) => ({ id: `edit-${index + 1}`, preferred: index % 2 === 0 ? 'B' : 'A', preservesFacts: true,
+      preservesSpeaker: true, fitsSurroundings: true, avoidsNewRepetition: true, reason: '앞뒤 문맥과 자연스럽게 연결됩니다.' });
+    vi.mocked(generateText).mockResolvedValueOnce({ output: { summary: '다섯 구간을 검토합니다.', sceneNotes: [], suggestions } } as never)
+      .mockResolvedValueOnce({ output: { decisions: [0, 1, 2, 3].map(decision) } } as never)
+      .mockResolvedValueOnce({ output: { decisions: [decision(4)] } } as never);
+    const report = await analyzeManuscript({ ...options, currentProse: sentences.join(' ') });
+    expect(report.suggestions).toHaveLength(5);
+    expect(report.qualityReview).toMatchObject({ status: 'checked', evaluated: 5, withheld: 0 });
+    expect(generateText).toHaveBeenCalledTimes(3);
   });
 });

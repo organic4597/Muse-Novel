@@ -571,8 +571,9 @@ export function WritingIntelligencePanel({
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               {criticReport.reviewedChars.toLocaleString()}자 검토
-              {criticReport.truncated && ' · 긴 원고이므로 최근 20,000자 범위'}
+              {criticReport.truncated && ` · 긴 원고이므로 최근 ${criticReport.reviewedChars.toLocaleString()}자 범위`}
             </p>
+            {criticReport.qualityReview?.status === 'partial' && <p className="mt-1 text-xs text-amber-600">일부 수정안의 문맥 비교가 실패해 검증을 통과한 제안만 표시합니다.</p>}
           </div>
           {criticReport.sceneNotes.length > 0 && (
             <div className="grid gap-2 md:grid-cols-2">

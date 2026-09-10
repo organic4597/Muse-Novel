@@ -29,7 +29,7 @@ export type CriticPair = {
 };
 
 export function buildCriticPairs(prose: string, suggestions: ManuscriptCriticSuggestion[]): CriticPair[] {
-  return suggestions.slice(0, 4).flatMap((suggestion, index) => {
+  return suggestions.flatMap((suggestion, index) => {
     const start = prose.indexOf(suggestion.original);
     if (start < 0 || prose.indexOf(suggestion.original, start + 1) >= 0) return [];
     const candidateVersion = index % 2 === 0 ? 'B' : 'A';
@@ -49,7 +49,8 @@ export function buildCriticComparisonPrompt(prose: string, storyContext: string,
   return [
     '역할: 소설 편집안 비교 검토자. 아래 각 구간의 A와 B를 before와 after 사이에 각각 붙여 읽고 더 자연스러운 쪽을 선택한다.',
     '긴 글, 화려한 표현, 묘사 추가 자체를 개선으로 취급하지 않는다. 뚜렷한 이득이 없거나 판단이 어려우면 preferred="tie"로 답한다.',
-    'source_manuscript가 사건과 화자의 기준이다. 인용 부호 밖이나 안으로 서술을 잘못 넣거나, 남의 대사를 시점 인물의 말로 바꾸거나, 행동·동기·물성·위치·시간을 새로 만들거나 바꾼 쪽은 선택하지 않는다.',
+    'source_manuscript와 chapter_constraints가 사건, 화자, 분위기와 인물 지식의 기준이다. 인용 부호 밖이나 안으로 서술을 잘못 넣거나, 남의 대사를 시점 인물의 말로 바꾸거나, 근거 없이 행동·동기·물성·위치·시간을 새로 만들거나 바꾼 쪽은 선택하지 않는다.',
+    '원고와 설정이 이미 뒷받침하는 반응, 대사의 속뜻, 장면 전환을 보충해 감정 인과와 분위기를 선명하게 만든 것은 허용한다. 원문보다 길거나 크게 바뀌었다는 이유만으로 탈락시키지 않는다.',
     '뒤 문단에서 알려지는 정보를 앞당기거나 옮긴 뒤 원래 위치에 그대로 남겨 반복하는지도 확인한다. 제안들을 함께 적용했을 때 같은 묘사가 여러 번 추가되는 경우 서로 중복되는 제안을 모두 탈락시킨다.',
     '자연스러운 리듬은 행동·관찰·정보가 순서대로 전개되는 것일 수도 있다. 모든 감각과 동기를 한 문단에 압축해야 한다고 가정하지 않는다.',
     'preferred에는 A, B, tie 중 하나만 쓴다. preservesFacts, preservesSpeaker, fitsSurroundings, avoidsNewRepetition은 선택한 쪽을 원고와 비교한 결과다. 하나라도 위반하면 false다.',

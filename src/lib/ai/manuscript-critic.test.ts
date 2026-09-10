@@ -93,7 +93,16 @@ describe('manuscript critic', () => {
     expect(prompt).toContain('현재 회차 개요·서술 시점');
     expect(prompt).toContain('자연스러운 한국어 존댓말 완결문장');
     expect(prompt).toContain('replacement에는 실제 소설 본문만 쓴다');
+    expect(prompt).toContain('최대 8건');
+    expect(prompt).toContain('최대 두 문단');
     expect(prompt).toContain('<manuscript>');
+  });
+
+  it('preserves author notes and current chapter constraints when reference sections are long', () => {
+    const context = filterManuscriptCriticContext(`## 소설 정보\n제목: 장편\n장르: 무협\n\n## 세계관\n${'- 매우 긴 설정 설명\n'.repeat(1000)}\n## 현재 챕터\n개요: 잠입에 실패해 퇴로를 찾는다.\n\n## 현재 작가 노트\n이번 장면에서는 주인공이 범인의 정체를 알아채면 안 된다.`);
+    expect(context).toContain('잠입에 실패');
+    expect(context).toContain('범인의 정체를 알아채면 안 된다');
+    expect(context.length).toBeLessThanOrEqual(8000);
   });
 
   it('allows broader but still exact suggestions in bold mode', () => {
@@ -141,7 +150,7 @@ describe('manuscript critic', () => {
     expect(suggestions).toHaveLength(1);
   });
 
-  it('keeps local chapter constraints but removes global plot pressure', () => {
+  it('keeps the story atmosphere, relevant entities and local chapter constraints together', () => {
     const context = filterManuscriptCriticContext(`## 소설 정보
 제목: 흑묘연화록
 장르: 무협
@@ -167,9 +176,10 @@ describe('manuscript critic', () => {
     expect(context).toContain('개요: 무림인 시점');
     expect(context).toContain('긴박한 장면에서는 코미디를 넣지 않음');
     expect(context).toContain('토끼는 아직 등장하지 않는다');
-    expect(context).not.toContain('매 화 코미디');
-    expect(context).not.toContain('## 등장인물');
-    expect(context).not.toContain('줄거리:');
+    expect(context).toContain('매 화 코미디');
+    expect(context).toContain('톤: 유머');
+    expect(context).toContain('## 등장인물');
+    expect(context).toContain('줄거리:');
   });
 
   it('polishes commentary without changing approved replacement data', () => {
