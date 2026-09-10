@@ -39,6 +39,8 @@ async function createCharacterHandler(
     personality: body.personality ?? undefined,
     backstory: body.backstory ?? undefined,
     arcDescription: body.arcDescription ?? undefined,
+    voiceGuide: body.voiceGuide ?? undefined,
+    voiceExamplesJson: body.voiceExamplesJson ?? undefined,
     itemsJson: body.itemsJson ?? undefined,
   });
 

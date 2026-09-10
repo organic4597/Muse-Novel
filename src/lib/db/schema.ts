@@ -134,6 +134,8 @@ export const characters = sqliteTable(
     personality: text('personality'),
     backstory: text('backstory'),
     arcDescription: text('arc_description'),
+    voiceGuide: text('voice_guide'),
+    voiceExamplesJson: text('voice_examples_json'),
     itemsJson: text('items_json'),
     imagePath: text('image_path'),
     createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(

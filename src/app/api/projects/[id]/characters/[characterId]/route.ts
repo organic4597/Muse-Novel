@@ -50,6 +50,8 @@ export async function PUT(
     personality: body.personality,
     backstory: body.backstory,
     arcDescription: body.arcDescription,
+    voiceGuide: body.voiceGuide,
+    voiceExamplesJson: body.voiceExamplesJson,
     itemsJson: body.itemsJson,
   });
 

@@ -165,6 +165,14 @@ export async function buildStoryContext(
       if (c.backstory) {
         details.push(truncate(c.backstory, BACKSTORY_LIMIT));
       }
+      if (c.voiceGuide) details.push(`말투·목소리: ${truncate(c.voiceGuide, 700)}`);
+      if (c.voiceExamplesJson) {
+        try {
+          const examples = JSON.parse(c.voiceExamplesJson) as Array<{ quote?: unknown }>;
+          const quotes = examples.flatMap((example) => typeof example.quote === 'string' && example.quote.trim() ? [`“${truncate(example.quote.trim(), 220)}”`] : []).slice(0, 3);
+          if (quotes.length) details.push(`말투 근거 예문: ${quotes.join(' / ')}`);
+        } catch { /* Ignore malformed legacy data in AI context. */ }
+      }
       const affiliations = affiliationsByCharacter.get(c.id) ?? [];
       if (affiliations.length) details.push(`소속: ${affiliations.map((affiliation) => `${affiliation.organizationTitle}${affiliation.position ? ` · ${affiliation.position}` : ''}`).join(', ')}`);
 

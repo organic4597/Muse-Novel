@@ -5,14 +5,16 @@ export const ENTITY_KINDS = ['character', 'world'] as const;
 export type EntityKind = typeof ENTITY_KINDS[number];
 export type EntitySnapshot = Record<string, string | null>;
 export const ENTITY_FIELDS: Record<EntityKind, Record<string, string>> = {
-  character: { name: '이름', role: '역할', appearance: '외모', personality: '성격', backstory: '배경', arcDescription: '캐릭터 아크', itemsJson: '소지품' },
+  character: { name: '이름', role: '역할', appearance: '외모', personality: '성격', backstory: '배경', arcDescription: '캐릭터 아크', voiceGuide: '말투·목소리 규칙', voiceExamplesJson: '말투 근거 예문', itemsJson: '소지품' },
   world: { title: '제목', category: '카테고리', content: '내용', researchJson: '참고 출처' },
 };
 const text = z.string().max(60_000).nullable().optional();
 const items = z.array(z.object({ name: z.string().min(1).max(300), description: z.string().max(20_000).optional(), status: z.string().max(100).optional() })).max(300);
+const voiceExamples = z.array(z.object({ quote: z.string().trim().min(1).max(1000), note: z.string().max(1000).default('') })).max(8);
 const schemas = {
   character: z.object({ name: z.string().trim().min(1).max(300).optional(), role: z.string().max(100).nullable().optional(), appearance: text,
-    personality: text, backstory: text, arcDescription: text,
+    personality: text, backstory: text, arcDescription: text, voiceGuide: text,
+    voiceExamplesJson: z.string().max(20_000).refine((value) => { try { return voiceExamples.safeParse(JSON.parse(value)).success; } catch { return false; } }).nullable().optional(),
     itemsJson: z.string().max(60_000).refine((value) => { try { return items.safeParse(JSON.parse(value)).success; } catch { return false; } }).nullable().optional(),
   }).strict(),
   world: z.object({ title: z.string().trim().min(1).max(300).optional(), category: z.string().trim().min(1).max(50).optional(), content: text,
@@ -41,6 +43,12 @@ export function displayEntityValue(key: string, value: string | null | undefined
     try {
       const parsed = items.safeParse(JSON.parse(value));
       if (parsed.success) return parsed.data.map((item) => `${item.name}${item.status ? ` [${item.status}]` : ''}${item.description ? ` — ${item.description}` : ''}`).join('\n') || '(소지품 없음)';
+    } catch { /* Preserve the original display for legacy values. */ }
+  }
+  if (key === 'voiceExamplesJson') {
+    try {
+      const parsed = voiceExamples.safeParse(JSON.parse(value));
+      if (parsed.success) return parsed.data.map((example) => `“${example.quote}”${example.note ? ` — ${example.note}` : ''}`).join('\n') || '(근거 예문 없음)';
     } catch { /* Preserve the original display for legacy values. */ }
   }
   return value;

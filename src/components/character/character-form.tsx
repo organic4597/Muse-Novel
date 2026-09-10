@@ -5,8 +5,10 @@ import { StructuredFieldSuggestions } from '@/components/ai/structured-field-sug
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { CharacterItem } from '@/lib/ai/story-planning-types';
+import { readLongTask } from '@/lib/client/long-task';
 
 const ROLE_OPTIONS = ['주인공', '조연', '악역', '조력자', '기타'] as const;
+type VoiceExample = { quote: string; note: string };
 
 type CharacterSuggestion = {
   name?: string;
@@ -27,6 +29,8 @@ type Character = {
   personality: string | null;
   backstory: string | null;
   arcDescription: string | null;
+  voiceGuide?: string | null;
+  voiceExamplesJson?: string | null;
   itemsJson: string | null;
   imagePath: string | null;
   createdAt: Date | string | null;
@@ -52,6 +56,23 @@ export function CharacterForm({
   const [arcDescription, setArcDescription] = useState(
     character?.arcDescription ?? ''
   );
+  const [voiceGuide, setVoiceGuide] = useState(character?.voiceGuide ?? '');
+  const [voiceExamples, setVoiceExamples] = useState<VoiceExample[]>(() => {
+    try {
+      const parsed = JSON.parse(character?.voiceExamplesJson ?? '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+  const [voiceCandidate, setVoiceCandidate] = useState<{
+    guide: string;
+    examples: VoiceExample[];
+    reviewedChars: number;
+    sourceChapters: number;
+  } | null>(null);
+  const [voiceStatus, setVoiceStatus] = useState('');
+  const [isExtractingVoice, setIsExtractingVoice] = useState(false);
   const [items, setItems] = useState<CharacterItem[]>(() => {
     try {
       return JSON.parse(character?.itemsJson ?? '[]');
@@ -156,6 +177,8 @@ export function CharacterForm({
           personality: personality.trim() || null,
           backstory: backstory.trim() || null,
           arcDescription: arcDescription.trim() || null,
+          voiceGuide: voiceGuide.trim() || null,
+          voiceExamplesJson: voiceExamples.length > 0 ? JSON.stringify(voiceExamples.filter((example) => example.quote.trim())) : null,
           itemsJson: items.length > 0 ? JSON.stringify(items) : null,
         }),
       });
@@ -166,6 +189,31 @@ export function CharacterForm({
       }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const extractVoiceProfile = async () => {
+    if (!character) return;
+    setIsExtractingVoice(true);
+    setVoiceCandidate(null);
+    setVoiceStatus('원고에서 이 인물의 실제 발화를 찾는 중...');
+    try {
+      const response = await fetch(
+        `/api/projects/${projectId}/characters/${character.id}/voice-profile`,
+        { method: 'POST', headers: { Accept: 'text/event-stream' } }
+      );
+      const candidate = await readLongTask<{
+        guide: string;
+        examples: VoiceExample[];
+        reviewedChars: number;
+        sourceChapters: number;
+      }>(response, setVoiceStatus);
+      setVoiceCandidate(candidate);
+      setVoiceStatus('원고 근거와 분석 내용을 확인한 뒤 편집란에 적용해주세요. 아직 저장되지 않았습니다.');
+    } catch (error) {
+      setVoiceStatus(error instanceof Error ? error.message : '말투 후보를 만들지 못했습니다.');
+    } finally {
+      setIsExtractingVoice(false);
     }
   };
 
@@ -279,6 +327,50 @@ export function CharacterForm({
           value={arcDescription}
         />
       </div>
+
+      <section className="space-y-3 rounded-xl border border-border p-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-medium">말투·목소리 프로필</h3>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">승인해 저장한 규칙과 예문은 집필·Ghost Text·비평에서 이 인물의 대사를 맞추는 근거로 사용됩니다.</p>
+          </div>
+          {isEditing && (
+            <Button disabled={isExtractingVoice || isLoading} onClick={() => void extractVoiceProfile()} size="sm" type="button" variant="outline">
+              {isExtractingVoice ? '원고 분석 중...' : '원고에서 말투 추출'}
+            </Button>
+          )}
+        </div>
+        {voiceStatus && <p className="text-xs leading-5 text-muted-foreground" role="status">{voiceStatus}</p>}
+        {voiceCandidate && (
+          <div className="space-y-2 rounded-lg border border-primary/25 bg-primary/5 p-3">
+            <p className="text-xs text-muted-foreground">{voiceCandidate.sourceChapters}개 회차 · {voiceCandidate.reviewedChars.toLocaleString()}자 근거에서 만든 미저장 후보</p>
+            <p className="whitespace-pre-wrap text-sm leading-6">{voiceCandidate.guide}</p>
+            <ul className="space-y-1 text-xs leading-5">
+              {voiceCandidate.examples.map((example) => <li key={example.quote}>“{example.quote}”{example.note ? ` — ${example.note}` : ''}</li>)}
+            </ul>
+            <Button onClick={() => {
+              setVoiceGuide(voiceCandidate.guide);
+              setVoiceExamples(voiceCandidate.examples);
+              setVoiceCandidate(null);
+              setVoiceStatus('후보를 편집란에 적용했습니다. 아래 저장 버튼을 눌러야 확정됩니다.');
+            }} size="sm" type="button">후보를 편집란에 적용</Button>
+          </div>
+        )}
+        <label className="block space-y-1 text-xs text-muted-foreground" htmlFor="char-voice-guide">
+          <span>말투 규칙</span>
+          <textarea className="min-h-28 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm leading-6" disabled={isLoading} id="char-voice-guide" onChange={(event) => setVoiceGuide(event.target.value)} placeholder="호칭, 존대/반말, 문장 길이, 어휘, 질문·회피 방식, 감정이 새는 방식" value={voiceGuide} />
+        </label>
+        <div className="space-y-2">
+          {voiceExamples.map((example, index) => (
+            <div className="grid gap-2 rounded-lg border border-border/70 p-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]" key={`voice-example-${index}`}>
+              <textarea aria-label={`말투 예문 ${index + 1}`} className="min-h-16 rounded border border-input bg-background p-2 text-sm" disabled={isLoading} onChange={(event) => setVoiceExamples((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, quote: event.target.value } : item))} placeholder="실제 대사 예문" value={example.quote} />
+              <textarea aria-label={`말투 예문 설명 ${index + 1}`} className="min-h-16 rounded border border-input bg-background p-2 text-sm" disabled={isLoading} onChange={(event) => setVoiceExamples((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, note: event.target.value } : item))} placeholder="이 예문이 보여주는 말투 특징" value={example.note} />
+              <Button disabled={isLoading} onClick={() => setVoiceExamples((current) => current.filter((_item, itemIndex) => itemIndex !== index))} size="sm" type="button" variant="ghost">삭제</Button>
+            </div>
+          ))}
+          <Button disabled={isLoading || voiceExamples.length >= 8} onClick={() => setVoiceExamples((current) => [...current, { quote: '', note: '' }])} size="sm" type="button" variant="outline">말투 예문 추가</Button>
+        </div>
+      </section>
 
       <div className="space-y-2">
         <label className="text-sm font-medium">🎒 소지품</label>

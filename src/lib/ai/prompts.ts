@@ -35,6 +35,8 @@ export function getNovelSystemPrompt(
         character.role ? `역할: ${character.role}` : null,
         character.personality ? `성격: ${character.personality}` : null,
         character.backstory ? `배경: ${character.backstory.slice(0, 400)}` : null,
+        character.voiceGuide ? `말투·목소리: ${character.voiceGuide.slice(0, 700)}` : null,
+        character.voiceExamplesJson ? `말투 근거 예문: ${character.voiceExamplesJson.slice(0, 1200)}` : null,
       ].filter(Boolean);
       return `- ${character.name}${details.length > 0 ? ` (${details.join(' / ')})` : ''}`;
     });

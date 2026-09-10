@@ -234,6 +234,8 @@ export async function collectProjectMemorySources(
         character.personality && `성격: ${character.personality}`,
         character.backstory && `배경: ${character.backstory}`,
         character.arcDescription && `인물 변화: ${character.arcDescription}`,
+        character.voiceGuide && `말투·목소리 규칙: ${character.voiceGuide}`,
+        character.voiceExamplesJson && `말투 근거 예문: ${character.voiceExamplesJson}`,
         character.itemsJson && `소지품: ${character.itemsJson}`,
         characterRelationships.length > 0 &&
           `관계:\n${characterRelationships

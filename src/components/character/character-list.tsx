@@ -67,6 +67,8 @@ type Character = {
   personality: string | null;
   backstory: string | null;
   arcDescription: string | null;
+  voiceGuide?: string | null;
+  voiceExamplesJson?: string | null;
   itemsJson: string | null;
   imagePath: string | null;
   createdAt: Date | string | null;
@@ -345,7 +347,8 @@ function CharacterDetailDialog({
       <AdaptiveDetailDialogContent
         editing={isEditing}
         sizingContent={[currentCharacter.name, currentCharacter.role, currentCharacter.appearance,
-          currentCharacter.personality, currentCharacter.backstory, currentCharacter.arcDescription, currentCharacter.itemsJson]}
+          currentCharacter.personality, currentCharacter.backstory, currentCharacter.arcDescription,
+          currentCharacter.voiceGuide, currentCharacter.voiceExamplesJson, currentCharacter.itemsJson]}
       >
         {isEditing ? (
           <>
@@ -438,7 +441,17 @@ function CharacterDetailView({
     { label: '성격', value: character.personality },
     { label: '배경', value: character.backstory },
     { label: '캐릭터 아크', value: character.arcDescription },
+    { label: '말투·목소리 규칙', value: character.voiceGuide },
   ];
+
+  const voiceExamples: Array<{ quote: string; note?: string }> = (() => {
+    try {
+      const parsed = JSON.parse(character.voiceExamplesJson ?? '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  })();
 
   const items: CharacterItem[] = (() => {
     try {
@@ -546,6 +559,19 @@ function CharacterDetailView({
                 </p>
               </div>
             )
+        )}
+        {voiceExamples.length > 0 && (
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground">말투 근거 예문</h3>
+            <div className="mt-2 space-y-2">
+              {voiceExamples.map((example, index) => (
+                <blockquote className="rounded-lg border-l-2 border-primary/40 bg-muted/30 px-3 py-2 text-sm leading-6" key={`${index}-${example.quote}`}>
+                  “{example.quote}”
+                  {example.note && <footer className="mt-1 text-xs text-muted-foreground">{example.note}</footer>}
+                </blockquote>
+              ))}
+            </div>
+          </div>
         )}
       </div>
 

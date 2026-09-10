@@ -17,6 +17,8 @@ type CreateCharacterData = {
   personality?: string;
   backstory?: string;
   arcDescription?: string;
+  voiceGuide?: string;
+  voiceExamplesJson?: string | null;
   itemsJson?: string | null;
 };
 
@@ -33,6 +35,8 @@ export async function createCharacter(db: DB, data: CreateCharacterData) {
       personality: data.personality ?? null,
       backstory: data.backstory ?? null,
       arcDescription: data.arcDescription ?? null,
+      voiceGuide: data.voiceGuide ?? null,
+      voiceExamplesJson: data.voiceExamplesJson ?? null,
       itemsJson: data.itemsJson ?? null,
     })
     .returning()
