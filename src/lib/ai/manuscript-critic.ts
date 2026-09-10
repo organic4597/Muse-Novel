@@ -471,6 +471,7 @@ export function buildManuscriptCriticPrompt({
 }
 
 export async function analyzeManuscript({
+  additionalContext = '',
   chapterId,
   currentProse,
   db,
@@ -480,7 +481,9 @@ export async function analyzeManuscript({
   signal,
   sceneId,
   progress,
+  reviewFocus = '',
 }: {
+  additionalContext?: string;
   chapterId?: string;
   currentProse: string;
   db: DB;
@@ -490,6 +493,7 @@ export async function analyzeManuscript({
   signal: AbortSignal;
   sceneId?: string | null;
   progress?: (message: string) => void;
+  reviewFocus?: string;
 }): Promise<ManuscriptCriticReport> {
   const providerConfig = await resolveProjectProvider(db, projectId);
   if (!providerConfig) throw new Error('AI 제공자 설정이 없습니다.');
@@ -512,10 +516,12 @@ export async function analyzeManuscript({
   const workbench = getWritingWorkbenchContext(db, projectId, { chapterId, sceneId, focus: prose.slice(-2000) });
   const filteredStoryContext = filterManuscriptCriticContext(rawStoryContext);
   const writingKnowledge = runWritingKnowledgeAgent({
-    genre: project?.genre ?? '', instruction: '현재 작품의 분위기와 장면 목적에 맞춘 문단 리라이트, 감정 인과, 대사 속뜻, 정보 공개, 장면 전환과 리듬',
+    genre: project?.genre ?? '', instruction: `현재 작품의 분위기와 장면 목적에 맞춘 문단 리라이트, 감정 인과, 대사 속뜻, 정보 공개, 장면 전환과 리듬${reviewFocus ? `\n특별 검토 목표: ${reviewFocus}` : ''}`,
     maxChars: 2200, storyContext: filteredStoryContext,
   }).context;
   const storyContext = [filteredStoryContext, workbench.scene,
+    additionalContext ? formatPromptData('additional_editorial_context', additionalContext) : '',
+    reviewFocus ? formatPromptData('specific_review_focus', reviewFocus) : '',
     workbench.examples ? formatPromptData('author_approved_and_rejected_edit_examples', workbench.examples) : '',
     writingKnowledge ? formatPromptData('writing_reference_not_story_canon', writingKnowledge) : ''].filter(Boolean).join('\n\n');
   const styleGuide = [styleProfile?.description, project?.writingStyleDescription,

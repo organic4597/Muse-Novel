@@ -6,6 +6,11 @@ import {
   buildAgentPlanPrompt,
   buildAgentRevisionPrompt,
   buildAgentContinuationPrompt,
+  buildAgentBeatPrompt,
+  calculateSceneBeatCount,
+  allocateBeatLengths,
+  applyValidatedRewrites,
+  splitSceneBeats,
   joinWritingContinuation,
   extendWritingToTarget,
 } from './writing-agent';
@@ -82,5 +87,37 @@ describe('writing agent prompts', () => {
     const result = await extendWritingToTarget({ initialText: '가'.repeat(400), targetLength: 1000, generate });
     expect(result.length).toBeGreaterThanOrEqual(900);
     expect(generate).toHaveBeenCalledTimes(2);
+  });
+
+  it('splits target length into roughly 700-1000 character causal beats', () => {
+    expect(calculateSceneBeatCount(1800)).toBe(2);
+    expect(calculateSceneBeatCount(6000)).toBe(7);
+    expect(allocateBeatLengths(1800, 2)).toEqual([900, 900]);
+    expect(splitSceneBeats('1. 접근한다\n- 거짓말을 발견한다')).toEqual([
+      '접근한다',
+      '거짓말을 발견한다',
+    ]);
+    const prompt = buildAgentBeatPrompt({
+      beat: '거짓말을 발견하고 침묵을 택한다', beatIndex: 1, beatLength: 900,
+      completedBeats: ['경계의 말을 엿듣는다'], contract: '대화 목적: 의도를 확인한다',
+      currentProse: '앞 비트 본문', cursorAfter: '기존 뒤 문장', instruction: '대치 장면',
+      knowledge: '대사는 목적을 가진다', memory: '주인공은 검을 잃었다', storyContext: '3인칭 과거', totalBeats: 2,
+    });
+    expect(prompt).toContain('약 900자');
+    expect(prompt).toContain('경계의 말을 엿듣는다');
+    expect(prompt).toContain('뜬구름 대화');
+    expect(prompt).toContain('cursor_after');
+  });
+
+  it('applies only unique non-overlapping rewrites to generated prose', () => {
+    const result = applyValidatedRewrites('첫 문장. 둘째 문장. 셋째 문장.', [
+      { original: '첫 문장.', replacement: '첫 문장을 고쳤다.' },
+      { original: '셋째 문장.', replacement: '마지막 문장.' },
+    ]);
+    expect(result).toEqual({
+      applied: 2,
+      text: '첫 문장을 고쳤다. 둘째 문장. 마지막 문장.',
+    });
+    expect(applyValidatedRewrites('반복 반복', [{ original: '반복', replacement: '교체' }]).applied).toBe(0);
   });
 });
