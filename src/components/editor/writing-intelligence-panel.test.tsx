@@ -64,6 +64,29 @@ describe('WritingIntelligencePanel', () => {
     expect(onApply).toHaveBeenCalledWith('첫 문장. 최종 문장.');
   });
 
+  it('requires author approval of an editable scene contract before generating prose', async () => {
+    const plan = {
+      viewpoint: '곽진봉', location: '북악 향산', goal: '사파의 의도를 파악한다', obstacle: '신분을 숨겨야 한다',
+      participants: '곽진봉 | 정보 수집 | 공청석유 소문 | 무심한 척 질문', dialoguePurpose: '상대의 거짓말을 확인한다',
+      beats: '경계의 말을 듣는다\n모순을 발견한다', outcome: '의심할 단서를 얻는다', turningPoint: '침묵하기로 결정한다',
+      reveal: '사파가 먼저 움직였다', conceal: '정체를 눈치챘다는 사실', preserve: '과묵한 말투', openQuestions: '',
+    };
+    const first = `event: done\ndata: ${JSON.stringify({ text: '', plan: '계획', planData: plan, requiresPlanApproval: true })}\n\n`;
+    const second = 'event: done\ndata: {"text":"승인 뒤 생성된 본문"}\n\n';
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(first, { headers: { 'Content-Type': 'text/event-stream' } }))
+      .mockResolvedValueOnce(new Response(second, { headers: { 'Content-Type': 'text/event-stream' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<WritingIntelligencePanel chapterId="11111111-1111-4111-8111-111111111111" getCurrentContentJson={() => '[]'} onApply={vi.fn()} onReplace={vi.fn()} projectId="project-1" />);
+    fireEvent.change(screen.getByLabelText('작성 요청'), { target: { value: '대치 장면을 써줘' } });
+    fireEvent.click(screen.getByRole('button', { name: '에이전트 실행' }));
+    expect(await screen.findByRole('region', { name: '장면 계약 검토' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('대화가 바꾸어야 할 것'), { target: { value: '동맹 제안을 거절한다' } });
+    fireEvent.click(screen.getByRole('button', { name: '이 설계로 본문 생성' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1].body))).toMatchObject({ approvedPlan: { dialoguePurpose: '동맹 제안을 거절한다' } });
+    expect(await screen.findByText('승인 뒤 생성된 본문')).toBeInTheDocument();
+  });
+
   it('keeps partial output visible but never enables insertion without done', async () => {
     const onApply = vi.fn();
     vi.stubGlobal(

@@ -55,7 +55,7 @@ export async function draftScene(options: Options) {
     abortSignal, maxRetries: 0, temperature: 0.2, maxOutputTokens: 2200,
     output: Output.object({ name: 'scene_draft', schema: scenePlanSchema }),
     prompt: ['원고의 현재 장면을 설계 카드로 정리한다. 근거가 없는 부분은 빈 문자열로 두고, 존재하지 않는 사건·화자·미래 사건을 만들어 확정하지 않는다.',
-      'viewpoint=시점, location=장소, goal=목표, obstacle=방해, beats=사건 순서(줄바꿈), outcome=끝의 변화, reveal=공개 정보, conceal=숨길 정보, preserve=유지할 사실.',
+      'viewpoint=시점, location=장소, goal=목표, obstacle=방해, participants=인물 | 목표 | 아는 정보 | 전술(한 줄에 한 명), dialoguePurpose=대화가 바꿀 관계·정보·결정, beats=사건 순서(줄바꿈), outcome=끝의 변화, turningPoint=되돌릴 수 없는 선택·전환, reveal=공개 정보, conceal=숨길 정보, preserve=유지할 사실·말투, openQuestions=작가 선택 없이는 결과가 달라지는 미결정 사항.',
       formatPromptData('chapter_context', ctx.story), formatPromptData('manuscript', options.prose.slice(-16000)),
     ].join('\n\n'),
   }));

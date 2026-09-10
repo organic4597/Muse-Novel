@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { EMPTY_SCENE, SCENE_LABELS, type ScenePlan, type SceneRecord, type WritingExample } from '@/lib/writing-workbench';
+import { EMPTY_SCENE, parseScenePlan, SCENE_LABELS, type ScenePlan, type SceneRecord, type WritingExample } from '@/lib/writing-workbench';
 import { readLongTask } from '@/lib/client/long-task';
 
 type Props = { projectId: string; chapterId: string; sceneId: string | null; onSceneChange: (id: string | null) => void; getContent: () => Promise<string>; getSelection: () => string; examplesOnly?: boolean; proposal?: { sceneId: string; revision: number; plan: ScenePlan; reason: string } | null };
@@ -33,7 +33,7 @@ export function SceneWorkbench({ projectId, chapterId, sceneId, onSceneChange, g
     const controller = new AbortController();
     void load(controller.signal).then(data => {
       const selected = data.scenes.find(scene => scene.id === sceneId);
-      if (selected) { setTitle(selected.title); setPlan(JSON.parse(selected.planJson)); setRevision(selected.revision);
+      if (selected) { setTitle(selected.title); setPlan(parseScenePlan(JSON.parse(selected.planJson))); setRevision(selected.revision);
         if (proposal && proposal.sceneId === selected.id) {
           if (proposal.revision === selected.revision) { setPlan(proposal.plan); setDirty(true); setStatus(`미확정 변경 후보: ${proposal.reason}`); }
           else setStatus('설계가 이미 변경되어 오래된 변경 후보를 적용하지 않았습니다.');
@@ -79,7 +79,7 @@ export function SceneWorkbench({ projectId, chapterId, sceneId, onSceneChange, g
           onChange={event => {
             if (dirty && !window.confirm('저장하지 않은 장면 편집을 닫을까요?')) return;
             const scene = scenes.find(item => item.id === event.target.value);
-            onSceneChange(scene?.id ?? null); setTitle(scene?.title ?? '새 장면'); setPlan(scene ? JSON.parse(scene.planJson) : { ...EMPTY_SCENE }); setRevision(scene?.revision); setDirty(false);
+            onSceneChange(scene?.id ?? null); setTitle(scene?.title ?? '새 장면'); setPlan(scene ? parseScenePlan(JSON.parse(scene.planJson)) : { ...EMPTY_SCENE }); setRevision(scene?.revision); setDirty(false);
           }}>
           <option value="">장면 추가 / 선택 안 함</option>
           {scenes.map(scene => <option key={scene.id} value={scene.id}>{scene.title} · {scene.status === 'confirmed' ? '확정' : '초안'}</option>)}
@@ -89,7 +89,7 @@ export function SceneWorkbench({ projectId, chapterId, sceneId, onSceneChange, g
       </div>
       <Input aria-label="장면 제목" value={title} onChange={e => { setTitle(e.target.value); setDirty(true); }} />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{(Object.keys(SCENE_LABELS) as (keyof ScenePlan)[]).map(key => <label key={key} className="space-y-1 text-xs text-muted-foreground">
-        <span>{SCENE_LABELS[key]}</span><textarea className={textClass} rows={key === 'beats' ? 4 : 2} value={plan[key]}
+        <span>{SCENE_LABELS[key]}</span><textarea className={textClass} rows={key === 'beats' || key === 'participants' ? 4 : 2} value={plan[key]}
           onChange={e => { setPlan(current => ({ ...current, [key]: e.target.value })); setDirty(true); }} />
       </label>)}</div>
       <div className="flex flex-wrap gap-2">

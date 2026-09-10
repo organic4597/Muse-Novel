@@ -14,6 +14,7 @@ import {
   InvalidPlateContentError,
 } from '@/lib/editor/bounded-plate-content';
 import { WEB_SEARCH_MODES } from '@/lib/web-research/types';
+import { scenePlanSchema } from '@/lib/writing-workbench';
 
 const REQUEST_TIMEOUT_MS = 600_000;
 const requestSchema = z.object({
@@ -23,6 +24,7 @@ const requestSchema = z.object({
   mode: z.enum(['continue', 'scene']).default('continue'),
   currentContentJson: z.string().max(300_000).optional(),
   continuationText: z.string().max(50_000).default(''),
+  approvedPlan: scenePlanSchema.optional(),
   cursorAfter: z.string().max(10_000).default(''),
   cursorBefore: z.string().max(20_000).default(''),
   instruction: z.string().trim().min(3).max(5000),
@@ -99,6 +101,7 @@ export async function POST(
       const heartbeat = setInterval(() => send('heartbeat', {}), 10_000);
       try {
         const result = await runWritingAgent({
+          approvedPlan: parsed.data.approvedPlan,
           sceneId: parsed.data.sceneId,
           mode: parsed.data.mode,
           chapterId: parsed.data.chapterId,

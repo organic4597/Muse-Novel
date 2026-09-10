@@ -9,8 +9,16 @@ import {
   joinWritingContinuation,
   extendWritingToTarget,
 } from './writing-agent';
+import { parseScenePlan } from '@/lib/writing-workbench';
 
 describe('writing agent prompts', () => {
+  it('upgrades legacy scene plans without losing their existing fields', () => {
+    const plan = parseScenePlan({ viewpoint: '곽진봉', location: '북악 향산', goal: '정보를 모은다', obstacle: '', beats: '접근한다', outcome: '', reveal: '', conceal: '', preserve: '' });
+    expect(plan.viewpoint).toBe('곽진봉');
+    expect(plan.participants).toBe('');
+    expect(plan.openQuestions).toBe('');
+  });
+
   it('keeps retrieval, planning, drafting, critique and revision responsibilities separate', () => {
     const plan = buildAgentPlanPrompt({
       instruction: '대치 장면',

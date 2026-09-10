@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { readLongTask } from '@/lib/client/long-task';
-import { EDIT_LABELS, type EditDiagnosis, type ScenePlan } from '@/lib/writing-workbench';
+import { EDIT_LABELS, SCENE_LABELS, type EditDiagnosis, type ScenePlan } from '@/lib/writing-workbench';
 import type {
   ManuscriptCriticIntensity,
   ManuscriptCriticReport,
@@ -160,12 +160,14 @@ export function WritingIntelligencePanel({
   const [status, setStatus] = useState('');
   const [output, setOutput] = useState('');
   const [outputComplete, setOutputComplete] = useState(false);
+  const [sceneContract, setSceneContract] = useState<ScenePlan | null>(null);
   const [agentDetails, setAgentDetails] = useState<{
     knowledgeMode?: string;
     knowledgeWarning?: string;
     memoryMode?: string;
     memoryWarning?: string;
     plan?: string;
+    planData?: ScenePlan;
     critique?: string | null;
     actualLength?: number;
     targetLength?: number;
@@ -383,7 +385,10 @@ export function WritingIntelligencePanel({
     }
   };
 
-  const runAgent = async (continueFromOutput = false) => {
+  const runAgent = async (
+    continueFromOutput = false,
+    approvedPlan?: ScenePlan
+  ) => {
     if (instruction.trim().length < 3) {
       setStatus('작성할 장면이나 수정 방향을 3자 이상 입력해주세요.');
       return;
@@ -399,6 +404,7 @@ export function WritingIntelligencePanel({
     setOutputComplete(false);
     pendingOutputRef.current = '';
     setAgentDetails(null);
+    if (!approvedPlan) setSceneContract(null);
     setStage('memory');
     setStatus('작품 기억을 준비하는 중...');
     let receivedDone = false;
@@ -420,6 +426,7 @@ export function WritingIntelligencePanel({
           chapterId,
           currentContentJson,
           continuationText: priorOutput,
+          approvedPlan,
           cursorAfter: cursorContext.after,
           cursorBefore: cursorContext.before,
           instruction,
@@ -445,6 +452,24 @@ export function WritingIntelligencePanel({
           queueOutput(String(data.text ?? ''));
         } else if (event === 'done') {
           receivedDone = true;
+          if (data.requiresPlanApproval === true && data.planData) {
+            const proposedPlan = data.planData as ScenePlan;
+            setSceneContract(proposedPlan);
+            setOutput('');
+            setOutputComplete(false);
+            setAgentDetails({
+              plan: typeof data.plan === 'string' ? data.plan : undefined,
+              planData: proposedPlan,
+              knowledgeMode: String(data.knowledgeMode ?? ''),
+              knowledgeWarning: typeof data.knowledgeWarning === 'string' ? data.knowledgeWarning : undefined,
+              memoryMode: String(data.memoryMode ?? ''),
+              memoryWarning: typeof data.memoryWarning === 'string' ? data.memoryWarning : undefined,
+            });
+            setStatus(proposedPlan.openQuestions.trim()
+              ? '결과에 영향을 주는 미결정 사항이 있습니다. 설계를 수정한 뒤 승인해주세요.'
+              : '장면 설계를 확인하고 필요하면 수정한 뒤 본문 생성을 승인해주세요.');
+            return;
+          }
           const generated = String(data.text ?? '');
           const combinedOutput = priorOutput ? `${priorOutput}\n\n${generated}` : generated;
           setResearch(data.research as WebResearch | undefined);
@@ -472,7 +497,9 @@ export function WritingIntelligencePanel({
                 ? data.memoryWarning
                 : undefined,
             plan: typeof data.plan === 'string' ? data.plan : undefined,
+            planData: data.planData as ScenePlan | undefined,
           });
+          setSceneContract(null);
           setStatus(typeof data.actualLength === 'number' && typeof data.targetLength === 'number'
             ? priorOutput
               ? `추가 생성 ${data.actualLength.toLocaleString()}자 / 목표 ${data.targetLength.toLocaleString()}자 · 누적 ${combinedOutput.length.toLocaleString()}자. 검토한 뒤 적용하세요.`
@@ -734,6 +761,39 @@ export function WritingIntelligencePanel({
           {running || checking ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
           {stage ? `${STAGE_LABELS[stage]} · ` : ''}{status}
         </div>
+      )}
+
+      {sceneContract && (
+        <section className="space-y-4 rounded-2xl border border-primary/25 bg-card/90 p-4" aria-label="장면 계약 검토">
+          <div>
+            <h4 className="font-semibold">본문 생성 전 장면 계약</h4>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              이 내용은 아직 원고나 설정에 저장되지 않았습니다. 사건 결과와 대화 목적을 확인한 뒤 승인해주세요.
+            </p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {(Object.keys(SCENE_LABELS) as (keyof ScenePlan)[]).map((key) => (
+              <label className={`space-y-1 text-xs text-muted-foreground ${key === 'participants' || key === 'beats' ? 'md:col-span-2' : ''}`} key={key}>
+                <span>{SCENE_LABELS[key]}</span>
+                <textarea
+                  className={`w-full rounded-lg border bg-background p-2 text-sm leading-6 outline-none ${key === 'openQuestions' && sceneContract[key].trim() ? 'border-amber-500/70' : 'border-border'}`}
+                  disabled={running}
+                  onChange={(event) => setSceneContract((current) => current ? { ...current, [key]: event.target.value } : current)}
+                  rows={key === 'participants' || key === 'beats' ? 4 : 2}
+                  value={sceneContract[key]}
+                />
+              </label>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button disabled={running || !sceneContract.goal.trim() || !sceneContract.beats.trim()} onClick={() => void runAgent(false, sceneContract)} type="button">
+              이 설계로 본문 생성
+            </Button>
+            <Button disabled={running} onClick={() => setSceneContract(null)} type="button" variant="outline">
+              설계 취소
+            </Button>
+          </div>
+        </section>
       )}
 
       {output && (
