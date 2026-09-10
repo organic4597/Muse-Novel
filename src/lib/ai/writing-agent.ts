@@ -148,7 +148,7 @@ export function buildAgentPlanPrompt({
     '계획에는 시점·장소·장면 목표·갈등, 참여자별 목표/보유 정보/대화 전술, 대화로 바뀌어야 할 것, 핵심 비트, 전환점, 결과, 공개/은폐 정보, 연속성 주의점을 포함한다.',
     `beats에는 행동→상대 반응→새 정보/선택→결과의 인과가 보이도록 정확히 ${beatCount}개 집필 비트를 한 줄에 하나씩 쓴다. 같은 상황을 표현만 바꾸어 반복하지 않는다.`,
     'participants는 "인물 | 이번 장면 목표 | 현재 아는 정보 | 상대에게 쓰는 전술" 형식으로 한 줄에 한 명씩 쓴다.',
-    'openQuestions에는 답에 따라 사건 결과나 인물 관계가 달라지는데 자료와 작가 요청만으로 결정할 수 없는 질문만 쓴다. 사소한 동선·감각·몸짓은 정전과 충돌하지 않게 합리적으로 정하고 질문하지 않는다.',
+    'openQuestions에는 답에 따라 사건 결과나 인물 관계가 달라지는데 자료와 작가 요청만으로 결정할 수 없는 질문만 쓴다. 그런 질문이 없으면 빈 문자열로 둔다. 사소한 동선·감각·몸짓은 정전과 충돌하지 않게 합리적으로 정하고 질문하지 않는다.',
     formatPromptData('story_context', storyContext),
     formatPromptData('retrieved_canon_memory', memory || '검색 결과 없음'),
     formatPromptData('writing_knowledge', knowledge || '참조 자료 없음'),

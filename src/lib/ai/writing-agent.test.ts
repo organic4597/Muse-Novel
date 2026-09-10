@@ -14,7 +14,7 @@ import {
   joinWritingContinuation,
   extendWritingToTarget,
 } from './writing-agent';
-import { parseScenePlan } from '@/lib/writing-workbench';
+import { hasOpenSceneQuestions, parseScenePlan } from '@/lib/writing-workbench';
 
 describe('writing agent prompts', () => {
   it('upgrades legacy scene plans without losing their existing fields', () => {
@@ -22,6 +22,8 @@ describe('writing agent prompts', () => {
     expect(plan.viewpoint).toBe('곽진봉');
     expect(plan.participants).toBe('');
     expect(plan.openQuestions).toBe('');
+    expect(hasOpenSceneQuestions({ ...plan, openQuestions: '없음.' })).toBe(false);
+    expect(hasOpenSceneQuestions({ ...plan, openQuestions: '장로의 제안을 받을 것인가?' })).toBe(true);
   });
 
   it('keeps retrieval, planning, drafting, critique and revision responsibilities separate', () => {

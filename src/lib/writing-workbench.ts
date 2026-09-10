@@ -47,6 +47,11 @@ export function formatScenePlan(plan: ScenePlan) {
     .join('\n');
 }
 
+export function hasOpenSceneQuestions(plan: ScenePlan) {
+  const value = plan.openQuestions.trim().replace(/[.。]+$/u, '').replace(/\s+/gu, '');
+  return Boolean(value) && !['없음', '없다', '해당없음', '미정사항없음'].includes(value);
+}
+
 export function sceneContext(scene: SceneRecord | undefined, compact = false) {
   if (!scene || scene.status !== 'confirmed') return '';
   const plan = parseScenePlan(JSON.parse(scene.planJson));

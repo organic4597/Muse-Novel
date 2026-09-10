@@ -14,7 +14,7 @@ import {
   InvalidPlateContentError,
 } from '@/lib/editor/bounded-plate-content';
 import { WEB_SEARCH_MODES } from '@/lib/web-research/types';
-import { scenePlanSchema } from '@/lib/writing-workbench';
+import { hasOpenSceneQuestions, scenePlanSchema } from '@/lib/writing-workbench';
 
 const REQUEST_TIMEOUT_MS = 600_000;
 const requestSchema = z.object({
@@ -30,6 +30,10 @@ const requestSchema = z.object({
   instruction: z.string().trim().min(3).max(5000),
   review: z.boolean().default(true),
   targetLength: z.number().int().min(300).max(6000).default(1800),
+}).superRefine((value, context) => {
+  if (value.approvedPlan && hasOpenSceneQuestions(value.approvedPlan)) {
+    context.addIssue({ code: 'custom', path: ['approvedPlan', 'openQuestions'], message: '작가 확인이 필요한 결정을 먼저 반영해주세요.' });
+  }
 });
 
 export async function POST(

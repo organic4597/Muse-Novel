@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { readLongTask } from '@/lib/client/long-task';
-import { EDIT_LABELS, SCENE_LABELS, type EditDiagnosis, type ScenePlan } from '@/lib/writing-workbench';
+import { EDIT_LABELS, hasOpenSceneQuestions, SCENE_LABELS, type EditDiagnosis, type ScenePlan } from '@/lib/writing-workbench';
 import type {
   ManuscriptCriticIntensity,
   ManuscriptCriticReport,
@@ -472,7 +472,7 @@ export function WritingIntelligencePanel({
               memoryMode: String(data.memoryMode ?? ''),
               memoryWarning: typeof data.memoryWarning === 'string' ? data.memoryWarning : undefined,
             });
-            setStatus(proposedPlan.openQuestions.trim()
+            setStatus(hasOpenSceneQuestions(proposedPlan)
               ? '결과에 영향을 주는 미결정 사항이 있습니다. 설계를 수정한 뒤 승인해주세요.'
               : '장면 설계를 확인하고 필요하면 수정한 뒤 본문 생성을 승인해주세요.');
             return;
@@ -794,13 +794,14 @@ export function WritingIntelligencePanel({
             ))}
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button disabled={running || !sceneContract.goal.trim() || !sceneContract.beats.trim()} onClick={() => void runAgent(false, sceneContract)} type="button">
+            <Button disabled={running || !sceneContract.goal.trim() || !sceneContract.beats.trim() || hasOpenSceneQuestions(sceneContract)} onClick={() => void runAgent(false, sceneContract)} type="button">
               이 설계로 본문 생성
             </Button>
             <Button disabled={running} onClick={() => setSceneContract(null)} type="button" variant="outline">
               설계 취소
             </Button>
           </div>
+          {hasOpenSceneQuestions(sceneContract) && <p className="text-xs leading-5 text-amber-700 dark:text-amber-400">‘작가 확인이 필요한 결정’의 답을 관련 필드에 반영한 뒤 해당 질문을 지워야 본문을 생성할 수 있습니다.</p>}
         </section>
       )}
 
